@@ -67,6 +67,19 @@ pub fn rebuild(db: &mut Connection, entries: &[Entry]) -> Result<()> {
 /// Replace everything indexed for one meeting.
 pub fn reindex_meeting(db: &mut Connection, en: &Entry) -> Result<()> {
     let tx = db.transaction().map_err(e)?;
+    delete(&tx, &en.meeting.id)?;
+    insert(&tx, en)?;
+    tx.commit().map_err(e)
+}
+
+/// Drop everything indexed for one meeting.
+pub fn remove_meeting(db: &mut Connection, id: &str) -> Result<()> {
+    let tx = db.transaction().map_err(e)?;
+    delete(&tx, id)?;
+    tx.commit().map_err(e)
+}
+
+fn delete(tx: &Connection, id: &str) -> Result<()> {
     for t in [
         "meetings",
         "speakers",
@@ -75,14 +88,10 @@ pub fn reindex_meeting(db: &mut Connection, en: &Entry) -> Result<()> {
         "segments",
     ] {
         let col = if t == "meetings" { "id" } else { "meeting_id" };
-        tx.execute(
-            &format!("DELETE FROM {t} WHERE {col} = ?1"),
-            [&en.meeting.id],
-        )
-        .map_err(e)?;
+        tx.execute(&format!("DELETE FROM {t} WHERE {col} = ?1"), [id])
+            .map_err(e)?;
     }
-    insert(&tx, en)?;
-    tx.commit().map_err(e)
+    Ok(())
 }
 
 fn insert(db: &Connection, en: &Entry) -> Result<()> {

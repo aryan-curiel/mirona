@@ -329,6 +329,16 @@ impl Store {
         Ok(s)
     }
 
+    /// Delete a meeting everywhere: its folder (transcript, audio, notes) and the index.
+    pub fn delete_meeting(&mut self, id: &str) -> Result<()> {
+        let i = self.idx(id)?;
+        let e = self.entries.remove(i);
+        std::fs::remove_dir_all(&e.dir).map_err(|err| format!("{}: {err}", e.dir.display()))?;
+        index::remove_meeting(&mut self.db, id)?;
+        self.refresh_people();
+        Ok(())
+    }
+
     /// Records the meeting length once recording stops. The summary comes from `set_summary`.
     pub fn finish_meeting(&mut self, meeting_id: &str, elapsed_ms: u32) -> Result<Meeting> {
         let i = self.idx(meeting_id)?;

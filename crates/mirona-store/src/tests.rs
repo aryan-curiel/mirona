@@ -395,3 +395,23 @@ fn note_times_round_trip_and_survive_outside_edits() {
     assert_eq!(n.raw, ["new top", "- first", "edited", "- first"]);
     assert_eq!(n.raw_at_ms, [None, Some(1000), None, Some(3000)]);
 }
+
+#[test]
+fn delete_meeting_removes_folder_index_and_items() {
+    let (_dir, mut s) = seeded();
+    let id = s.list_meetings()[0].id.clone();
+    let dir = s.meeting_dir(&id).unwrap();
+    let word = s.meeting(&id).unwrap().segments[0]
+        .text
+        .split_whitespace()
+        .find(|w| w.len() > 5)
+        .unwrap()
+        .to_string();
+    s.delete_meeting(&id).unwrap();
+    assert!(!dir.exists());
+    assert!(s.meeting(&id).is_err());
+    assert!(s.action_items().iter().all(|a| a.meeting_id != id));
+    assert!(s.search_hits(&word).iter().all(|h| h.meeting_id != id));
+    s.reindex().unwrap();
+    assert!(s.meeting(&id).is_err(), "gone from disk too");
+}

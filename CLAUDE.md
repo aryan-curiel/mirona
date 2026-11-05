@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Mirona is a local-first meeting memory app (transcription, speakers, typed classification via hosted Jev (local LLM fallback in privacy mode; Kev is dropped), summaries, MCP server). Tauri 2 + Rust workspace + React. **Status: prototype** — the UI is wired end to end against a mocked backend; no audio is captured and no models run.
+Mirona is a local-first meeting memory app (transcription, speakers, typed classification via hosted Jev (local LLM fallback in privacy mode; Kev is dropped), summaries, MCP server). Tauri 2 + Rust workspace + React. **Status: M1 (MVP)** — records mic + system audio on macOS, transcribes live (Parakeet), stores meetings as Markdown + SQLite, summarizes with a local or cloud LLM, and serves meetings over MCP and a CLI. Diarization and classification (M2) are not wired into the pipeline yet; until then the speaker is the audio source (mic = "me", system = "them").
 
 ## Commands
 
@@ -20,9 +20,15 @@ cargo test --workspace
 cargo test -p mirona-store privacy_and_corrections   # single test
 python3 design-kit/tokens/check-contrast.py          # WCAG 4.5:1 check, light + dark tokens
 
-# Backend without the UI
-cargo run -p mirona-cli -- actions        # meetings | show <id> | actions | search <q>
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | cargo run -q -p mirona-mcp
+# Models (Parakeet, Silero VAD, Whisper) into the app's models dir
+scripts/fetch-models.sh "$HOME/Library/Application Support/com.nagare.mirona/models"
+
+# Backend without the UI (CLI over the same engine; MIRONA_APP_DIR overrides the app dir)
+cargo run -p mirona-cli -- list            # record | stop | list | show | search | actions | import | reindex | mcp
+cargo run -p mirona-cli -- mcp             # MCP server over stdio (same as the mirona-mcp binary)
+
+# Real-model / live tests are #[ignore]d; models from MIRONA_MODELS_DIR or spikes/parakeet/models
+cargo test -p mirona-engine -- --ignored   # import a clip → transcript → qwen3:4b summary (needs Ollama)
 ```
 
 ## Architecture
@@ -33,9 +39,13 @@ Workspace crates (`crates/*`) plus the Tauri crate `app/src-tauri` (`mirona-app`
 - **mirona-providers** — one trait per pipeline stage (`SttProvider`, `Diarizer`, `Classifier`, `LlmProvider`, `Embedder`) plus deterministic `fake` impls. `check_privacy` is the single privacy gate: every provider selection must route through it so privacy mode refuses cloud providers in one place. `config::Config` (`config.toml` in the OS app-config dir: `privacy` + `[providers] stage = "id"`) is applied via `Store::apply_config`, which goes through the same gate; the app saves it on every privacy/provider change.
   Real providers sit behind features (`jev`, `ollama`, `parakeet`, `speakrs`; off by default): `jev::Jev` and `ollama::Ollama` (Classifier, sharing `questions::SEGMENT_QUESTIONS`), `parakeet::Parakeet` (SttProvider), `speakrs::Speakrs` (Diarizer + voiceprint matching rule). Model/live tests are `#[ignore]`d; run them with:
   `MIRONA_PARAKEET_DIR=… MIRONA_SPEAKRS_DIR=… TYPESAFE_API_KEY=… cargo test -p mirona-providers --all-features -- --include-ignored` (models come from `spikes/*/fetch.sh`; Ollama must be serving qwen3:4b). `tests/classifier_eval.rs` reruns the 50-chunk eval through the Rust classifiers.
-- **mirona-store** — `Store`, in memory, seeded by `Store::sample()` from `sample.rs` (which also scripts the fake live recording via `live_script()`). Errors are `Result<T, String>`. Target is Markdown + SQLite (NGR-140).
-- **mirona-cli / mirona-mcp** — each builds its own `Store::sample()`; they do not share state with the app. MCP is hand-rolled JSON-RPC over stdin lines.
-- **app/src-tauri/src/lib.rs** — `#[tauri::command]`s over a `Mutex<Store>`, and a fake capture thread that emits `PipelineEvent`s on the `"pipeline"` channel (captured → transcribed → classified; on stop: diarized → summarized).
+  `config::Config` also holds `meetings_dir`, `models_dir`, the summary `template`, `llm` (model, base URL) and `mcp_enabled`. LLM providers (`ollama`, `openai`, `anthropic` features) stream and report usage; API keys live in the OS keychain (`keychain` feature), never in config.
+- **mirona-store** — files are the source of truth: one folder per meeting (`meeting.md` = YAML frontmatter + `## Notes` body, `transcript.jsonl` append-only, `audio.wav`), plus `<root>/.mirona/index.sqlite` (FTS5) rebuilt by `reindex()`. `Store::open` rebuilds the index; readers in other processes (MCP, CLI) use `Store::open_snapshot` so they never rewrite the app's index. Errors are `Result<T, String>`. `sample.rs` seeds demo meetings for tests and "Add demo meetings".
+- **mirona-capture** — macOS capture (cpal: mic + system audio via a Core Audio process tap), resampling, Silero VAD chunking (≤5 s target, cut at pauses), per-source live STT on a worker, offline `transcribe_file`. Streams are rebuilt when the default device or its sample rate changes (AirPods flip rate when their mic opens). Non-macOS builds compile; live capture returns an error there. `examples/record_probe.rs` checks real hardware from inside an app bundle.
+- **mirona-summary** — editable Markdown templates (`templates/*.md`, written to the app dir), `summarize` and `enhance_notes` over any `LlmProvider`, citing transcript line numbers (0-based) mapped back to timestamps.
+- **mirona-engine** — the pipeline the app and CLI share: `Engine::record` → `Session::stop` (finish → summary + enhanced notes), `import`, `summarize`. `app_dir()` (Tauri's app-config dir, or `MIRONA_APP_DIR`) holds `config.toml`, models and templates. Providers block inside their futures; `block_on` is the whole executor.
+- **mirona-mcp / mirona-cli** — `rmcp` stdio server (`search_meetings`, `get_meeting`, `get_transcript`, `list_action_items`) rereading the store per call; the CLI wraps the engine (`record` writes `recording.lock`, `stop` drops `recording.stop`). Claude Code skill in `skills/mirona/`; Homebrew formula (HEAD) in `packaging/homebrew/`; docs in `docs/cli-and-mcp.md`.
+- **app/src-tauri/src/lib.rs** — commands over the engine; recording from the sidebar, tray and global shortcut (⌘⌥⇧R); long work on worker threads, progress on the `"pipeline"` and `"recording"` event channels. Closing the window hides it to the menu bar. `Info.plist` carries the mic and system-audio usage strings.
 - **app/src** — React 19 + Tailwind v4 + zustand. `lib/api.ts` holds typed `invoke` wrappers (one per Tauri command; args are camelCase on the TS side). `store.ts` is the single zustand store and applies pipeline events. Adding a command means: Rust fn → register in `generate_handler!` → wrapper in `api.ts` → action in `store.ts`.
 
 ### UI / design

@@ -175,7 +175,11 @@ impl Engine {
             },
             stt,
             tx,
-        )?;
+        )
+        .inspect_err(|_| {
+            // Nothing was recorded: don't leave an empty meeting behind.
+            let _ = self.store.lock().unwrap().delete_meeting(&id);
+        })?;
         self.store.lock().unwrap().set_audio(&id, AUDIO_FILE)?;
         let started = Instant::now();
         let forward = {
