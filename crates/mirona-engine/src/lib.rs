@@ -157,6 +157,8 @@ impl Engine {
 
     /// Start a live recording of mic + system audio into a new meeting.
     pub fn record(&self, events: Sender<PipelineEvent>) -> Result<Session> {
+        // One recorder per meetings folder, whether it's the app or `mirona record`.
+        let lock = Arc::new(RecordingLock::take(&self.paths.meetings)?);
         let stt = self.stt()?;
         let id = mirona_store::new_id();
         let dir = {
@@ -183,14 +185,15 @@ impl Engine {
         self.store.lock().unwrap().set_audio(&id, AUDIO_FILE)?;
         let started = Instant::now();
         let forward = {
-            let (store, id) = (self.store.clone(), id.clone());
-            std::thread::spawn(move || forward(&store, &id, started, &rx, &events))
+            let (store, id, lock) = (self.store.clone(), id.clone(), lock.clone());
+            std::thread::spawn(move || forward(&store, &id, started, &rx, &events, &lock))
         };
         Ok(Session {
             id,
             recorder,
             forward,
             started,
+            lock,
         })
     }
 
@@ -294,6 +297,7 @@ pub struct Session {
     recorder: Recorder,
     forward: JoinHandle<()>,
     started: Instant,
+    lock: Arc<RecordingLock>,
 }
 
 impl Session {
@@ -307,6 +311,8 @@ impl Session {
         let stopped = self.recorder.stop();
         // The recorder dropped its sender: the forwarder drains the rest and ends.
         self.forward.join().ok();
+        // Capture is over: another recording may start while this one is summarized.
+        drop(self.lock);
         engine
             .store
             .lock()
@@ -318,6 +324,55 @@ impl Session {
     }
 }
 
+/// How often a live recording refreshes its lock, and when an unrefreshed lock counts as left
+/// over from a crash.
+const LOCK_BEAT: std::time::Duration = std::time::Duration::from_secs(3);
+const LOCK_STALE: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// `<meetings>/.mirona/recording.lock`: one live recording per meetings folder across the app
+/// and the CLI. Kept fresh while recording; removed when capture stops (or on drop).
+pub struct RecordingLock(PathBuf);
+
+impl RecordingLock {
+    pub fn path(meetings: &Path) -> PathBuf {
+        meetings.join(".mirona").join("recording.lock")
+    }
+
+    pub fn take(meetings: &Path) -> Result<Self> {
+        let path = Self::path(meetings);
+        let fresh = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age < LOCK_STALE);
+        if fresh {
+            let who = std::fs::read_to_string(&path).unwrap_or_default();
+            return Err(format!(
+                "Already recording into this meetings folder ({}). Stop that recording first.",
+                who.trim()
+            ));
+        }
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&path, format!("pid {}", std::process::id()))
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(Self(path))
+    }
+
+    fn beat(&self) {
+        if let Ok(f) = std::fs::File::options().write(true).open(&self.0) {
+            f.set_modified(std::time::SystemTime::now()).ok();
+        }
+    }
+}
+
+impl Drop for RecordingLock {
+    fn drop(&mut self) {
+        std::fs::remove_file(&self.0).ok();
+    }
+}
+
 /// Capture events → store + pipeline events, in arrival order.
 fn forward(
     store: &Shared,
@@ -325,9 +380,15 @@ fn forward(
     started: Instant,
     rx: &std::sync::mpsc::Receiver<Event>,
     events: &Sender<PipelineEvent>,
+    lock: &RecordingLock,
 ) {
     let mut n = 0;
+    let mut beat = Instant::now();
     for ev in rx {
+        if beat.elapsed() >= LOCK_BEAT {
+            lock.beat();
+            beat = Instant::now();
+        }
         let out = match ev {
             Event::Levels { mic, system } => PipelineEvent::Captured {
                 meeting_id: id.into(),

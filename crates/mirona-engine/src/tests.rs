@@ -284,3 +284,24 @@ fn app_dir_can_be_overridden() {
     unsafe { std::env::remove_var("MIRONA_APP_DIR") };
     assert!(app_dir().ends_with(APP_ID));
 }
+
+#[test]
+fn one_recording_per_meetings_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = RecordingLock::take(dir.path()).unwrap();
+    let err = RecordingLock::take(dir.path()).err().unwrap();
+    assert!(err.contains("Already recording"), "{err}");
+    drop(first);
+    let second = RecordingLock::take(dir.path()).unwrap();
+
+    // A lock nobody refreshed for a while is left over from a crash: take it over.
+    std::mem::forget(second);
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+    std::fs::File::options()
+        .write(true)
+        .open(RecordingLock::path(dir.path()))
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    assert!(RecordingLock::take(dir.path()).is_ok());
+}
