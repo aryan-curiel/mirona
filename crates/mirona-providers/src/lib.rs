@@ -79,45 +79,48 @@ pub mod fake {
         }
     }
 
+    // Fakes answer instantly, so they hand back ready futures instead of `async fn`.
+    use std::future::ready;
+
     impl SttProvider for Fake {
-        async fn transcribe(&self, _pcm: &[f32]) -> Result<String> {
-            Ok("Sample transcript line.".into())
+        fn transcribe(&self, _pcm: &[f32]) -> impl Future<Output = Result<String>> + Send {
+            ready(Ok("Sample transcript line.".into()))
         }
     }
 
     impl Diarizer for Fake {
-        async fn diarize(&self, pcm: &[f32]) -> Result<Vec<u32>> {
-            Ok(vec![0; pcm.len().div_ceil(16_000)])
+        fn diarize(&self, pcm: &[f32]) -> impl Future<Output = Result<Vec<u32>>> + Send {
+            ready(Ok(vec![0; pcm.len().div_ceil(16_000)]))
         }
     }
 
     impl Classifier for Fake {
-        async fn classify(&self, segment: &Segment) -> Result<Vec<Answer>> {
+        fn classify(&self, segment: &Segment) -> impl Future<Output = Result<Vec<Answer>>> + Send {
             // ponytail: keyword heuristic stands in for Jev until NGR-155.
             let action = ["I'll", "I will", "can you", "send"]
                 .iter()
                 .any(|k| segment.text.contains(k));
-            Ok(vec![Answer {
+            ready(Ok(vec![Answer {
                 id: "action".into(),
                 question: "Is this an action item?".into(),
                 kind: QuestionKind::YesNo,
                 answer: action,
                 probability: if action { 0.82 } else { 0.08 },
                 source: AnswerSource::Model,
-            }])
+            }]))
         }
     }
 
     impl LlmProvider for Fake {
-        async fn complete(&self, prompt: &str) -> Result<String> {
-            Ok(format!("Summary of {} characters.", prompt.len()))
+        fn complete(&self, prompt: &str) -> impl Future<Output = Result<String>> + Send {
+            ready(Ok(format!("Summary of {} characters.", prompt.len())))
         }
     }
 
     impl Embedder for Fake {
-        async fn embed(&self, text: &str) -> Result<Vec<f32>> {
+        fn embed(&self, text: &str) -> impl Future<Output = Result<Vec<f32>>> + Send {
             #[allow(clippy::cast_precision_loss)]
-            Ok(vec![text.len() as f32])
+            ready(Ok(vec![text.len() as f32]))
         }
     }
 }
@@ -125,6 +128,28 @@ pub mod fake {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Fakes are ready immediately, so one poll is enough.
+    fn now<T>(fut: impl Future<Output = T>) -> T {
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        match std::pin::pin!(fut).poll(&mut cx) {
+            std::task::Poll::Ready(v) => v,
+            std::task::Poll::Pending => panic!("fake was not ready"),
+        }
+    }
+
+    #[test]
+    fn fakes_answer() {
+        let f = fake::Fake("fake");
+        let one_second = vec![0.0; 16_000];
+        assert_eq!(now(f.diarize(&one_second)).unwrap(), vec![0]);
+        assert_eq!(
+            now(f.transcribe(&one_second)).unwrap(),
+            "Sample transcript line."
+        );
+        assert_eq!(now(f.embed("abc")).unwrap(), vec![3.0]);
+        assert!(now(f.complete("hi")).unwrap().contains('2'));
+    }
 
     #[test]
     fn privacy_blocks_cloud_only() {
