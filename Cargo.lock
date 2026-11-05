@@ -2338,6 +2338,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mirona-capture"
+version = "0.1.0"
+dependencies = [
+ "mirona-core",
+ "mirona-providers",
+]
+
+[[package]]
 name = "mirona-cli"
 version = "0.1.0"
 dependencies = [
@@ -2384,6 +2392,14 @@ dependencies = [
  "mirona-core",
  "mirona-providers",
  "serde_json",
+]
+
+[[package]]
+name = "mirona-summary"
+version = "0.1.0"
+dependencies = [
+ "mirona-core",
+ "mirona-providers",
 ]
 
 [[package]]

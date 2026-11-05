@@ -12,6 +12,8 @@ repository = "https://github.com/nagare-studio/mirona"
 mirona-core = { path = "crates/mirona-core" }
 mirona-providers = { path = "crates/mirona-providers" }
 mirona-store = { path = "crates/mirona-store" }
+mirona-capture = { path = "crates/mirona-capture" }
+mirona-summary = { path = "crates/mirona-summary" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ts-rs = "12"

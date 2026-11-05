@@ -1,0 +1,12 @@
+[package]
+name = "mirona-summary"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mirona-core.workspace = true
+mirona-providers.workspace = true
+
+[lints]
+workspace = true

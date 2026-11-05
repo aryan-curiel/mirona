@@ -4,14 +4,22 @@
 pub mod config;
 pub mod questions;
 
+#[cfg(feature = "anthropic")]
+pub mod anthropic;
 #[cfg(feature = "jev")]
 pub mod jev;
+#[cfg(feature = "keychain")]
+pub mod keychain;
 #[cfg(feature = "ollama")]
 pub mod ollama;
+#[cfg(feature = "openai")]
+pub mod openai;
 #[cfg(feature = "parakeet")]
 pub mod parakeet;
 #[cfg(feature = "speakrs")]
 pub mod speakrs;
+#[cfg(feature = "whisper")]
+pub mod whisper;
 
 use mirona_core::{Answer, Locality, ProviderOption, Segment};
 
@@ -91,8 +99,37 @@ pub trait Classifier: Provider {
     fn classify(&self, segment: &Segment) -> impl Future<Output = Result<Vec<Answer>>> + Send;
 }
 
+/// What an LLM is asked: a system prompt, the user content, and whether to answer in JSON.
+#[derive(Debug, Clone, Copy)]
+pub struct Prompt<'a> {
+    pub system: &'a str,
+    pub user: &'a str,
+    /// Ask for a single JSON object; providers that can enforce it do.
+    pub json: bool,
+}
+
+/// Token counts reported by the provider (0 when it doesn't report them).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Usage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Completion {
+    pub text: String,
+    pub usage: Usage,
+}
+
+/// The only stage that writes prose (summaries, enhanced notes). NGR-145.
 pub trait LlmProvider: Provider {
-    fn complete(&self, prompt: &str) -> impl Future<Output = Result<String>> + Send;
+    /// Stream a completion: `on_text` gets each chunk as it arrives; the full text and token
+    /// use come back at the end.
+    fn complete(
+        &self,
+        prompt: &Prompt<'_>,
+        on_text: &mut (dyn FnMut(&str) + Send),
+    ) -> impl Future<Output = Result<Completion>> + Send;
 }
 
 pub trait Embedder: Provider {
@@ -102,8 +139,8 @@ pub trait Embedder: Provider {
 /// Deterministic fakes for the prototype and tests.
 pub mod fake {
     use super::{
-        Answer, Classifier, Diarization, Diarizer, Embedder, FoundSpeaker, LlmProvider, Locality,
-        Provider, Result, Segment, SttProvider, Turn,
+        Answer, Classifier, Completion, Diarization, Diarizer, Embedder, FoundSpeaker, LlmProvider,
+        Locality, Prompt, Provider, Result, Segment, SttProvider, Turn, Usage,
     };
     use mirona_core::{AnswerSource, QuestionKind};
 
@@ -166,8 +203,17 @@ pub mod fake {
     }
 
     impl LlmProvider for Fake {
-        fn complete(&self, prompt: &str) -> impl Future<Output = Result<String>> + Send {
-            ready(Ok(format!("Summary of {} characters.", prompt.len())))
+        fn complete(
+            &self,
+            prompt: &Prompt<'_>,
+            on_text: &mut (dyn FnMut(&str) + Send),
+        ) -> impl Future<Output = Result<Completion>> + Send {
+            let text = format!("Summary of {} characters.", prompt.user.len());
+            on_text(&text);
+            ready(Ok(Completion {
+                text,
+                usage: Usage::default(),
+            }))
         }
     }
 
@@ -208,7 +254,15 @@ mod tests {
             "Sample transcript line."
         );
         assert_eq!(now(f.embed("abc")).unwrap(), vec![3.0]);
-        assert!(now(f.complete("hi")).unwrap().contains('2'));
+        let mut streamed = String::new();
+        let prompt = Prompt {
+            system: "",
+            user: "hi",
+            json: false,
+        };
+        let done = now(f.complete(&prompt, &mut |t| streamed.push_str(t))).unwrap();
+        assert!(done.text.contains('2'));
+        assert_eq!(streamed, done.text);
     }
 
     #[test]
