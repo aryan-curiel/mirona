@@ -4,7 +4,7 @@ import { useStore, type Tab } from "../store";
 import { api, fmt } from "../lib/api";
 import { retime } from "../lib/notes";
 import { Avatar, Chip, Icon, Label, Logo, Mono } from "../components/ui";
-import { RecordButton, useModelNames } from "../components/Shell";
+import { ImportProgress, RecordButton, useModelNames } from "../components/Shell";
 import type { Meeting } from "../bindings/Meeting";
 import type { Segment } from "../bindings/Segment";
 import type { Speaker } from "../bindings/Speaker";
@@ -34,9 +34,10 @@ function EmptyState() {
       </p>
       <div className="mt-6 flex w-64 flex-col gap-3">
         <RecordButton />
-        <button type="button" className="mi-ghost min-h-11!" onClick={s.importAudio}>
-          Import an audio file…
+        <button type="button" className="mi-ghost min-h-11!" onClick={s.importAudio} disabled={!!s.importing}>
+          {s.importing ? "Importing…" : "Import an audio file…"}
         </button>
+        <ImportProgress />
         <button type="button" className="mi-ghost min-h-11!" onClick={s.addDemo}>
           Add demo meetings
         </button>
@@ -51,6 +52,9 @@ function useAudio(m: Meeting) {
   const ref = useRef<HTMLAudioElement>(null);
   const [src, setSrc] = useState<string | null>(null);
   const live = useStore((s) => s.recording?.meetingId === m.id);
+  // Stopping compresses audio.wav into audio.caf: ask again once that's done.
+  const stopping = useStore((s) => s.processing.includes(m.id));
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `stopping` only triggers a refetch
   useEffect(() => {
     let off = false;
     setSrc(null);
@@ -58,7 +62,7 @@ function useAudio(m: Meeting) {
     return () => {
       off = true;
     };
-  }, [m.id, live]);
+  }, [m.id, live, stopping]);
   const play = (ms: number) => {
     const a = ref.current;
     if (!a) return;
@@ -92,7 +96,7 @@ export function MeetingView() {
 
 function MeetingHeader({ m }: { m: Meeting }) {
   const rename = useStore((s) => s.rename);
-  const busy = useStore((s) => s.processing.includes(m.id));
+  const busy = useStore((s) => s.processing.includes(m.id) || m.id in s.summarizing);
   const live = useStore((s) => s.recording?.meetingId === m.id);
   const [title, setTitle] = useState(m.title);
   useEffect(() => setTitle(m.title), [m.title]);
@@ -490,7 +494,8 @@ function SummaryTab({ m }: { m: Meeting }) {
   const { llm } = useModelNames();
   const sum = m.summary;
   const items = s.actionItems.filter((a) => a.meetingId === m.id);
-  const busy = s.regenerating === m.id || s.processing.includes(m.id);
+  const stream = s.summarizing[m.id];
+  const busy = s.regenerating === m.id || s.processing.includes(m.id) || !!stream;
   const current = s.templates.find((t) => t.name === sum?.template || t.id === sum?.template)?.id ?? s.settings?.template ?? "";
   const [template, setTemplate] = useState(current);
   useEffect(() => setTemplate(current), [current]);
@@ -518,7 +523,20 @@ function SummaryTab({ m }: { m: Meeting }) {
         </span>
       </div>
 
-      {sum ? (
+      {stream ? (
+        <section className="mi-card mt-5 p-6" aria-busy="true">
+          <div className="flex flex-wrap items-baseline gap-x-3">
+            <Label>Writing the summary</Label>
+            <span className="mi-pulse text-[13px] text-muted">
+              {llm} · {stream.words} word{stream.words === 1 ? "" : "s"} so far
+            </span>
+          </div>
+          <p className="selectable mt-3 text-[15px] leading-relaxed">
+            {stream.overview || <span className="text-muted">Reading the transcript…</span>}
+          </p>
+          <p className="mt-4 text-[13px] text-muted">Decisions, action items and questions appear when it's done.</p>
+        </section>
+      ) : sum ? (
         <section className={`mi-card mi-enter mt-5 p-6 ${busy ? "opacity-60" : ""}`}>
           <div className="flex flex-wrap items-baseline gap-x-3">
             <Label>Template: {sum.template}</Label>

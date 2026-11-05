@@ -271,8 +271,8 @@ impl Pipeline {
     }
 }
 
-// ponytail: 16 kHz mono WAV (~115 MB/hour). Opus (`audio.opus`, ~15 MB/hour) when disk use
-// matters; the STT and diarization side only ever needs 16 kHz mono.
+// 16 kHz mono WAV while recording (~115 MB/hour; crash-safe through the header rewrite in
+// `catch_up`), compressed to Opus in CAF once the meeting ends (`crate::compress`, ~10 MB/hour).
 fn create_wav(path: &Path) -> Result<hound::WavWriter<BufWriter<File>>, String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;

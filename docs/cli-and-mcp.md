@@ -26,6 +26,7 @@ yet). From a checkout: `brew install --HEAD --formula ./packaging/homebrew/miron
 | `mirona actions [--client X] [--open]` | Action items across meetings |
 | `mirona import <audio>` | Transcribes (wav/mp3/m4a/flac) and summarizes a file into a new meeting |
 | `mirona reindex` | Rebuilds `<meetings>/.mirona/index.sqlite` from the files |
+| `mirona compress` | Compresses recordings still kept as `audio.wav` (older meetings, crashed sessions) to `audio.caf` (Opus); the app does this at start |
 | `mirona mcp` | The MCP server on stdio |
 
 Read commands and the MCP server index into memory and never write the app's index, so they are

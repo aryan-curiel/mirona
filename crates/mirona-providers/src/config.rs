@@ -27,7 +27,12 @@ pub struct Config {
     pub llm: LlmSettings,
     /// Let MCP clients read meetings. Off: `mirona mcp` refuses to serve (NGR-148/150).
     pub mcp_enabled: bool,
+    /// Global start/stop-recording shortcut, as a Tauri accelerator ("CmdOrCtrl+Alt+Shift+R").
+    pub shortcut: String,
 }
+
+/// Cmd+Shift+R is a browser's hard reload, so one more modifier keeps it out of other apps' way.
+pub const DEFAULT_SHORTCUT: &str = "CmdOrCtrl+Alt+Shift+R";
 
 /// Which model the summary stage uses. API keys live in the OS keychain, never here.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +54,7 @@ impl Default for Config {
             template: "client-call".into(),
             llm: LlmSettings::default(),
             mcp_enabled: true,
+            shortcut: DEFAULT_SHORTCUT.into(),
         }
     }
 }
@@ -87,6 +93,13 @@ mod tests {
             ..Config::default()
         };
         cfg.providers.insert("classification".into(), "jev".into());
+        cfg.save(&path).unwrap();
+        assert_eq!(Config::load(&path).unwrap(), cfg);
+
+        // Files written before the shortcut setting existed get the default.
+        std::fs::write(&path, "privacy = false").unwrap();
+        assert_eq!(Config::load(&path).unwrap().shortcut, DEFAULT_SHORTCUT);
+        cfg.shortcut = "CmdOrCtrl+Shift+F9".into();
         cfg.save(&path).unwrap();
         assert_eq!(Config::load(&path).unwrap(), cfg);
 

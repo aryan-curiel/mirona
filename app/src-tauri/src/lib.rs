@@ -25,13 +25,9 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 type Res<T> = Result<T, String>;
-
-/// Start/stop recording from anywhere. Cmd+Shift+R is a browser's hard reload, so one more
-/// modifier keeps it out of other apps' way. ponytail: fixed; make it a setting when asked.
-const SHORTCUT: &str = "CmdOrCtrl+Alt+Shift+R";
 
 struct AppState {
     app_dir: PathBuf,
@@ -41,6 +37,8 @@ struct AppState {
     session: Mutex<Option<Session>>,
     /// Meetings whose recording stopped and that are being summarized.
     processing: Mutex<Vec<String>>,
+    /// An audio file is being imported (one at a time).
+    importing: std::sync::atomic::AtomicBool,
     /// Problems found at start (bad config, unreadable meetings, shortcut taken).
     startup_errors: Vec<String>,
 }
@@ -192,7 +190,7 @@ fn regenerate(app: AppHandle, st: St, meeting_id: String, template: String) {
     let engine = st.engine();
     let tx = events(&app);
     std::thread::spawn(move || {
-        let ev = match engine.summarize(&meeting_id, &template) {
+        let ev = match engine.summarize(&meeting_id, &template, &tx) {
             Ok(()) => PipelineEvent::Summarized { meeting_id },
             Err(e) => notice(&meeting_id, format!("Summary failed: {e}"), true),
         };
@@ -200,27 +198,41 @@ fn regenerate(app: AppHandle, st: St, meeting_id: String, template: String) {
     });
 }
 
-/// Pick an audio file and transcribe it into a new meeting, in the background.
+/// Pick an audio file and transcribe it into a new meeting, in the background. Progress
+/// arrives as `Importing` events; the final `Notice` says it's done. One import at a time.
 #[tauri::command]
-async fn import_audio(app: AppHandle) -> Option<String> {
-    let file = app
+async fn import_audio(app: AppHandle) -> Res<Option<String>> {
+    use std::sync::atomic::Ordering;
+    let st = app.state::<AppState>();
+    if st.importing.swap(true, Ordering::SeqCst) {
+        return Err("Already importing a file. Wait for it to finish.".into());
+    }
+    let picked = app
         .dialog()
         .file()
         .add_filter("Audio", &["wav", "mp3", "m4a", "flac", "aac", "mp4"])
-        .blocking_pick_file()?
-        .into_path()
-        .ok()?;
-    let name = file.file_name()?.to_string_lossy().to_string();
-    let engine = app.state::<AppState>().engine();
+        .blocking_pick_file()
+        .and_then(|f| f.into_path().ok());
+    let Some(file) = picked else {
+        st.importing.store(false, Ordering::SeqCst);
+        return Ok(None);
+    };
+    let name = file
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let engine = st.engine();
     let tx = events(&app);
     std::thread::spawn(move || {
         let ev = match engine.import(&file, &tx) {
             Ok(id) => notice(&id, format!("Imported {}", file.display()), false),
             Err(e) => notice("", format!("Import failed: {e}"), true),
         };
+        app.state::<AppState>()
+            .importing
+            .store(false, Ordering::SeqCst);
         tx.send(ev).ok();
     });
-    Some(name)
+    Ok(Some(name))
 }
 
 // --- Recording (NGR-142) ---
@@ -372,7 +384,8 @@ struct Status {
     config_path: PathBuf,
     /// How MCP clients start the server: this app binary, run with `mcp`.
     cli: String,
-    shortcut: &'static str,
+    /// The record shortcut, as in config.toml.
+    shortcut: String,
     errors: Vec<String>,
 }
 
@@ -402,7 +415,7 @@ fn status(st: St, keys: bool) -> Status {
         },
         config_path: mirona_engine::config_path(&st.app_dir),
         cli: cli_path(),
-        shortcut: SHORTCUT,
+        shortcut: engine.config().shortcut,
         errors,
     }
 }
@@ -458,8 +471,28 @@ struct Settings {
     llm_base_url: String,
     template: String,
     mcp_enabled: bool,
+    /// Global start/stop shortcut, e.g. "CmdOrCtrl+Alt+Shift+R".
+    shortcut: String,
     meetings_dir: PathBuf,
     models_dir: PathBuf,
+}
+
+/// A shortcut the user can set: a valid accelerator with Cmd, Ctrl or Alt (Shift alone would
+/// eat capital letters while typing).
+fn parse_shortcut(s: &str) -> Res<Shortcut> {
+    let s = s.trim();
+    let sc: Shortcut = s
+        .parse()
+        .map_err(|e| format!("“{s}” is not a shortcut Mirona understands ({e})."))?;
+    if !sc
+        .mods
+        .intersects(Modifiers::SUPER | Modifiers::CONTROL | Modifiers::ALT)
+    {
+        return Err(format!(
+            "“{s}” needs Cmd, Ctrl or Alt/Option, so it doesn't fire while you type."
+        ));
+    }
+    Ok(sc)
 }
 
 impl Settings {
@@ -472,6 +505,7 @@ impl Settings {
             llm_base_url: cfg.llm.base_url.clone(),
             template: cfg.template.clone(),
             mcp_enabled: cfg.mcp_enabled,
+            shortcut: cfg.shortcut.clone(),
             meetings_dir: paths.meetings.clone(),
             models_dir: paths.models.clone(),
         }
@@ -512,6 +546,7 @@ impl Settings {
         if self.template.trim().is_empty() {
             return Err("pick a summary template".into());
         }
+        parse_shortcut(&self.shortcut)?;
         let dir = |p: &Path, default: &Path| (p != default).then(|| p.to_path_buf());
         cfg.privacy = self.privacy;
         cfg.providers.insert("stt".into(), self.stt.clone());
@@ -520,6 +555,7 @@ impl Settings {
         cfg.llm.base_url = base.into();
         cfg.template = self.template.trim().into();
         cfg.mcp_enabled = self.mcp_enabled;
+        cfg.shortcut = self.shortcut.trim().into();
         cfg.meetings_dir = dir(&self.meetings_dir, &defaults.meetings);
         cfg.models_dir = dir(&self.models_dir, &defaults.models);
         Ok(cfg)
@@ -538,6 +574,7 @@ fn save_settings(app: AppHandle, st: St, settings: Settings) -> Res<Settings> {
     let defaults = Paths::resolve(&Config::default(), &st.app_dir, &st.documents);
     let cfg = settings.apply(engine.config(), &defaults)?;
     let paths = Paths::resolve(&cfg, &st.app_dir, &st.documents);
+    swap_shortcut(&app, &engine.config().shortcut, &cfg.shortcut)?;
     if paths.meetings == engine.paths.meetings && paths.models == engine.paths.models {
         engine.save_config(&st.app_dir, cfg.clone())?;
     } else {
@@ -552,6 +589,33 @@ fn save_settings(app: AppHandle, st: St, settings: Settings) -> Res<Settings> {
         *st.engine.write().unwrap() = Arc::new(next);
     }
     Ok(Settings::of(&cfg, &paths))
+}
+
+/// Move the record shortcut from `old` to `new` right away. If `new` can't be registered
+/// (another app owns it), `old` stays and the error says so.
+fn swap_shortcut(app: &AppHandle, old: &str, new: &str) -> Res<()> {
+    let next = parse_shortcut(new)?;
+    let prev = parse_shortcut(old).ok();
+    if prev.is_some_and(|p| p.id() == next.id()) {
+        return Ok(());
+    }
+    let gs = app.global_shortcut();
+    if let Some(p) = prev {
+        gs.unregister(p).ok();
+    }
+    if let Err(e) = gs.register(next) {
+        if let Some(p) = prev {
+            gs.register(p).ok();
+        }
+        return Err(format!(
+            "Couldn't use {new} as the record shortcut: another app or the system may already \
+             use it ({e}). Still using {old}."
+        ));
+    }
+    if let Some(item) = app.try_state::<TrayItem>() {
+        item.0.set_accelerator(Some(new)).ok();
+    }
+    Ok(())
 }
 
 fn allow_audio(app: &AppHandle, meetings: &Path) {
@@ -575,8 +639,10 @@ fn open_engine(app_dir: &Path, documents: &Path) -> Res<(Engine, Vec<String>)> {
     }
 }
 
-fn tray(app: &tauri::App) -> tauri::Result<()> {
-    let toggle_item = MenuItem::with_id(app, "toggle", "Start recording", true, Some(SHORTCUT))?;
+fn tray(app: &tauri::App, shortcut: &str) -> tauri::Result<()> {
+    // An accelerator the menu can't show must not cost the tray icon.
+    let accel = parse_shortcut(shortcut).is_ok().then_some(shortcut);
+    let toggle_item = MenuItem::with_id(app, "toggle", "Start recording", true, accel)?;
     let show = MenuItem::with_id(app, "show", "Open Mirona", true, None::<&str>)?;
     let quit = PredefinedMenuItem::quit(app, Some("Quit Mirona"))?;
     let menu = Menu::with_items(app, &[&toggle_item, &show, &quit])?;
@@ -623,10 +689,15 @@ pub fn run() {
             let documents = mirona_engine::documents_dir();
             let (engine, mut errors) = open_engine(&app_dir, &documents)?;
             allow_audio(app.handle(), &engine.paths.meetings);
-            if let Err(e) = app.global_shortcut().register(SHORTCUT) {
-                errors.push(format!("Shortcut {SHORTCUT} is taken: {e}"));
+            let shortcut = engine.config().shortcut;
+            let registered = parse_shortcut(&shortcut)
+                .and_then(|sc| app.global_shortcut().register(sc).map_err(|e| e.to_string()));
+            if let Err(e) = registered {
+                errors.push(format!(
+                    "Record shortcut {shortcut} is unavailable ({e}). Pick another in Models and MCP."
+                ));
             }
-            if let Err(e) = tray(app) {
+            if let Err(e) = tray(app, &shortcut) {
                 errors.push(format!("No menu bar icon: {e}"));
             }
             for e in &errors {
@@ -638,7 +709,15 @@ pub fn run() {
                 engine: RwLock::new(Arc::new(engine)),
                 session: Mutex::new(None),
                 processing: Mutex::new(vec![]),
+                importing: false.into(),
                 startup_errors: errors,
+            });
+            // Recordings a crash left as WAV get compressed in the background.
+            let engine = app.state::<AppState>().engine();
+            std::thread::spawn(move || {
+                for e in engine.compress_recordings() {
+                    eprintln!("mirona: compressing a recording: {e}");
+                }
             });
             Ok(())
         })
@@ -723,6 +802,34 @@ mod tests {
         assert!(!cfg.mcp_enabled);
         let paths = Paths::resolve(&cfg, Path::new("/app"), Path::new("/home/me/Documents"));
         assert_eq!(Settings::of(&cfg, &paths), moved);
+    }
+
+    #[test]
+    fn shortcuts_are_validated() {
+        assert!(parse_shortcut(mirona_providers::config::DEFAULT_SHORTCUT).is_ok());
+        assert!(parse_shortcut(" Ctrl+Shift+F9 ").is_ok());
+        assert!(
+            parse_shortcut("Alt+KeyM").is_ok(),
+            "KeyboardEvent.code names work"
+        );
+        for bad in [
+            "",
+            "R",
+            "Shift+R",
+            "CmdOrCtrl+",
+            "Ctrl+Nope",
+            "Ctrl+R+Shift",
+        ] {
+            assert!(parse_shortcut(bad).is_err(), "{bad:?}");
+        }
+        let d = defaults();
+        let mut s = Settings::of(&Config::default(), &d);
+        assert_eq!(s.shortcut, "CmdOrCtrl+Alt+Shift+R");
+        s.shortcut = "Shift+R".into();
+        assert!(s.apply(Config::default(), &d).is_err());
+        s.shortcut = " CmdOrCtrl+Shift+F9 ".into();
+        let cfg = s.apply(Config::default(), &d).unwrap();
+        assert_eq!(cfg.shortcut, "CmdOrCtrl+Shift+F9");
     }
 
     #[test]

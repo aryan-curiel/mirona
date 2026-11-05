@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useStore } from "../store";
 import { api, fmt, LLM_LOCAL } from "../lib/api";
 import { CopyLine } from "./Setup";
 import { Avatar, Icon, PageHeader, Toggle } from "../components/ui";
+import { shortcutLabel } from "../components/Shell";
 
 const clientChip: Record<string, string> = {
   "Alder Restoration": "mi-chip--action",
@@ -142,6 +143,74 @@ function Field({ label, value, placeholder, onSave, type = "text" }: { label: st
   );
 }
 
+const isMac = navigator.userAgent.includes("Mac");
+
+/** A pressed combination as an accelerator, e.g. ⌘⌥⇧R → "CmdOrCtrl+Alt+Shift+R"; null while it's only modifiers or plain typing. */
+function combo(e: KeyboardEvent): string | null {
+  if (["Meta", "Control", "Alt", "Shift"].includes(e.key) || !(e.metaKey || e.ctrlKey || e.altKey)) return null;
+  const mods = [
+    e.metaKey && (isMac ? "CmdOrCtrl" : "Super"),
+    e.ctrlKey && (isMac ? "Ctrl" : "CmdOrCtrl"),
+    e.altKey && "Alt",
+    e.shiftKey && "Shift",
+  ].filter(Boolean);
+  return [...mods, e.code.replace(/^(Key|Digit)(?=.)/, "")].join("+");
+}
+
+/** The record shortcut: press a combination (saved at once) or type one (saved on Enter or blur). */
+function ShortcutField({ value, onSave }: { value: string; onSave: (v: string) => Promise<boolean> }) {
+  const [v, setV] = useState(value);
+  const [failed, setFailed] = useState<string | null>(null);
+  const sent = useRef(value);
+  useEffect(() => {
+    setV(value);
+    sent.current = value;
+  }, [value]);
+  const commit = async (next: string) => {
+    next = next.trim();
+    if (!next || next === sent.current) return setV(value);
+    sent.current = next;
+    setFailed(null);
+    if (!(await onSave(next))) {
+      sent.current = value;
+      setV(value);
+      setFailed(next);
+    }
+  };
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          className="mi-field w-72 font-mono text-[14px]"
+          aria-label="Record shortcut"
+          value={v}
+          spellCheck={false}
+          onChange={(e) => setV(e.target.value)}
+          onBlur={() => void commit(v)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") return e.currentTarget.blur();
+            if (e.key === "Escape") return setV(value);
+            const c = combo(e);
+            if (!c) return;
+            e.preventDefault();
+            setV(c);
+            void commit(c);
+          }}
+        />
+        <kbd className="mi-chip mi-chip--neutral font-mono">{shortcutLabel(value)}</kbd>
+      </div>
+      <p className="mt-2 text-[12px] text-muted">
+        Click the field and press the new combination, or type one like <span className="font-mono">CmdOrCtrl+Alt+Shift+R</span>. Needs Cmd, Ctrl or Option.
+      </p>
+      {failed && (
+        <p className="mt-1 text-[12px] text-record-text" role="alert">
+          {shortcutLabel(failed)} can't be used: another app may own it, or it isn't a valid shortcut. Still using {shortcutLabel(value)}.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Models Mirona runs, with the credit their licenses ask for (NOTICE has the full text). */
 const CREDITS: [string, string, string][] = [
   ["Parakeet TDT 0.6B v2", "NVIDIA · ONNX export by sherpa-onnx", "CC-BY-4.0"],
@@ -261,6 +330,9 @@ export function ModelsView() {
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
+        </Row>
+        <Row title="Record shortcut" sub="Starts and stops a recording from any app">
+          <ShortcutField value={st.shortcut} onSave={(shortcut) => save({ shortcut })} />
         </Row>
         <Row title="Classification" sub="Tags segments: action, decision, open question…">
           <span className="mi-chip mi-chip--neutral">Coming in M2</span>

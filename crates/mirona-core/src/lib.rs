@@ -320,6 +320,22 @@ pub enum PipelineEvent {
         segment_id: Id,
         tags: Vec<Tag>,
     },
+    /// An audio file being transcribed into `meeting_id` (saved once transcription ends).
+    /// `fraction` is 0..=1 of the file, `None` while the length is unknown.
+    #[serde(rename_all = "camelCase")]
+    Importing {
+        meeting_id: Id,
+        file: String,
+        fraction: Option<f32>,
+    },
+    /// The summary as it streams in, a few times a second: the overview written so far and
+    /// the length of the whole reply. `Summarized` follows with the real one.
+    #[serde(rename_all = "camelCase")]
+    Summarizing {
+        meeting_id: Id,
+        overview: String,
+        words: u32,
+    },
     #[serde(rename_all = "camelCase")]
     Summarized { meeting_id: Id },
     /// Something the user should see: a device change, or a stage that failed. The recording

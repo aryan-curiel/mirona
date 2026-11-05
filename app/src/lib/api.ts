@@ -15,6 +15,8 @@ export type Settings = {
   llmBaseUrl: string;
   template: string;
   mcpEnabled: boolean;
+  /** Global record shortcut, a Tauri accelerator like "CmdOrCtrl+Alt+Shift+R". */
+  shortcut: string;
   meetingsDir: string;
   modelsDir: string;
 };
@@ -58,6 +60,7 @@ export const api = {
   addDemoMeetings: () => invoke<void>("add_demo_meetings"),
   listTemplates: () => invoke<Template[]>("list_templates"),
   regenerate: (meetingId: string, template: string) => invoke<void>("regenerate", { meetingId, template }),
+  /** Opens the file picker; the file name, or null when cancelled. Errors while one runs. */
   importAudio: () => invoke<string | null>("import_audio"),
   startRecording: () => invoke<Meeting>("start_recording"),
   stopRecording: () => invoke<string>("stop_recording"),

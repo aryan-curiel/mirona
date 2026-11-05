@@ -45,9 +45,39 @@ export function useModelNames() {
 }
 
 const mac = navigator.userAgent.includes("Mac");
-/** "CmdOrCtrl+Alt+Shift+R" → "⌘⌥⇧R" on macOS, "Ctrl+Alt+Shift+R" elsewhere. */
+const MAC_KEYS: Record<string, string> = { cmdorctrl: "⌘", commandorcontrol: "⌘", commandorctrl: "⌘", cmdorcontrol: "⌘", cmd: "⌘", command: "⌘", super: "⌘", alt: "⌥", option: "⌥", shift: "⇧", ctrl: "⌃", control: "⌃" };
+/** "CmdOrCtrl+Alt+Shift+R" → "⌘⌥⇧R" on macOS, "Ctrl+Alt+Shift+R" elsewhere. Also takes key codes ("KeyR"). */
 export const shortcutLabel = (s: string) =>
-  mac ? s.replace("CmdOrCtrl", "⌘").replace("Alt", "⌥").replace("Shift", "⇧").split("+").join("") : s.replace("CmdOrCtrl", "Ctrl");
+  s
+    .split("+")
+    .map((t) => {
+      const k = t.trim();
+      const low = k.toLowerCase();
+      if (mac && MAC_KEYS[low]) return MAC_KEYS[low];
+      if (!mac && /^(cmd|command)or(ctrl|control)$/.test(low)) return "Ctrl";
+      return k.replace(/^(Key|Digit)(?=.)/, "");
+    })
+    .join(mac ? "" : "+");
+
+/** The audio file being imported: name, then percent transcribed (indeterminate until known). */
+export function ImportProgress() {
+  const imp = useStore((s) => s.importing);
+  if (!imp) return null;
+  const pct = imp.fraction == null ? null : Math.round(imp.fraction * 100);
+  const label = pct === 100 ? "Writing the summary…" : pct == null ? "Getting ready to transcribe…" : `Transcribing on this device · ${pct}%`;
+  return (
+    <div className="flex flex-col gap-1 px-2.5 py-1.5 text-left" role="status">
+      <span className="truncate text-[13px] font-semibold text-ink" title={imp.file}>{imp.file}</span>
+      <progress
+        className="h-1.5 w-full appearance-none overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-[var(--mi-neutral-tint)] [&::-webkit-progress-value]:bg-accent [&::-webkit-progress-value]:transition-[width]"
+        max={100}
+        value={pct ?? undefined}
+        aria-label={`Importing ${imp.file}`}
+      />
+      <span className="text-[12px] text-muted">{label}</span>
+    </div>
+  );
+}
 
 export function RecordButton() {
   const rec = useStore((s) => s.recording);
@@ -107,15 +137,16 @@ export function Sidebar({ mac }: { mac: boolean }) {
 
       <div className="mt-6 mb-1.5 flex items-center px-2">
         <span className="mi-label flex-1">Recent</span>
-        <button type="button" className="rounded px-1.5 text-[12px] font-medium text-accent-strong hover:underline" onClick={s.importAudio}>
-          Import audio…
+        <button type="button" className="rounded px-1.5 text-[12px] font-medium text-accent-strong hover:underline disabled:text-muted disabled:no-underline" onClick={s.importAudio} disabled={!!s.importing}>
+          {s.importing ? "Importing…" : "Import audio…"}
         </button>
       </div>
       <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1">
+        <ImportProgress />
         {s.meetings.map((m) => {
           const active = s.view === "meetings" && s.meeting?.id === m.id;
           const live = rec?.meetingId === m.id;
-          const busy = s.processing.includes(m.id);
+          const busy = s.processing.includes(m.id) || m.id in s.summarizing;
           return (
             <button type="button"
               key={m.id}
@@ -133,7 +164,7 @@ export function Sidebar({ mac }: { mac: boolean }) {
             </button>
           );
         })}
-        {!s.meetings.length && <p className="px-2 py-2 text-[12px] leading-snug text-muted">No meetings yet. Start a recording or import an audio file.</p>}
+        {!s.meetings.length && !s.importing && <p className="px-2 py-2 text-[12px] leading-snug text-muted">No meetings yet. Start a recording or import an audio file.</p>}
       </div>
 
       <div className="mi-card mt-3 p-3.5">
@@ -170,6 +201,7 @@ function Meter({ label, level }: { label: string; level: number }) {
 export function RecordingBar() {
   const rec = useStore((s) => s.recording);
   const stop = useStore((s) => s.stopRecording);
+  const hint = shortcutLabel(useStore((s) => s.status?.shortcut ?? ""));
   const { stt, llm } = useModelNames();
   if (!rec) return null;
   const [mic = 0, system = 0] = rec.levels;
@@ -183,8 +215,8 @@ export function RecordingBar() {
       <span className="flex-1 truncate text-ink-3">
         {stt} transcribes on this device · {llm} writes the summary
       </span>
-      <button type="button" className="mi-ghost min-h-11! px-4" onClick={stop}>
-        Stop and summarize
+      <button type="button" className="mi-ghost min-h-11! px-4" onClick={stop} title={hint}>
+        Stop and summarize {hint && <span className="ml-1 text-[12px] font-medium opacity-80">{hint}</span>}
       </button>
     </div>
   );

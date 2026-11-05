@@ -9,7 +9,7 @@
 //!   merged by one more call (reduce). Items keep their global line numbers, so citations hold.
 
 use mirona_core::{ActionItem, Decision, EnhancedNote, Meeting, Summary, TagKind};
-use mirona_providers::{LlmProvider, Prompt};
+use mirona_providers::{Completion, LlmProvider, Prompt, Usage};
 use serde_json::Value;
 use std::io::Write;
 use std::path::Path;
@@ -259,13 +259,52 @@ fn items(v: &Value, keys: &[&str], m: &Meeting) -> Vec<Item> {
         .collect()
 }
 
-async fn ask(llm: &impl LlmProvider, system: &str, user: &str, json: bool) -> Result<String> {
+/// Streamed text goes to `on_text` as it arrives.
+async fn ask(
+    llm: &impl LlmProvider,
+    system: &str,
+    user: &str,
+    json: bool,
+    on_text: &mut (dyn FnMut(&str) + Send),
+) -> Result<Completion> {
     let prompt = Prompt { system, user, json };
-    let done = llm
-        .complete(&prompt, &mut |_| {})
+    llm.complete(&prompt, on_text)
         .await
-        .map_err(|e| e.to_string())?;
-    Ok(done.text)
+        .map_err(|e| e.to_string())
+}
+
+/// The `"overview"` string of a summary reply still being streamed (the last one, when a long
+/// meeting is summarized in parts), unescaped; empty until the model starts writing it.
+pub fn partial_overview(text: &str) -> String {
+    let Some(i) = text.rfind("\"overview\"") else {
+        return String::new();
+    };
+    let rest = text[i + "\"overview\"".len()..].trim_start();
+    let Some(rest) = rest
+        .strip_prefix(':')
+        .and_then(|r| r.trim_start().strip_prefix('"'))
+    else {
+        return String::new();
+    };
+    let mut out = String::new();
+    let mut chars = rest.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => break,
+            '\\' => match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some('u') => {
+                    let hex: String = chars.by_ref().take(4).collect();
+                    out.extend(u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32));
+                }
+                Some(c) => out.push(c),
+                None => break,
+            },
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 fn header(m: &Meeting, part: usize, parts: usize) -> String {
@@ -307,6 +346,18 @@ pub async fn summarize(
     template: &Template,
     llm: &impl LlmProvider,
 ) -> Result<(Summary, Vec<ActionItem>)> {
+    summarize_streaming(meeting, template, llm, &mut |_| {}).await
+}
+
+/// [`summarize`], handing the model's reply to `on_text` as it streams in (raw JSON, every
+/// call in order: one per part, then the merge). Token use, when the provider reports it,
+/// ends up in `Summary.quality`.
+pub async fn summarize_streaming(
+    meeting: &Meeting,
+    template: &Template,
+    llm: &impl LlmProvider,
+    on_text: &mut (dyn FnMut(&str) + Send),
+) -> Result<(Summary, Vec<ActionItem>)> {
     if meeting.segments.is_empty() {
         return Err("nothing to summarize: the transcript is empty".into());
     }
@@ -315,9 +366,16 @@ pub async fn summarize(
     let (mut overviews, mut decisions, mut questions, mut actions) =
         (vec![], vec![], vec![], vec![]);
     let mut dropped = 0;
+    let mut usage = Usage::default();
+    let mut add = |u: Usage| {
+        usage.input_tokens += u.input_tokens;
+        usage.output_tokens += u.output_tokens;
+    };
     for (i, part) in parts.iter().enumerate() {
         let user = format!("{}\n\nTranscript:\n{part}", header(meeting, i, parts.len()));
-        let v = json_object(&ask(llm, &system, &user, true).await?)?;
+        let done = ask(llm, &system, &user, true, on_text).await?;
+        add(done.usage);
+        let v = json_object(&done.text)?;
         let overview = field(&v, "overview")
             .ok_or_else(|| format!("the model's JSON has no overview: {v}"))?;
         overviews.push(overview);
@@ -342,10 +400,9 @@ pub async fn summarize(
     } else {
         let system = "Merge these partial overviews of one meeting, in order, into a single \
                       overview of two to four sentences. Reply with the overview only.";
-        ask(llm, system, &overviews.join("\n\n"), false)
-            .await?
-            .trim()
-            .to_string()
+        let done = ask(llm, system, &overviews.join("\n\n"), false, on_text).await?;
+        add(done.usage);
+        done.text.trim().to_string()
     };
     let actions = actions
         .into_iter()
@@ -363,11 +420,19 @@ pub async fn summarize(
             done: false,
         })
         .collect();
-    let quality = if dropped > 0 {
-        format!("{dropped} item(s) left out: no valid transcript reference")
-    } else {
-        String::new()
-    };
+    let mut quality = vec![];
+    if dropped > 0 {
+        quality.push(format!(
+            "{dropped} item(s) left out: no valid transcript reference"
+        ));
+    }
+    if usage.output_tokens > 0 {
+        quality.push(format!(
+            "{} tokens in, {} out",
+            usage.input_tokens, usage.output_tokens
+        ));
+    }
+    let quality = quality.join(" · ");
     let summary = Summary {
         template: template.name.clone(),
         overview,
@@ -432,7 +497,7 @@ pub async fn enhance_notes(meeting: &Meeting, llm: &impl LlmProvider) -> Result<
             "{}\n\nMy notes:\n{notes}\n\nTranscript:\n{part}",
             header(meeting, i, parts.len())
         );
-        let v = json_object(&ask(llm, NOTES_RULES, &user, true).await?)?;
+        let v = json_object(&ask(llm, NOTES_RULES, &user, true, &mut |_| {}).await?.text)?;
         if !v["notes"].is_array() {
             return Err(format!("the model's JSON has no notes list: {v}"));
         }

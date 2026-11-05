@@ -40,6 +40,10 @@ ONNX Runtime (Microsoft), MIT. https://github.com/microsoft/onnxruntime
 whisper.cpp (ggml-org), MIT, through whisper-rs (Unlicense)
 speakrs (avencera), Apache-2.0
 cpal, Apache-2.0 / MIT
+libopus (Xiph.Org Foundation and contributors), BSD-3-Clause. https://opus-codec.org
+  Copyright 2001-2023 Xiph.Org, Skype Limited, Octasic, Jean-Marc Valin, Timothy B. Terriberry,
+  CSIRO, Gregory Maxwell, Mark Borgerding, Erik de Castro Lopo, Mozilla, Amazon.
+  Built through opusic-sys (BSD-3-Clause) and opus (MIT / Apache-2.0).
 Tauri, Apache-2.0 / MIT
 The full dependency list with licenses: `cargo about` / `pnpm licenses list`.
 

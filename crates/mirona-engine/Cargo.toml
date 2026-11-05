@@ -13,6 +13,7 @@ mirona-summary.workspace = true
 mirona-providers = { workspace = true, features = ["ollama", "openai", "anthropic", "keychain"] }
 
 [dev-dependencies]
+hound = "3.5"
 tempfile = "3"
 
 [lints]

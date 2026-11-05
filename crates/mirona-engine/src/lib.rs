@@ -22,7 +22,8 @@ use std::time::Instant;
 pub type Result<T> = std::result::Result<T, String>;
 pub type Shared = Arc<Mutex<Store>>;
 
-/// File name of the recording inside the meeting folder.
+/// File name of the recording inside the meeting folder while capturing. When it stops it is
+/// compressed to `audio.caf` (Opus); see [`Engine::compress_recordings`] for crashed sessions.
 pub const AUDIO_FILE: &str = "audio.wav";
 
 /// Folders the engine works in, resolved from `Config` plus the app's defaults.
@@ -197,16 +198,31 @@ impl Engine {
         })
     }
 
-    /// Transcribe an audio file into a new meeting, then summarize it.
+    /// Transcribe an audio file into a new meeting, then summarize it. Progress goes out as
+    /// `Importing` events (the meeting exists once the fraction reaches 1).
     pub fn import(&self, path: &Path, events: &Sender<PipelineEvent>) -> Result<String> {
+        let id = mirona_store::new_id();
+        let file = path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        let mut progress = |fraction| {
+            events
+                .send(PipelineEvent::Importing {
+                    meeting_id: id.clone(),
+                    file: file.clone(),
+                    fraction,
+                })
+                .ok();
+        };
+        progress(None); // loading the speech model can take a few seconds
         let stt = self.stt()?;
         let segments = mirona_capture::transcribe_file(
             path,
             &self.paths.models,
             VadConfig::default(),
             stt.as_ref(),
+            &mut progress,
         )?;
-        let id = mirona_store::new_id();
         let end_ms = segments.last().map_or(0, |s| s.end_ms);
         {
             let mut s = self.store.lock().unwrap();
@@ -242,7 +258,14 @@ impl Engine {
                 .ok();
         };
         match Llm::from_config(&cfg) {
-            Ok(llm) => match summarize_with(&self.store, &self.paths, id, &cfg.template, &llm) {
+            Ok(llm) => match summarize_with(
+                &self.store,
+                &self.paths,
+                id,
+                &cfg.template,
+                &llm,
+                &mut preview(id, events),
+            ) {
                 Ok(()) => {
                     events
                         .send(PipelineEvent::Summarized {
@@ -256,24 +279,88 @@ impl Engine {
         }
     }
 
-    /// Write (or rewrite) the summary with another template or model (NGR-146).
-    pub fn summarize(&self, id: &str, template: &str) -> Result<()> {
+    /// Compress recordings still kept as WAV: sessions that crashed (or were killed) before
+    /// [`Session::stop`] compressed them, and meetings from before compression. A WAV written to
+    /// in the last [`LOCK_STALE`] is a recording in progress and is left alone. Slow (a few
+    /// seconds per recorded hour): run it off the UI thread. Returns one error per meeting that
+    /// failed; those keep their WAV and are retried next time.
+    pub fn compress_recordings(&self) -> Vec<String> {
+        let ids: Vec<String> = {
+            let s = self.store.lock().unwrap();
+            s.list_meetings().into_iter().map(|m| m.id).collect()
+        };
+        ids.iter()
+            .filter(|id| {
+                let wav = self.store.lock().unwrap().audio_path(id).ok().flatten();
+                wav.filter(|w| w.extension().is_some_and(|e| e == "wav"))
+                    .and_then(|w| std::fs::metadata(w).and_then(|m| m.modified()).ok())
+                    .and_then(|t| t.elapsed().ok())
+                    .is_some_and(|age| age >= LOCK_STALE)
+            })
+            .filter_map(|id| compress_audio(&self.store, id).err())
+            .collect()
+    }
+
+    /// Write (or rewrite) the summary with another template or model (NGR-146). The text
+    /// streams out as `Summarizing` events.
+    pub fn summarize(
+        &self,
+        id: &str,
+        template: &str,
+        events: &Sender<PipelineEvent>,
+    ) -> Result<()> {
         let llm = Llm::from_config(&self.config())?;
-        summarize_with(&self.store, &self.paths, id, template, &llm)
+        summarize_with(
+            &self.store,
+            &self.paths,
+            id,
+            template,
+            &llm,
+            &mut preview(id, events),
+        )
     }
 }
 
-/// Summary + enhanced notes with any LLM; saved straight into the meeting.
+/// How often a streaming summary updates the UI.
+const PREVIEW_EVERY: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// An `on_text` for [`summarize_with`] that sends `Summarizing` previews: the overview written
+/// so far, at most every [`PREVIEW_EVERY`].
+pub fn preview(id: &str, events: &Sender<PipelineEvent>) -> impl FnMut(&str) + Send + use<> {
+    let (id, events) = (id.to_string(), events.clone());
+    let mut text = String::new();
+    let mut last: Option<Instant> = None;
+    move |t| {
+        text.push_str(t);
+        if last.is_some_and(|l| l.elapsed() < PREVIEW_EVERY) {
+            return;
+        }
+        last = Some(Instant::now());
+        events
+            .send(PipelineEvent::Summarizing {
+                meeting_id: id.clone(),
+                overview: mirona_summary::partial_overview(&text),
+                words: u32::try_from(text.split_whitespace().count()).unwrap_or(u32::MAX),
+            })
+            .ok();
+    }
+}
+
+/// Summary + enhanced notes with any LLM; saved straight into the meeting. The summary's
+/// reply streams to `on_text` (see [`preview`]).
 pub fn summarize_with(
     store: &Shared,
     paths: &Paths,
     id: &str,
     template: &str,
     llm: &(impl LlmProvider + Labelled),
+    on_text: &mut (dyn FnMut(&str) + Send),
 ) -> Result<()> {
     let meeting = store.lock().unwrap().meeting(id)?;
     let template = mirona_summary::template(&paths.templates, template)?;
-    let (mut summary, items) = block_on(mirona_summary::summarize(&meeting, &template, llm))?;
+    let (mut summary, items) = block_on(mirona_summary::summarize_streaming(
+        &meeting, &template, llm, on_text,
+    ))?;
     summary.written_by = llm.label();
     store.lock().unwrap().set_summary(id, summary, items)?;
     if !meeting.notes.raw.is_empty() {
@@ -319,9 +406,43 @@ impl Session {
             .unwrap()
             .finish_meeting(&self.id, elapsed)?;
         stopped?;
+        if let Err(e) = compress_audio(&engine.store, &self.id) {
+            events
+                .send(notice(
+                    &self.id,
+                    format!("Recording kept as WAV: {e}"),
+                    true,
+                ))
+                .ok();
+        }
         engine.post_process(&self.id, events);
         Ok(self.id)
     }
+}
+
+/// Swap a meeting's WAV recording for Opus (`audio.caf`). The WAV goes only once the CAF has
+/// decoded back to the same length and the meeting points at it; on any failure it stays.
+fn compress_audio(store: &Shared, id: &str) -> Result<()> {
+    let Some(wav) = store.lock().unwrap().audio_path(id)? else {
+        return Ok(());
+    };
+    if wav.extension().is_none_or(|e| e != "wav") {
+        return Ok(());
+    }
+    let stamp = |p: &Path| {
+        std::fs::metadata(p)
+            .and_then(|m| Ok((m.len(), m.modified()?)))
+            .map_err(|e| format!("{}: {e}", p.display()))
+    };
+    let before = stamp(&wav)?;
+    let caf = mirona_capture::compress(&wav)?;
+    if stamp(&wav)? != before {
+        std::fs::remove_file(&caf).ok();
+        return Err(format!("{} changed while compressing", wav.display()));
+    }
+    let name = caf.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    store.lock().unwrap().set_audio(id, name)?;
+    std::fs::remove_file(&wav).map_err(|e| format!("{}: {e}", wav.display()))
 }
 
 /// How often a live recording refreshes its lock, and when an unrefreshed lock counts as left

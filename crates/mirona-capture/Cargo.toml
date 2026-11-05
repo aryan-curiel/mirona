@@ -14,6 +14,8 @@ mirona-providers = { workspace = true, features = ["parakeet"] }
 # Silero VAD + resampler (also what Parakeet runs on).
 sherpa-onnx = "2.0.1"
 hound = "3.5"
+# Recordings are kept as Opus in CAF (`compress.rs`); libopus is built from source by cmake.
+opus = "0.4"
 symphonia = { version = "0.5.5", default-features = false, features = ["wav", "pcm", "mp3", "aac", "isomp4", "flac"] }
 
 # Live capture is macOS-only for M1: mic through cpal, system audio through a Core Audio

@@ -4,12 +4,14 @@
 //!   resamples each to 16 kHz mono, VAD-chunks and transcribes each source separately (so the
 //!   speaker is known from the source until diarization lands in M2), sends [`Event`]s, and
 //!   writes a mixed recording. [`Recorder::stop`] flushes the last chunk and finalises the file.
-//! - Offline: [`transcribe_file`] runs an audio file (wav/mp3/m4a/flac) through the same path.
+//! - Offline: [`transcribe_file`] runs an audio file (wav/mp3/m4a/flac, our Opus CAF) through
+//!   the same path. [`compress`] turns a finished recording's WAV into Opus in CAF.
 //! - STT: [`Stt::load`] picks the provider from config (`[providers] stt`), Parakeet by default.
 //!
 //! Models live in one dir laid out by `scripts/fetch-models.sh`.
 
 mod chunk;
+mod compress;
 mod live;
 #[cfg(target_os = "macos")]
 mod macos;
@@ -17,6 +19,7 @@ mod macos;
 use std::path::Path;
 
 pub use chunk::{Chunk, Chunker, Resampler, SAMPLE_RATE, VadConfig, downmix};
+pub use compress::compress;
 pub use live::{Recorder, RecorderConfig};
 use mirona_core::Locality;
 #[cfg(feature = "whisper")]
@@ -143,11 +146,15 @@ fn transcribe_chunk<S: SttProvider>(
 
 /// Transcribe an audio file offline through the same VAD + STT path as live capture.
 /// Decodes and transcribes as it goes, so memory stays flat for long files.
+///
+/// `on_progress` gets the share of the file transcribed so far (0..=1, rising in 1 % steps,
+/// 1.0 once done), or `None` when the file doesn't say how long it is.
 pub fn transcribe_file<S: SttProvider>(
     path: &Path,
     models_dir: &Path,
     vad: VadConfig,
     stt: &S,
+    on_progress: &mut dyn FnMut(Option<f32>),
 ) -> Result<Vec<Segment>, String> {
     let mut chunker = Chunker::new(&models_dir.join(VAD_MODEL), vad)?;
     let mut resampler = Resampler::default();
@@ -159,12 +166,25 @@ pub fn transcribe_file<S: SttProvider>(
         }
         Ok(())
     };
-    decode(path, &mut |rate, mono| {
+    let (mut decoded, mut reported) = (0u64, None::<u64>);
+    decode_inner(path, &mut |rate, mono, total| {
         chunks.extend(chunker.push(&resampler.to_16k(rate, mono)));
-        run(&mut chunks)
+        run(&mut chunks)?;
+        decoded += mono.len() as u64;
+        // Percent of the file, capped below 100 until the last chunk is transcribed too.
+        let pct = total
+            .filter(|t| *t > 0)
+            .map(|t| (decoded * 100 / t).min(99));
+        if reported.is_none() || pct > reported {
+            reported = Some(pct.unwrap_or(0));
+            #[allow(clippy::cast_precision_loss)]
+            on_progress(pct.map(|p| p as f32 / 100.0));
+        }
+        Ok(())
     })?;
     chunks.extend(chunker.flush());
     run(&mut chunks)?;
+    on_progress(Some(1.0));
     Ok(out)
 }
 
@@ -173,6 +193,14 @@ pub type OnAudio<'a> = dyn FnMut(u32, &[f32]) -> Result<(), String> + 'a;
 
 /// Decode any supported file, handing mono f32 blocks and their sample rate to `on_audio`.
 pub fn decode(path: &Path, on_audio: &mut OnAudio<'_>) -> Result<(), String> {
+    decode_inner(path, &mut |rate, mono, _| on_audio(rate, mono))
+}
+
+/// [`OnAudio`] plus the file's length in frames, when its header gives one.
+pub(crate) type OnAudioOf<'a> = dyn FnMut(u32, &[f32], Option<u64>) -> Result<(), String> + 'a;
+
+/// [`decode`], also passing the file's length in frames when its header gives one.
+fn decode_inner(path: &Path, on_audio: &mut OnAudioOf<'_>) -> Result<(), String> {
     use symphonia::core::audio::SampleBuffer;
     use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
     use symphonia::core::errors::Error as E;
@@ -181,6 +209,9 @@ pub fn decode(path: &Path, on_audio: &mut OnAudio<'_>) -> Result<(), String> {
     use symphonia::core::meta::MetadataOptions;
     use symphonia::core::probe::Hint;
 
+    if compress::is_caf(path) {
+        return compress::decode_caf(path, on_audio); // Opus: symphonia has no decoder for it
+    }
     let err = |e: E| format!("{}: {e}", path.display());
     let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut hint = Hint::new();
@@ -202,6 +233,7 @@ pub fn decode(path: &Path, on_audio: &mut OnAudio<'_>) -> Result<(), String> {
         .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
         .ok_or_else(|| format!("{}: no audio track", path.display()))?;
     let track_id = track.id;
+    let total = track.codec_params.n_frames;
     let mut decoder = symphonia::default::get_codecs()
         .make(&track.codec_params, &DecoderOptions::default())
         .map_err(err)?;
@@ -227,7 +259,11 @@ pub fn decode(path: &Path, on_audio: &mut OnAudio<'_>) -> Result<(), String> {
             _ => buf.insert(SampleBuffer::new(frames, spec)),
         };
         b.copy_interleaved_ref(audio);
-        on_audio(spec.rate, &downmix(b.samples(), spec.channels.count()))?;
+        on_audio(
+            spec.rate,
+            &downmix(b.samples(), spec.channels.count()),
+            total,
+        )?;
     }
     Ok(())
 }
@@ -371,6 +407,7 @@ pub(crate) mod tests {
             let secs = pcm.len() as f32 / 16_000.0;
             // Encoders add a little padding.
             assert!((9.4..9.7).contains(&secs), "{name}: {secs} s");
+            let mut progress = vec![];
             let found = transcribe_file(
                 &fixture(name),
                 &fixture(""),
@@ -379,9 +416,18 @@ pub(crate) mod tests {
                     ..VadConfig::default()
                 },
                 &Fake("fake"),
+                &mut |p| progress.push(p),
             )
             .unwrap();
             assert_eq!(found.len(), 2, "{name}: {found:?}");
+            // Known length: rises step by step, ends at 1.0. Unknown: None, then 1.0.
+            let known: Vec<f32> = progress.iter().flatten().copied().collect();
+            assert!(
+                known.windows(2).all(|w| w[0] < w[1]),
+                "{name}: {progress:?}"
+            );
+            assert_eq!(progress.last(), Some(&Some(1.0)), "{name}");
+            println!("{name}: {} progress steps", progress.len());
             assert!(found.iter().all(|s| s.source == Source::File));
         }
     }
@@ -393,6 +439,7 @@ pub(crate) mod tests {
             &fixture(""),
             VadConfig::default(),
             &Fake("fake"),
+            &mut |_| {},
         );
         assert!(e.unwrap_err().contains("/nope.wav"));
         assert!(Stt::load("nope", Path::new("/")).is_err());
@@ -421,8 +468,14 @@ pub(crate) mod tests {
             let stt = Stt::load(id, &dir).unwrap();
             for name in ["librispeech-2utt.wav", "librispeech-2utt.m4a"] {
                 let t = std::time::Instant::now();
-                let segs =
-                    transcribe_file(&fixture(name), &dir, VadConfig::default(), &stt).unwrap();
+                let segs = transcribe_file(
+                    &fixture(name),
+                    &dir,
+                    VadConfig::default(),
+                    &stt,
+                    &mut |_| {},
+                )
+                .unwrap();
                 let text: Vec<&str> = segs.iter().map(|s| s.text.as_str()).collect();
                 let wer = wer(REFERENCE, &text.join(" "));
                 println!(
@@ -457,6 +510,7 @@ pub(crate) mod tests {
                 &dir,
                 VadConfig::default(),
                 &stt,
+                &mut |_| {},
             )
             .unwrap();
             let took = t.elapsed();

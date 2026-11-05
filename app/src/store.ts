@@ -45,6 +45,10 @@ type State = {
   processing: string[];
   /** Meeting whose summary is being rewritten. */
   regenerating: string | null;
+  /** Summaries streaming in, by meeting: the overview so far and the reply's length. */
+  summarizing: Record<string, { overview: string; words: number }>;
+  /** The audio file being imported; `fraction` is null until its length is known. */
+  importing: { meetingId: string | null; file: string; fraction: number | null } | null;
   toast: { msg: string; error: boolean } | null;
 
   init: () => Promise<void>;
@@ -73,6 +77,11 @@ type State = {
 };
 
 let started = false;
+
+const without = <T,>(rec: Record<string, T>, key: string) => {
+  const { [key]: _, ...rest } = rec;
+  return rest;
+};
 
 export const useStore = create<State>((set, get) => {
   const run = async (f: () => Promise<unknown>) => {
@@ -127,17 +136,30 @@ export const useStore = create<State>((set, get) => {
           set({ meeting: { ...meeting, segments } });
         }
         break;
+      case "importing":
+        set({ importing: { meetingId: e.meetingId, file: e.file, fraction: e.fraction } });
+        if (e.fraction === 1) await reloadLists(); // the meeting is saved; its summary follows
+        break;
+      case "summarizing":
+        set({ summarizing: { ...get().summarizing, [e.meetingId]: { overview: e.overview, words: e.words } } });
+        break;
       case "summarized":
+        set({ summarizing: without(get().summarizing, e.meetingId) });
         if (get().regenerating === e.meetingId) set({ regenerating: null });
         await reloadLists();
         await reloadMeeting(e.meetingId);
         get().flash("Summary is ready.");
         break;
-      case "notice":
+      case "notice": {
+        if (e.error) set({ summarizing: without(get().summarizing, e.meetingId) });
         if (e.error && get().regenerating === e.meetingId) set({ regenerating: null });
+        const imp = get().importing;
+        // "Imported …" carries the meeting; "Import failed" has none.
+        if (imp && (e.meetingId === imp.meetingId || e.message.startsWith("Import failed"))) set({ importing: null });
         get().flash(e.message, e.error);
         await reloadLists(); // an import may have added a meeting
         break;
+      }
     }
   };
 
@@ -158,6 +180,8 @@ export const useStore = create<State>((set, get) => {
     recording: null,
     processing: [],
     regenerating: null,
+    summarizing: {},
+    importing: null,
     toast: null,
 
     init: async () => {
@@ -302,8 +326,10 @@ export const useStore = create<State>((set, get) => {
 
     importAudio: () =>
       run(async () => {
+        if (get().importing) return;
         const name = await api.importAudio();
-        if (name) get().flash(`Transcribing ${name} on this device. It shows up in Recent when done.`);
+        // Progress events may already have filled this in.
+        if (name && !get().importing) set({ importing: { meetingId: null, file: name, fraction: null } });
       }),
 
     startRecording: () =>

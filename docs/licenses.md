@@ -27,6 +27,7 @@
 | whisper-rs | Unlicense | |
 | pyannote-rs | MIT | |
 | ort (ONNX Runtime bindings) | MIT OR Apache-2.0 | ONNX Runtime itself is MIT |
+| libopus 1.6.1 (Xiph.Org), built from source through `opusic-sys` (BSD-3-Clause) and `opus` (MIT OR Apache-2.0) | BSD-3-Clause | Encodes and decodes recordings (`audio.caf`). Keep the BSD notice in `NOTICE`. Opus is royalty-free; its patent licenses are listed at opus-codec.org |
 | Tauri, React, zustand, Tailwind | MIT / Apache-2.0 | |
 | Meetily (Zackriya Solutions), audio capture approach | MIT | Any code copied for NGR-137 must keep its MIT notice in the copied files and in `NOTICE` |
 

@@ -431,3 +431,81 @@ fn enhance_tells_the_model_when_each_note_was_written() {
         "{user}"
     );
 }
+
+/// Streams a fixed reply a few characters at a time and reports token use, like Ollama does.
+struct Streaming(&'static str);
+
+impl Provider for Streaming {
+    fn id(&self) -> &'static str {
+        "streaming"
+    }
+    fn locality(&self) -> Locality {
+        Locality::Local
+    }
+}
+
+impl LlmProvider for Streaming {
+    fn complete(
+        &self,
+        _prompt: &Prompt<'_>,
+        on_text: &mut (dyn FnMut(&str) + Send),
+    ) -> impl Future<Output = mirona_providers::Result<Completion>> + Send {
+        let chars: Vec<char> = self.0.chars().collect();
+        for piece in chars.chunks(7) {
+            on_text(&piece.iter().collect::<String>());
+        }
+        std::future::ready(Ok(Completion {
+            text: self.0.into(),
+            usage: Usage {
+                input_tokens: 812,
+                output_tokens: 240,
+            },
+        }))
+    }
+}
+
+#[test]
+fn streaming_hands_over_chunks_in_order_and_still_parses() {
+    let mut pieces = vec![];
+    let mut previews: Vec<String> = vec![];
+    let mut so_far = String::new();
+    let (s, actions) = block_on(summarize_streaming(
+        &claims(),
+        &client_call(),
+        &Streaming(GOOD),
+        &mut |t| {
+            pieces.push(t.to_string());
+            so_far.push_str(t);
+            previews.push(partial_overview(&so_far));
+        },
+    ))
+    .unwrap();
+    assert!(pieces.len() > 10);
+    assert_eq!(pieces.concat(), GOOD, "every chunk, in order");
+    // The preview only ever grows, and ends as the real overview.
+    assert!(previews.windows(2).all(|w| w[1].starts_with(&w[0])));
+    assert_eq!(previews.last().unwrap(), "Insurer grouping ships Monday.");
+    assert_eq!(s.overview, "Insurer grouping ships Monday.");
+    assert_eq!(actions.len(), 3);
+    assert_eq!(s.quality, "812 tokens in, 240 out");
+}
+
+#[test]
+fn partial_overview_reads_an_unfinished_json_string() {
+    assert_eq!(partial_overview(""), "");
+    assert_eq!(partial_overview(r#"{"overv"#), "");
+    assert_eq!(partial_overview(r#"{"overview": "#), "");
+    assert_eq!(
+        partial_overview(r#"{"overview": "Nadia said \"ship"#),
+        "Nadia said \"ship"
+    );
+    assert_eq!(
+        partial_overview(r#"{"overview" : "a\nb é", "decisions": []}"#),
+        "a\nb é"
+    );
+    // The latest part wins when a long meeting is summarized in parts.
+    assert_eq!(
+        partial_overview(r#"{"overview": "one"} {"overview": "tw"#),
+        "tw"
+    );
+}

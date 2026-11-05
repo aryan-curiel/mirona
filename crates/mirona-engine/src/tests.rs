@@ -116,7 +116,29 @@ fn summary_and_enhanced_notes_are_saved_into_the_meeting() {
     let dir = tempfile::tempdir().unwrap();
     let e = engine(dir.path());
     let id = recorded(&e);
-    summarize_with(&e.store, &e.paths, &id, "client-call", &Scripted).unwrap();
+    let (tx, rx) = channel();
+    summarize_with(
+        &e.store,
+        &e.paths,
+        &id,
+        "client-call",
+        &Scripted,
+        &mut preview(&id, &tx),
+    )
+    .unwrap();
+    // The reply streamed out as a preview first.
+    match rx.try_recv().unwrap() {
+        PipelineEvent::Summarizing {
+            meeting_id,
+            overview,
+            words,
+        } => {
+            assert_eq!(meeting_id, id);
+            assert_eq!(overview, "Agreed the SOW and fixed price.");
+            assert!(words > 5, "{words}");
+        }
+        other => panic!("{other:?}"),
+    }
 
     // Survives a reopen: it's in the files, not just in memory.
     let store = Store::open(dir.path().join("meetings")).unwrap();
@@ -217,6 +239,33 @@ fn import_transcribes_and_summarizes_a_file() {
     let (tx, rx) = channel();
     let id = e.import(&clip, &tx).unwrap();
     let events: Vec<_> = rx.try_iter().collect();
+    let progress: Vec<Option<f32>> = events
+        .iter()
+        .filter_map(|e| match e {
+            PipelineEvent::Importing {
+                meeting_id,
+                fraction,
+                file,
+            } => {
+                assert_eq!(
+                    (meeting_id.as_str(), file.as_str()),
+                    (id.as_str(), "librispeech-2utt.wav")
+                );
+                Some(*fraction)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(progress.first(), Some(&None));
+    assert_eq!(progress.last(), Some(&Some(1.0)));
+    let previews: Vec<&str> = events
+        .iter()
+        .filter_map(|e| match e {
+            PipelineEvent::Summarizing { overview, .. } => Some(overview.as_str()),
+            _ => None,
+        })
+        .collect();
+    println!("{} previews: {previews:?}", previews.len());
 
     let s = e.store.lock().unwrap();
     let m = s.meeting(&id).unwrap();
@@ -237,6 +286,9 @@ fn import_transcribes_and_summarizes_a_file() {
     );
     let summary = m.summary.as_ref().unwrap();
     assert!(summary.written_by.contains("qwen3:4b"), "{summary:?}");
+    assert!(previews.len() > 1, "the summary streamed");
+    assert!(summary.quality.contains("tokens"), "{summary:?}");
+    println!("{summary:?}");
 }
 
 #[test]
@@ -304,4 +356,58 @@ fn one_recording_per_meetings_folder() {
         .set_modified(old)
         .unwrap();
     assert!(RecordingLock::take(dir.path()).is_ok());
+}
+
+/// A session that crashed mid-call leaves `audio.wav` with a header from its last flush; the
+/// next start compresses it into `audio.caf`, keeps every flushed sample and drops the WAV.
+#[test]
+fn a_crashed_recording_is_compressed_at_next_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let e = engine(dir.path());
+    let id = mirona_store::new_id();
+    let wav = {
+        let mut s = e.store.lock().unwrap();
+        s.start_meeting(&id).unwrap();
+        s.set_audio(&id, AUDIO_FILE).unwrap();
+        s.meeting_dir(&id).unwrap().join(AUDIO_FILE)
+    };
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 16_000,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut w = hound::WavWriter::create(&wav, spec).unwrap();
+    for i in 0..48_000u16 {
+        w.write_sample(i.wrapping_mul(97).cast_signed() / 8)
+            .unwrap();
+    }
+    w.flush().unwrap(); // what the recorder does every 100 ms
+    std::mem::forget(w); // the crash: never finalized
+
+    // Still being written (fresh mtime): left alone.
+    assert_eq!(e.compress_recordings(), Vec::<String>::new());
+    assert!(wav.exists());
+
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+    std::fs::File::options()
+        .write(true)
+        .open(&wav)
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    assert_eq!(e.compress_recordings(), Vec::<String>::new());
+    let caf = e.store.lock().unwrap().audio_path(&id).unwrap().unwrap();
+    assert!(caf.ends_with("audio.caf"), "{}", caf.display());
+    assert!(!wav.exists());
+    let mut n = 0;
+    mirona_capture::decode(&caf, &mut |_, pcm| {
+        n += pcm.len();
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(n, 48_000);
+    // The meeting file says so too, for the next open.
+    let reopened = Store::open(dir.path().join("meetings")).unwrap();
+    assert_eq!(reopened.audio_path(&id).unwrap(), Some(caf));
 }

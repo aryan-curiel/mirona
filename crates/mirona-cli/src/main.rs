@@ -43,6 +43,8 @@ enum Cmd {
     Import { audio: PathBuf },
     /// Rebuild the search index from the meeting files
     Reindex,
+    /// Compress recordings still kept as WAV (older meetings, crashed sessions) to Opus
+    Compress,
     /// Run the MCP server on stdio (for Claude Code / Claude Desktop)
     Mcp,
 }
@@ -58,6 +60,7 @@ fn main() {
         Cmd::Actions { client, open } => actions(&app_dir, client.as_deref(), open),
         Cmd::Import { audio } => import(&app_dir, &audio),
         Cmd::Reindex => reindex(&app_dir),
+        Cmd::Compress => compress(&app_dir),
         Cmd::Mcp => mirona_mcp::serve(),
     };
     if let Err(e) = res {
@@ -169,6 +172,19 @@ fn reindex(app_dir: &Path) -> Result {
     Ok(())
 }
 
+fn compress(app_dir: &Path) -> Result {
+    let engine = Engine::open(app_dir, &mirona_engine::documents_dir())?;
+    let errors = engine.compress_recordings();
+    for e in &errors {
+        eprintln!("kept as WAV: {e}");
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("{} recordings not compressed", errors.len()))
+    }
+}
+
 fn import(app_dir: &Path, audio: &Path) -> Result {
     if !audio.is_file() {
         return Err(format!("{}: no such file", audio.display()));
@@ -208,6 +224,9 @@ fn printer() -> (Sender<PipelineEvent>, std::thread::JoinHandle<()>) {
                     eprintln!("{}{message}", if error { "error: " } else { "" });
                 }
                 PipelineEvent::Summarized { .. } => eprintln!("Summary written."),
+                PipelineEvent::Importing {
+                    fraction: Some(f), ..
+                } => eprint!("\r{:.0}% transcribed", f * 100.0),
                 _ => {}
             }
         }
