@@ -1,0 +1,9 @@
+librispeech-2utt.{wav,mp3,m4a}: two utterances of LibriSpeech test-clean (speaker 6930; the
+first and third of the NGR-128 spike clip), joined with 0.5 s of silence, 16 kHz mono.
+LibriSpeech ASR corpus, Vassil Panayotov, Guoguo Chen, Daniel Povey, Sanjeev Khudanpur,
+https://www.openslr.org/12, CC-BY-4.0.
+Text: "concord returned to its place amidst the tents / congratulations were poured in upon
+the princess everywhere during her journey"
+
+silero_vad.onnx: Silero VAD (github.com/snakers4/silero-vad, MIT), the sherpa-onnx export
+(github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models). Committed so the VAD tests run in CI.

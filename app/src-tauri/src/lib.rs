@@ -2,9 +2,10 @@
 //! `PipelineEvent`s on the "pipeline" channel while recording.
 
 use mirona_core::{
-    ActionItem, AgentCall, Correction, McpStatus, Meeting, MeetingSummary, PipelineEvent, Speaker,
-    Stage, Tag,
+    ActionItem, AgentCall, Correction, Locality, McpStatus, Meeting, MeetingSummary, PipelineEvent,
+    Speaker, Stage, Tag,
 };
+use mirona_providers::check_privacy;
 use mirona_providers::config::Config;
 use mirona_store::{Store, sample};
 use std::path::PathBuf;
@@ -21,14 +22,112 @@ struct Recorder {
 }
 
 type Db<'a> = State<'a, Mutex<Store>>;
+type Mdl<'a> = State<'a, Mutex<Models>>;
 
 /// Where `config.toml` lives (the OS app-config dir).
 struct ConfigPath(PathBuf);
 
-fn save_config(store: &Store, path: &ConfigPath) -> Res<()> {
-    store.config().save(&path.0)
+fn save_config(models: &Models, path: &ConfigPath) -> Res<()> {
+    models.config().save(&path.0)
 }
 type Res<T> = Result<T, String>;
+
+/// Privacy mode, the provider picked per stage, and MCP status (moved out of the store).
+/// ponytail: sample stages + fake MCP log for the Models screen; NGR-150 moves this to settings.
+struct Models {
+    stages: Vec<Stage>,
+    mcp: McpStatus,
+    privacy: bool,
+}
+
+impl Models {
+    fn new() -> Self {
+        let mut m = Self {
+            stages: sample::stages(),
+            mcp: sample::mcp(),
+            privacy: false,
+        };
+        m.set_privacy(true);
+        m
+    }
+
+    /// Apply a saved config. Every choice goes through the privacy gate, so a config that
+    /// picks a cloud provider while privacy is on is rejected, not silently obeyed.
+    fn apply_config(&mut self, cfg: &Config) -> Res<()> {
+        self.set_privacy(cfg.privacy);
+        for (stage, provider) in &cfg.providers {
+            self.select_provider(stage, provider)
+                .map_err(|e| format!("config: {stage} = {provider}: {e}"))?;
+        }
+        Ok(())
+    }
+
+    fn config(&self) -> Config {
+        Config {
+            privacy: self.privacy,
+            providers: self
+                .stages
+                .iter()
+                .map(|s| (s.id.clone(), s.selected.clone()))
+                .collect(),
+        }
+    }
+
+    /// Turning privacy on moves every stage back to a local provider.
+    fn set_privacy(&mut self, on: bool) -> Vec<Stage> {
+        self.privacy = on;
+        if on {
+            for st in &mut self.stages {
+                let cloud = st
+                    .options
+                    .iter()
+                    .any(|o| o.id == st.selected && o.locality == Locality::Cloud);
+                if cloud {
+                    st.selected = st
+                        .options
+                        .iter()
+                        .find(|o| o.locality == Locality::Local)
+                        .unwrap()
+                        .id
+                        .clone();
+                }
+            }
+        }
+        self.stages.clone()
+    }
+
+    fn select_provider(&mut self, stage_id: &str, option_id: &str) -> Res<Stage> {
+        let privacy = self.privacy;
+        let st = self
+            .stages
+            .iter_mut()
+            .find(|s| s.id == stage_id)
+            .ok_or("no stage")?;
+        let opt = st
+            .options
+            .iter()
+            .find(|o| o.id == option_id)
+            .ok_or("no provider")?;
+        check_privacy(opt, privacy).map_err(|e| e.to_string())?;
+        st.selected = option_id.into();
+        Ok(st.clone())
+    }
+
+    fn llm_name(&self) -> String {
+        let st = self.stages.iter().find(|s| s.id == "llm").unwrap();
+        st.options
+            .iter()
+            .find(|o| o.id == st.selected)
+            .unwrap()
+            .name
+            .clone()
+    }
+
+    fn log_agent_call(&mut self, call: AgentCall) {
+        self.mcp.log.insert(0, call);
+        self.mcp.log.truncate(6);
+    }
+}
 
 #[tauri::command]
 fn list_meetings(db: Db) -> Vec<MeetingSummary> {
@@ -42,7 +141,7 @@ fn get_meeting(db: Db, id: String) -> Res<Meeting> {
 
 #[tauri::command]
 fn list_action_items(db: Db) -> Vec<ActionItem> {
-    db.lock().unwrap().action_items.clone()
+    db.lock().unwrap().action_items()
 }
 
 #[tauri::command]
@@ -52,7 +151,7 @@ fn toggle_action_item(db: Db, id: String) -> Res<ActionItem> {
 
 #[tauri::command]
 fn list_people(db: Db) -> Vec<Speaker> {
-    db.lock().unwrap().people.clone()
+    db.lock().unwrap().people().to_vec()
 }
 
 #[tauri::command]
@@ -64,7 +163,7 @@ fn enroll_speaker(db: Db, speaker_id: String, name: String) -> Res<Speaker> {
 fn correct_answer(db: Db, correction: Correction) -> Res<usize> {
     let mut s = db.lock().unwrap();
     s.correct(correction)?;
-    Ok(s.corrections.len())
+    Ok(s.corrections().len())
 }
 
 #[tauri::command]
@@ -78,44 +177,44 @@ fn save_notes(db: Db, meeting_id: String, raw: Vec<String>) -> Res<()> {
 }
 
 #[tauri::command]
-fn list_stages(db: Db) -> Vec<Stage> {
-    db.lock().unwrap().stages.clone()
+fn list_stages(models: Mdl) -> Vec<Stage> {
+    models.lock().unwrap().stages.clone()
 }
 
 #[tauri::command]
 fn select_provider(
-    db: Db,
+    models: Mdl,
     cfg: State<ConfigPath>,
     stage_id: String,
     option_id: String,
 ) -> Res<Stage> {
-    let mut s = db.lock().unwrap();
+    let mut s = models.lock().unwrap();
     let stage = s.select_provider(&stage_id, &option_id)?;
     save_config(&s, &cfg)?;
     Ok(stage)
 }
 
 #[tauri::command]
-fn get_privacy(db: Db) -> bool {
-    db.lock().unwrap().privacy
+fn get_privacy(models: Mdl) -> bool {
+    models.lock().unwrap().privacy
 }
 
 #[tauri::command]
-fn set_privacy(db: Db, cfg: State<ConfigPath>, on: bool) -> Res<Vec<Stage>> {
-    let mut s = db.lock().unwrap();
+fn set_privacy(models: Mdl, cfg: State<ConfigPath>, on: bool) -> Res<Vec<Stage>> {
+    let mut s = models.lock().unwrap();
     let stages = s.set_privacy(on);
     save_config(&s, &cfg)?;
     Ok(stages)
 }
 
 #[tauri::command]
-fn get_mcp(db: Db) -> McpStatus {
-    db.lock().unwrap().mcp.clone()
+fn get_mcp(models: Mdl) -> McpStatus {
+    models.lock().unwrap().mcp.clone()
 }
 
 #[tauri::command]
-fn set_mcp_running(db: Db, running: bool) -> McpStatus {
-    let mut s = db.lock().unwrap();
+fn set_mcp_running(models: Mdl, running: bool) -> McpStatus {
+    let mut s = models.lock().unwrap();
     s.mcp.running = running;
     s.mcp.clone()
 }
@@ -126,7 +225,13 @@ fn start_recording(app: AppHandle, db: Db, rec: State<Recorder>) -> Res<Meeting>
         return Err("already recording".into());
     }
     let id = mirona_store::new_id();
-    let meeting = db.lock().unwrap().start_meeting(&id);
+    let meeting = match db.lock().unwrap().start_meeting(&id) {
+        Ok(m) => m,
+        Err(e) => {
+            rec.on.store(false, Ordering::SeqCst);
+            return Err(e);
+        }
+    };
     *rec.meeting_id.lock().unwrap() = Some(id.clone());
     *rec.started.lock().unwrap() = Some(Instant::now());
     let on = rec.on.clone();
@@ -187,12 +292,11 @@ fn capture_loop(app: &AppHandle, on: &AtomicBool, id: &str) {
                         kind,
                         label: label.into(),
                     }];
+                    let mut tagged = seg.clone();
+                    tagged.tags.clone_from(&tags);
                     let db = app.state::<Mutex<Store>>();
-                    let mut s = db.lock().unwrap();
-                    if let Some(m) = s.meetings.iter_mut().find(|m| m.id == id)
-                        && let Some(sg) = m.segments.iter_mut().find(|x| x.id == seg.id)
-                    {
-                        sg.tags.clone_from(&tags);
+                    if let Err(e) = db.lock().unwrap().update_segment(id, tagged) {
+                        eprintln!("mirona: {e}");
                     }
                     app.emit(
                         "pipeline",
@@ -238,10 +342,12 @@ fn stop_recording(app: AppHandle, rec: State<Recorder>) -> Res<String> {
         )
         .ok();
         std::thread::sleep(Duration::from_millis(1600)); // "processing"
+        let models = app.state::<Mutex<Models>>();
+        let llm = models.lock().unwrap().llm_name();
         let db = app.state::<Mutex<Store>>();
         let mut s = db.lock().unwrap();
-        if s.finish_meeting(&mid, elapsed).is_ok() {
-            s.log_agent_call(AgentCall {
+        if sample::demo_finish(&mut s, &mid, elapsed, &llm).is_ok() {
+            models.lock().unwrap().log_agent_call(AgentCall {
                 client: "Claude Code".into(),
                 ago: "just now".into(),
                 call: "get_meeting(\"Evaluation dashboard follow-up\")".into(),
@@ -260,13 +366,23 @@ pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             let path = app.path().app_config_dir()?.join("config.toml");
-            let mut store = Store::sample();
+            let mut models = Models::new();
             // A bad config must not stop the app; keep safe defaults and say why.
-            if let Err(e) = Config::load(&path).and_then(|c| store.apply_config(&c)) {
+            if let Err(e) = Config::load(&path).and_then(|c| models.apply_config(&c)) {
                 eprintln!("mirona: ignoring {}: {e}", path.display());
-                store = Store::sample();
+                models = Models::new();
+            }
+            // ponytail: fixed root and demo seed until NGR-150 makes the folder a setting.
+            let root = app.path().document_dir()?.join("Mirona");
+            let mut store = Store::open(&root)?;
+            for e in store.load_errors() {
+                eprintln!("mirona: {e}");
+            }
+            if store.list_meetings().is_empty() {
+                sample::seed(&mut store)?;
             }
             app.manage(Mutex::new(store));
+            app.manage(Mutex::new(models));
             app.manage(ConfigPath(path));
             Ok(())
         })
@@ -292,4 +408,55 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mirona");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn privacy_gate() {
+        let mut s = Models::new();
+        assert!(
+            s.select_provider("llm", "anthropic").is_err(),
+            "cloud blocked in privacy mode"
+        );
+        s.set_privacy(false);
+        s.select_provider("llm", "anthropic").unwrap();
+        s.set_privacy(true);
+        assert_eq!(s.stages[3].selected, "ollama", "privacy on resets to local");
+    }
+
+    #[test]
+    fn config_picks_providers_through_the_privacy_gate() {
+        let mut s = Models::new();
+        let sel = |s: &Models, id: &str| {
+            s.stages
+                .iter()
+                .find(|x| x.id == id)
+                .unwrap()
+                .selected
+                .clone()
+        };
+        assert_eq!(
+            sel(&s, "classification"),
+            "local-llm",
+            "privacy on by default"
+        );
+
+        let mut cfg = Config::default();
+        cfg.providers.insert("classification".into(), "jev".into());
+        assert!(
+            s.apply_config(&cfg).is_err(),
+            "cloud refused while privacy is on"
+        );
+
+        cfg.privacy = false;
+        s.apply_config(&cfg).unwrap();
+        assert_eq!(sel(&s, "classification"), "jev");
+        assert_eq!(s.config().providers["classification"], "jev");
+
+        cfg.providers.insert("stt".into(), "nope".into());
+        assert!(s.apply_config(&cfg).is_err(), "unknown provider");
+    }
 }

@@ -12,10 +12,10 @@ ollama = ["dep:ureq", "dep:serde_json"]
 parakeet = ["dep:sherpa-onnx"]
 speakrs = ["dep:speakrs"]
 # Milestone 1 (owners in docs/m1-plan.md). Dependencies are added by the owner.
-whisper = []
+whisper = ["dep:whisper-rs"]
 openai = ["dep:ureq", "dep:serde_json"]
 anthropic = ["dep:ureq", "dep:serde_json"]
-keychain = []
+keychain = ["dep:keyring"]
 
 [dependencies]
 mirona-core.workspace = true
@@ -25,6 +25,13 @@ serde_json = { workspace = true, optional = true }
 ureq = { version = "3", features = ["json"], optional = true }
 sherpa-onnx = { version = "2.0.1", optional = true }
 speakrs = { version = "=0.7.0", features = ["coreml", "cpu"], optional = true }
+whisper-rs = { version = "0.16.0", optional = true }
+# macOS Keychain, Windows Credential Manager, Linux Secret Service (pure-Rust zbus: no libdbus).
+keyring = { version = "3.6", features = ["apple-native", "windows-native", "async-secret-service", "crypto-rust", "async-io"], optional = true }
+
+# Whisper runs on the GPU through Metal on macOS (ADR 0001).
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { version = "0.16.0", features = ["metal"], optional = true }
 
 [dev-dependencies]
 hound = "3.5"

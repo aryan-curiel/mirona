@@ -156,6 +156,169 @@ impl Classifier for Ollama {
     }
 }
 
+// --- LlmProvider (NGR-145): summaries and notes through the same local Ollama. ---
+
+/// Context window asked of Ollama for prose: its default (4k) would silently cut a long
+/// transcript chunk. qwen3:4b handles 32k; 16k keeps memory modest.
+pub const LLM_NUM_CTX: u32 = 16_384;
+
+/// A streamed `/api/chat` request. `think: false` keeps qwen3's reasoning out of the answer.
+pub fn chat_request(model: &str, prompt: &crate::Prompt<'_>) -> Value {
+    let mut body = json!({
+        "model": model,
+        "stream": true,
+        "think": false,
+        "options": { "num_ctx": LLM_NUM_CTX },
+        "messages": [
+            { "role": "system", "content": prompt.system },
+            { "role": "user", "content": prompt.user },
+        ],
+    });
+    if prompt.json {
+        body["format"] = json!("json");
+    }
+    body
+}
+
+/// Read Ollama's NDJSON stream: one object per line, the last has `done` and token counts.
+pub fn read_chat_stream(
+    reader: impl std::io::BufRead,
+    on_text: &mut (dyn FnMut(&str) + Send),
+) -> Result<crate::Completion> {
+    let err = |e: &dyn std::fmt::Display| Error::Provider(format!("ollama: {e}"));
+    let count = |v: &Value| {
+        v.as_u64()
+            .map_or(0, |n| u32::try_from(n).unwrap_or(u32::MAX))
+    };
+    let mut text = String::new();
+    for line in reader.lines() {
+        let line = line.map_err(|e| err(&e))?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let chunk: Value = serde_json::from_str(&line).map_err(|e| err(&e))?;
+        if let Some(e) = chunk.get("error") {
+            return Err(err(&e));
+        }
+        let t = chunk["message"]["content"].as_str().unwrap_or_default();
+        if !t.is_empty() {
+            on_text(t);
+            text.push_str(t);
+        }
+        if chunk["done"] == true {
+            let usage = crate::Usage {
+                input_tokens: count(&chunk["prompt_eval_count"]),
+                output_tokens: count(&chunk["eval_count"]),
+            };
+            return Ok(crate::Completion { text, usage });
+        }
+    }
+    Err(err(&"stream ended before done"))
+}
+
+impl crate::LlmProvider for Ollama {
+    fn complete(
+        &self,
+        prompt: &crate::Prompt<'_>,
+        on_text: &mut (dyn FnMut(&str) + Send),
+    ) -> impl Future<Output = Result<crate::Completion>> + Send {
+        let body = chat_request(&self.model, prompt);
+        // ponytail: blocking HTTP inside the future, same as Jev (worker thread in the engine).
+        async move {
+            let err = |e: &dyn std::fmt::Display| {
+                Error::Provider(format!("ollama ({}): {e}", self.model))
+            };
+            let mut resp = self
+                .http
+                .post(&self.url)
+                .config()
+                .http_status_as_error(false)
+                .build()
+                .send_json(&body)
+                .map_err(|e| err(&e))?;
+            if !resp.status().is_success() {
+                let msg = resp.body_mut().read_to_string().unwrap_or_default();
+                return Err(err(&format!("{} {msg}", resp.status())));
+            }
+            read_chat_stream(
+                std::io::BufReader::new(resp.into_body().into_reader()),
+                on_text,
+            )
+        }
+    }
+}
+
+#[cfg(test)]
+mod llm_tests {
+    use super::*;
+    use crate::{LlmProvider, Prompt, Usage};
+
+    #[test]
+    fn chat_request_streams_and_asks_for_json() {
+        let p = Prompt {
+            system: "sys",
+            user: "hi",
+            json: true,
+        };
+        let body = chat_request(MODEL, &p);
+        assert_eq!(body["stream"], true);
+        assert_eq!(body["format"], "json");
+        assert_eq!(body["options"]["num_ctx"], LLM_NUM_CTX);
+        let p = Prompt { json: false, ..p };
+        assert!(chat_request(MODEL, &p).get("format").is_none());
+    }
+
+    #[test]
+    fn reads_a_recorded_stream() {
+        // Recorded from qwen3:4b (Ollama 0.40), 77 content chunks then `done`.
+        let nd = include_str!("../tests/fixtures/ollama-chat-stream.ndjson");
+        let mut chunks = 0;
+        let done = read_chat_stream(nd.as_bytes(), &mut |_| chunks += 1).unwrap();
+        assert!(chunks > 10, "{chunks}");
+        assert!(
+            done.text.contains("\"overview\": \"Nadia has requested"),
+            "{}",
+            done.text
+        );
+        assert_eq!(
+            done.usage,
+            Usage {
+                input_tokens: 50,
+                output_tokens: 78
+            }
+        );
+    }
+
+    #[test]
+    fn errors_and_cut_streams_are_errors() {
+        let e = read_chat_stream(&b"{\"error\":\"model 'x' not found\"}\n"[..], &mut |_| {});
+        assert!(e.unwrap_err().to_string().contains("not found"));
+        let cut = "{\"message\":{\"content\":\"hi\"},\"done\":false}\n";
+        assert!(read_chat_stream(cut.as_bytes(), &mut |_| {}).is_err());
+    }
+
+    /// `cargo test -p mirona-providers --features ollama -- --ignored live_streams`
+    #[test]
+    #[ignore = "needs a running Ollama with qwen3:4b"]
+    fn live_streams_a_completion() {
+        let p = Prompt {
+            system: "Answer with a JSON object {\"word\": string}.",
+            user: "Say hello.",
+            json: true,
+        };
+        let mut n = 0;
+        let done = crate::tests::now(Ollama::default().complete(&p, &mut |_| n += 1)).unwrap();
+        assert!(
+            n > 1 && serde_json::from_str::<Value>(&done.text).is_ok(),
+            "{done:?}"
+        );
+        assert!(
+            done.usage.input_tokens > 0 && done.usage.output_tokens > 0,
+            "{done:?}"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

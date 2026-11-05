@@ -45,8 +45,8 @@ fn call(store: &Store, name: &str, args: &Value) -> Result<Value, String> {
         "get_transcript" => json!(store.meeting(s("id"))?.segments),
         "list_action_items" => json!(
             store
-                .action_items
-                .iter()
+                .action_items()
+                .into_iter()
                 .filter(|a| s("client").is_empty() || a.client == s("client"))
                 .collect::<Vec<_>>()
         ),

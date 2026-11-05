@@ -4,9 +4,27 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Whisper as the alternative STT, chosen by `[providers] stt = "whisper"` (ADR 0001).
+whisper = ["mirona-providers/whisper"]
+
 [dependencies]
 mirona-core.workspace = true
 mirona-providers = { workspace = true, features = ["parakeet"] }
+# Silero VAD + resampler (also what Parakeet runs on).
+sherpa-onnx = "2.0.1"
+hound = "3.5"
+symphonia = { version = "0.5.5", default-features = false, features = ["wav", "pcm", "mp3", "aac", "isomp4", "flac"] }
+
+# Live capture is macOS-only for M1: mic through cpal, system audio through a Core Audio
+# process tap (cpal's loopback on an output device, macOS 14.6+).
+[target.'cfg(target_os = "macos")'.dependencies]
+cpal = "0.18.2"
+block2 = "0.6"
+libc = "0.2"
+objc2 = "0.6"
+objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "AVCaptureDevice", "AVMediaFormat"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFString", "CFDictionary"] }
 
 [lints]
 workspace = true

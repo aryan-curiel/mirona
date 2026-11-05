@@ -1,4 +1,5 @@
-//! Sample data for the prototype. All people, meetings and numbers are made up.
+//! Sample data for tests and the demo seed. All people, meetings and numbers are made up.
+//! `stages()`/`mcp()` feed the app's Models screen until NGR-150 moves them to config.
 
 use mirona_core::{
     ActionItem, AgentCall, Answer, AnswerSource, Choice, ChoiceAnswer, Decision, EnhancedNote,
@@ -6,6 +7,8 @@ use mirona_core::{
     QuestionKind, Segment, Speaker, Stage, Summary, Tag, TagKind, Tint, Voiceprint,
 };
 use mirona_providers::questions::SEGMENT_QUESTIONS;
+
+use crate::{Result, Store};
 
 pub const THRESHOLD: f32 = 0.6;
 pub const CLIENTS: [&str; 4] = [
@@ -574,4 +577,88 @@ pub fn live_script() -> Vec<ScriptLine> {
             Some((TagKind::OpenQuestion, "Open question")),
         ),
     ]
+}
+
+/// Writes the four sample meetings (dated relative to today) into `store`.
+pub fn seed(store: &mut Store) -> Result<()> {
+    let now = jiff::Zoned::now();
+    let at = |days: i64, h: i8, m: i8| -> Result<String> {
+        let d = now.date().checked_sub(jiff::Span::new().days(days));
+        let z = d.and_then(|d| d.at(h, m, 0, 0).to_zoned(now.time_zone().clone()));
+        z.map(|z| z.strftime("%Y-%m-%dT%H:%M:%S%:z").to_string())
+            .map_err(|e| e.to_string())
+    };
+    let created = [at(0, 9, 30)?, at(2, 14, 0)?, at(3, 16, 30)?, at(8, 11, 0)?];
+    let items = action_items();
+    for (m, c) in meetings().into_iter().zip(created) {
+        let mine = items
+            .iter()
+            .filter(|a| a.meeting_id == m.id)
+            .cloned()
+            .collect();
+        store.add_meeting(m, &c, mine)?;
+    }
+    Ok(())
+}
+
+/// The fake recorder's "processing": a canned title, answers, summary and notes built from
+/// the tagged live segments. ponytail: demo only; the engine (M1 phase 2) calls
+/// `set_summary`/`set_enhanced_notes` with real LLM output instead.
+pub fn demo_finish(store: &mut Store, id: &str, elapsed_ms: u32, llm: &str) -> Result<Meeting> {
+    let m = store.meeting(id)?;
+    let tagged = |k: TagKind| {
+        m.segments
+            .iter()
+            .filter(move |s| s.tags.iter().any(|t| t.kind == k))
+    };
+    let at = |s: &Segment| Decision {
+        text: s.text.clone(),
+        at_ms: s.start_ms,
+    };
+    let enhanced: Vec<EnhancedNote> = m
+        .segments
+        .iter()
+        .filter_map(|s| {
+            s.tags.first().map(|t| EnhancedNote {
+                kind: t.kind,
+                text: s.text.clone(),
+                at_ms: s.start_ms,
+            })
+        })
+        .collect();
+    let actions: Vec<&Segment> = tagged(TagKind::Action).collect();
+    let summary = Summary {
+        template: "Client call".into(),
+        overview: "Follow-up on the Lumenix evaluation dashboard. The board demo is set; one ownership question is open.".into(),
+        decisions: tagged(TagKind::Decision).map(at).collect(),
+        open_questions: tagged(TagKind::OpenQuestion).map(at).collect(),
+        written_by: llm.into(),
+        quality: format!("Quality check: the summary covers {0} of {0} confirmed action items (score 1.0)", actions.len()),
+    };
+    let items = actions
+        .iter()
+        .enumerate()
+        .map(|(i, s)| ActionItem {
+            id: format!("{id}-a{i}"),
+            meeting_id: id.into(),
+            meeting_title: String::new(),
+            at_ms: Some(s.start_ms),
+            text: "Prepare a short demo script".into(),
+            owner: "Aryan".into(),
+            due: Some("Tue".into()),
+            client: String::new(),
+            done: false,
+            needs_review: false,
+        })
+        .collect();
+    let sample = meetings();
+    let mut ans = sample[0].answers.clone().unwrap();
+    ans.client = sample[3].answers.clone().unwrap().client;
+    ans.priority = 3.2;
+    ans.follow_up_draft = "Hi Keiko,\n\nThanks for the call. The evaluation dashboard demo is set for the board on the 20th, and I'll send a short demo script by Tuesday.\n\nStill open: who owns the data export for legal.\n\nAryan".into();
+    store.set_title(id, "Evaluation dashboard follow-up")?;
+    store.set_answers(id, ans)?;
+    store.set_enhanced_notes(id, enhanced, llm)?;
+    store.set_summary(id, summary, items)?;
+    store.finish_meeting(id, elapsed_ms)
 }

@@ -7,7 +7,16 @@ license.workspace = true
 [dependencies]
 mirona-core.workspace = true
 mirona-providers.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+jiff = "0.2"
+# Bundled SQLite: same version everywhere, FTS5 compiled in.
+rusqlite = { version = "0.41", features = ["bundled"] }
+# Maintained fork of serde_yaml (dtolnay's is archived); same API and output.
+serde_yaml_ng = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true

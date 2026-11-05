@@ -1,130 +1,422 @@
-//! Meeting store (NGR-140). The prototype keeps everything in memory, seeded with sample data.
-//! ponytail: in-memory only; swap for Markdown files + `SQLite` index in NGR-140.
+//! Meeting store (NGR-140): one folder per meeting, plus a `SQLite` index.
+//!
+//! ```text
+//! <root>/<YYYY-MM-DD-HHMM>-<slug>/meeting.md        YAML frontmatter + Markdown (Obsidian-friendly)
+//! <root>/<YYYY-MM-DD-HHMM>-<slug>/transcript.jsonl  one Segment per line, appended while recording
+//! <root>/<YYYY-MM-DD-HHMM>-<slug>/audio.<ext>       written by capture; the store keeps its name
+//! <root>/.mirona/index.sqlite                       derived; `reindex` rebuilds it from the files
+//! ```
+//!
+//! The files are the source of truth and every write goes through to disk immediately.
+//! ponytail: all meetings live in memory and the index is rebuilt on every `open`; fine for
+//! hundreds of meetings, switch to lazy loading + mtime-based incremental reindex past that.
 
+mod files;
+mod index;
 pub mod sample;
 
+pub use index::Hit;
+
+use files::Entry;
 use mirona_core::{
-    ActionItem, AgentCall, AnswerSource, Choice, Correction, EnhancedNote, Id, Locality, McpStatus,
-    Meeting, MeetingSummary, Note, Segment, Speaker, Stage, Summary, Tag, TagKind,
+    ActionItem, AnswerSource, Choice, Correction, EnhancedNote, Id, Meeting, MeetingAnswers,
+    MeetingSummary, Note, Segment, Speaker, Summary, Tag, TagKind, Tint,
 };
-use mirona_providers::check_privacy;
-use mirona_providers::config::Config;
+use rusqlite::Connection;
+use std::path::{Path, PathBuf};
 
 pub type Result<T> = std::result::Result<T, String>;
 
 pub struct Store {
-    pub meetings: Vec<Meeting>,
-    pub people: Vec<Speaker>,
-    pub action_items: Vec<ActionItem>,
-    pub stages: Vec<Stage>,
-    pub mcp: McpStatus,
-    pub privacy: bool,
-    pub corrections: Vec<Correction>,
+    root: PathBuf,
+    db: Connection,
+    entries: Vec<Entry>,
+    people: Vec<Speaker>,
+    errors: Vec<String>,
 }
 
 impl Store {
-    pub fn sample() -> Self {
+    /// Opens (or creates) a store at `root` and indexes what is there. Meetings that fail to
+    /// load are skipped and listed in [`Store::load_errors`].
+    pub fn open(root: impl AsRef<Path>) -> Result<Self> {
+        let root = root.as_ref().to_path_buf();
+        let meta = root.join(".mirona");
+        std::fs::create_dir_all(&meta).map_err(|e| format!("{}: {e}", meta.display()))?;
+        let db = index::open(&meta.join("index.sqlite"))?;
         let mut s = Self {
-            meetings: sample::meetings(),
-            people: sample::people(),
-            action_items: sample::action_items(),
-            stages: sample::stages(),
-            mcp: sample::mcp(),
-            privacy: false,
-            corrections: vec![],
+            root,
+            db,
+            entries: vec![],
+            people: vec![],
+            errors: vec![],
         };
-        s.set_privacy(true);
+        s.reindex()?;
+        Ok(s)
+    }
+
+    /// A throwaway store in the temp dir, seeded with the sample meetings.
+    /// ponytail: for the CLI/MCP/tests until NGR-148/149 point them at the real root; leaves a
+    /// small dir in the OS temp dir per call.
+    pub fn sample() -> Self {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir =
+            std::env::temp_dir().join(format!("mirona-sample-{}-{nanos}", std::process::id()));
+        let mut s = Self::open(dir).expect("sample store");
+        sample::seed(&mut s).expect("seed sample store");
         s
     }
 
-    /// Apply a saved config. Every choice goes through the privacy gate, so a config that
-    /// picks a cloud provider while privacy is on is rejected, not silently obeyed.
-    pub fn apply_config(&mut self, cfg: &Config) -> Result<()> {
-        self.set_privacy(cfg.privacy);
-        for (stage, provider) in &cfg.providers {
-            self.select_provider(stage, provider)
-                .map_err(|e| format!("config: {stage} = {provider}: {e}"))?;
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Problems found while loading: unreadable meetings (skipped) and bad transcript lines.
+    pub fn load_errors(&self) -> &[String] {
+        &self.errors
+    }
+
+    /// Re-reads every meeting folder (picking up edits made outside the app) and rebuilds the
+    /// index from scratch.
+    pub fn reindex(&mut self) -> Result<()> {
+        let mut entries: Vec<Entry> = vec![];
+        let mut errors = vec![];
+        let dirs = std::fs::read_dir(&self.root).map_err(|e| e.to_string())?;
+        let mut dirs: Vec<PathBuf> = dirs
+            .filter_map(|d| d.ok().map(|d| d.path()))
+            .filter(|p| p.join(files::MEETING).is_file())
+            .filter(|p| !p.file_name().unwrap().to_string_lossy().starts_with('.'))
+            .collect();
+        dirs.sort();
+        for dir in dirs {
+            match files::read(&dir) {
+                Ok((e, errs)) if entries.iter().any(|x| x.meeting.id == e.meeting.id) => {
+                    errors.extend(errs);
+                    errors.push(format!(
+                        "{}: duplicate meeting id {}, skipped",
+                        dir.display(),
+                        e.meeting.id
+                    ));
+                }
+                Ok((e, errs)) => {
+                    errors.extend(errs);
+                    entries.push(e);
+                }
+                Err(err) => errors.push(format!("{}: {err}", dir.join(files::MEETING).display())),
+            }
         }
+        entries.sort_by_key(|e| std::cmp::Reverse(timestamp(&e.created)));
+        index::rebuild(&mut self.db, &entries)?;
+        self.entries = entries;
+        self.errors = errors;
+        self.refresh_people();
         Ok(())
     }
 
-    pub fn config(&self) -> Config {
-        Config {
-            privacy: self.privacy,
-            providers: self
-                .stages
-                .iter()
-                .map(|s| (s.id.clone(), s.selected.clone()))
-                .collect(),
-        }
-    }
+    // --- Reads ---
 
     pub fn list_meetings(&self) -> Vec<MeetingSummary> {
-        self.meetings
+        self.entries
             .iter()
-            .map(|m| MeetingSummary {
-                id: m.id.clone(),
-                title: m.title.clone(),
-                client: m.client.clone(),
-                when: m.when.clone(),
+            .map(|e| {
+                let (when, _) = when_labels(&e.created);
+                MeetingSummary {
+                    id: e.meeting.id.clone(),
+                    title: e.meeting.title.clone(),
+                    client: e.meeting.client.clone(),
+                    when,
+                }
             })
             .collect()
-    }
-
-    fn meeting_mut(&mut self, id: &str) -> Result<&mut Meeting> {
-        self.meetings
-            .iter_mut()
-            .find(|m| m.id == id)
-            .ok_or(format!("no meeting {id}"))
     }
 
     pub fn meeting(&self, id: &str) -> Result<Meeting> {
-        self.meetings
-            .iter()
-            .find(|m| m.id == id)
-            .cloned()
-            .ok_or(format!("no meeting {id}"))
+        Ok(labeled(&self.entries[self.idx(id)?]))
     }
 
-    /// Keyword search over titles, clients and transcript text.
+    /// Every action item, newest meeting first.
+    pub fn action_items(&self) -> Vec<ActionItem> {
+        self.entries.iter().flat_map(|e| e.items.clone()).collect()
+    }
+
+    /// Every speaker seen in any meeting (newest copy wins).
+    pub fn people(&self) -> &[Speaker] {
+        &self.people
+    }
+
+    /// Human fixes to model answers, read back from the transcripts.
+    pub fn corrections(&self) -> Vec<Correction> {
+        let segs = self.entries.iter().flat_map(|e| &e.meeting.segments);
+        segs.flat_map(|s| {
+            s.answers
+                .iter()
+                .filter(|a| a.source == AnswerSource::User)
+                .map(|a| Correction {
+                    segment_id: s.id.clone(),
+                    answer_id: a.id.clone(),
+                    value: a.answer,
+                })
+        })
+        .collect()
+    }
+
+    pub fn meeting_dir(&self, id: &str) -> Result<PathBuf> {
+        Ok(self.entries[self.idx(id)?].dir.clone())
+    }
+
+    pub fn audio_path(&self, id: &str) -> Result<Option<PathBuf>> {
+        let e = &self.entries[self.idx(id)?];
+        Ok(e.audio.as_ref().map(|a| e.dir.join(a)))
+    }
+
+    /// Full-text search over titles, clients, notes and transcripts (FTS5, prefix match on
+    /// every word). Meetings come back newest first; an empty query returns all of them.
     pub fn search(&self, query: &str) -> Vec<MeetingSummary> {
-        let q = query.to_lowercase();
-        let ids: Vec<&str> = self
-            .meetings
-            .iter()
-            .filter(|m| {
-                m.title.to_lowercase().contains(&q)
-                    || m.client.to_lowercase().contains(&q)
-                    || m.segments
-                        .iter()
-                        .any(|s| s.text.to_lowercase().contains(&q))
-            })
-            .map(|m| m.id.as_str())
-            .collect();
+        if query.trim().is_empty() {
+            return self.list_meetings();
+        }
+        let ids = index::meeting_ids(&self.db, query).unwrap_or_default();
         self.list_meetings()
             .into_iter()
-            .filter(|m| ids.contains(&m.id.as_str()))
+            .filter(|m| ids.contains(&m.id))
             .collect()
     }
 
-    pub fn toggle_action_item(&mut self, id: &str) -> Result<ActionItem> {
-        let item = self
-            .action_items
+    /// The transcript moments matching `query`, best first.
+    pub fn search_hits(&self, query: &str) -> Vec<Hit> {
+        if query.trim().is_empty() {
+            return vec![];
+        }
+        index::hits(&self.db, query).unwrap_or_default()
+    }
+
+    // --- Writes ---
+
+    /// Adds a whole meeting (import, demo seed). `created` is RFC 3339.
+    pub fn add_meeting(
+        &mut self,
+        meeting: Meeting,
+        created: &str,
+        items: Vec<ActionItem>,
+    ) -> Result<Meeting> {
+        if self.idx(&meeting.id).is_ok() {
+            return Err(format!("meeting {} already exists", meeting.id));
+        }
+        timestamp(created).ok_or(format!("bad created time {created}"))?;
+        let dir = self.free_dir(created, &meeting.title, None);
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        let mut e = Entry {
+            meeting,
+            created: created.into(),
+            audio: None,
+            items,
+            dir,
+        };
+        files::normalize(&mut e);
+        files::write_transcript(&e)?;
+        files::write_meeting(&e)?;
+        index::reindex_meeting(&mut self.db, &e)?;
+        let t = timestamp(created);
+        let at = self
+            .entries
+            .iter()
+            .position(|x| timestamp(&x.created) < t)
+            .unwrap_or(self.entries.len());
+        self.entries.insert(at, e);
+        self.refresh_people();
+        Ok(labeled(&self.entries[at]))
+    }
+
+    /// Creates the folder for a meeting that is starting now.
+    pub fn start_meeting(&mut self, id: &str) -> Result<Meeting> {
+        let m = Meeting {
+            id: id.into(),
+            title: "New meeting".into(),
+            client: "Unsorted".into(),
+            when: String::new(),
+            date_label: String::new(),
+            duration_min: 0,
+            language: "English".into(),
+            sample: false,
+            speakers: vec![],
+            segments: vec![],
+            answers: None,
+            notes: Note {
+                raw: vec![],
+                enhanced: vec![],
+                enhanced_by: String::new(),
+            },
+            summary: None,
+        };
+        let now = jiff::Zoned::now()
+            .strftime("%Y-%m-%dT%H:%M:%S%:z")
+            .to_string();
+        self.add_meeting(m, &now, vec![])
+    }
+
+    /// Appends one line to `transcript.jsonl`. `meeting.md` is only rewritten the first time a
+    /// speaker shows up in this meeting. Unknown speaker ids become a new person.
+    pub fn push_segment(&mut self, meeting_id: &str, seg: Segment) -> Result<Speaker> {
+        let i = self.idx(meeting_id)?;
+        let speaker = self
+            .people
+            .iter()
+            .find(|p| p.id == seg.speaker_id)
+            .cloned()
+            .unwrap_or_else(|| new_speaker(&seg.speaker_id));
+        files::append_segment(&self.entries[i].dir, &seg)?;
+        index::insert_segment(&self.db, meeting_id, &seg)?;
+        self.entries[i].meeting.segments.push(seg);
+        if !self.entries[i]
+            .meeting
+            .speakers
+            .iter()
+            .any(|s| s.id == speaker.id)
+        {
+            self.entries[i].meeting.speakers.push(speaker.clone());
+            self.refresh_people();
+            self.save(i, false)?;
+        }
+        Ok(speaker)
+    }
+
+    /// Replaces a segment (e.g. when its classification lands). Rewrites the transcript.
+    pub fn update_segment(&mut self, meeting_id: &str, seg: Segment) -> Result<()> {
+        let i = self.idx(meeting_id)?;
+        let s = self.entries[i]
+            .meeting
+            .segments
             .iter_mut()
-            .find(|a| a.id == id)
+            .find(|s| s.id == seg.id)
+            .ok_or("no segment")?;
+        *s = seg;
+        self.save(i, true)
+    }
+
+    /// Fix a word in the transcript (NGR-143).
+    pub fn edit_segment_text(
+        &mut self,
+        meeting_id: &str,
+        segment_id: &str,
+        text: &str,
+    ) -> Result<Segment> {
+        let i = self.idx(meeting_id)?;
+        let s = self.entries[i]
+            .meeting
+            .segments
+            .iter_mut()
+            .find(|s| s.id == segment_id)
+            .ok_or("no segment")?;
+        s.text = text.into();
+        let s = s.clone();
+        self.save(i, true)?;
+        Ok(s)
+    }
+
+    /// Records the meeting length once recording stops. The summary comes from `set_summary`.
+    pub fn finish_meeting(&mut self, meeting_id: &str, elapsed_ms: u32) -> Result<Meeting> {
+        let i = self.idx(meeting_id)?;
+        self.entries[i].meeting.duration_min = (elapsed_ms / 60_000).max(1);
+        self.save(i, false)?;
+        Ok(labeled(&self.entries[i]))
+    }
+
+    /// Renames the meeting and, best effort, its folder (kept if the rename fails, e.g. a file
+    /// is open on Windows).
+    pub fn set_title(&mut self, meeting_id: &str, title: &str) -> Result<Meeting> {
+        let i = self.idx(meeting_id)?;
+        self.entries[i].meeting.title = title.into();
+        let e = &self.entries[i];
+        let to = self.free_dir(&e.created, title, Some(&e.dir));
+        if to != e.dir && std::fs::rename(&e.dir, &to).is_ok() {
+            self.entries[i].dir = to;
+        }
+        self.save(i, false)?;
+        Ok(labeled(&self.entries[i]))
+    }
+
+    pub fn set_notes(&mut self, meeting_id: &str, raw: Vec<String>) -> Result<()> {
+        let i = self.idx(meeting_id)?;
+        self.entries[i].meeting.notes.raw = raw;
+        self.save(i, false)
+    }
+
+    /// Stores a summary and its action items. Items that keep their id keep their done state.
+    pub fn set_summary(
+        &mut self,
+        meeting_id: &str,
+        summary: Summary,
+        mut items: Vec<ActionItem>,
+    ) -> Result<()> {
+        let i = self.idx(meeting_id)?;
+        let e = &mut self.entries[i];
+        for a in &mut items {
+            if let Some(old) = e.items.iter().find(|o| o.id == a.id) {
+                a.done = old.done;
+            }
+        }
+        e.meeting.summary = Some(summary);
+        e.items = items;
+        self.save(i, false)
+    }
+
+    pub fn set_enhanced_notes(
+        &mut self,
+        meeting_id: &str,
+        notes: Vec<EnhancedNote>,
+        by: &str,
+    ) -> Result<()> {
+        let i = self.idx(meeting_id)?;
+        let n = &mut self.entries[i].meeting.notes;
+        n.enhanced = notes;
+        n.enhanced_by = by.into();
+        self.save(i, false)
+    }
+
+    /// Meeting-level answers (type, client, priority, follow-up). The client answer becomes
+    /// the meeting's client.
+    pub fn set_answers(&mut self, meeting_id: &str, answers: MeetingAnswers) -> Result<()> {
+        let i = self.idx(meeting_id)?;
+        let m = &mut self.entries[i].meeting;
+        m.client.clone_from(&answers.client.value);
+        m.answers = Some(answers);
+        self.save(i, false)
+    }
+
+    /// Records the recording's file name (inside `meeting_dir`).
+    pub fn set_audio(&mut self, meeting_id: &str, file_name: &str) -> Result<()> {
+        let i = self.idx(meeting_id)?;
+        self.entries[i].audio = Some(file_name.into());
+        self.save(i, false)
+    }
+
+    pub fn toggle_action_item(&mut self, id: &str) -> Result<ActionItem> {
+        let (i, j) = self
+            .entries
+            .iter()
+            .enumerate()
+            .find_map(|(i, e)| e.items.iter().position(|a| a.id == id).map(|j| (i, j)))
             .ok_or("no action item")?;
-        item.done = !item.done;
-        Ok(item.clone())
+        let a = &mut self.entries[i].items[j];
+        a.done = !a.done;
+        let a = a.clone();
+        self.save(i, false)?;
+        Ok(a)
     }
 
     /// Fix a model answer. The fix is kept as a labelled example and retags the segment.
+    #[allow(clippy::needless_pass_by_value)] // takes the correction as the UI sends it
     pub fn correct(&mut self, c: Correction) -> Result<Segment> {
-        let meeting = self
-            .meetings
-            .iter_mut()
-            .find(|m| m.segments.iter().any(|s| s.id == c.segment_id))
+        let i = self
+            .entries
+            .iter()
+            .position(|e| e.meeting.segments.iter().any(|s| s.id == c.segment_id))
             .ok_or("no segment")?;
-        let seg = meeting
+        let e = &mut self.entries[i];
+        let seg = e
+            .meeting
             .segments
             .iter_mut()
             .find(|s| s.id == c.segment_id)
@@ -161,26 +453,25 @@ impl Store {
         }
         let seg = seg.clone();
         if c.answer_id == "action"
-            && let Some(a) = self
-                .action_items
-                .iter_mut()
-                .find(|a| a.at_ms == Some(seg.start_ms) && a.meeting_id == meeting.id)
+            && let Some(a) = e.items.iter_mut().find(|a| a.at_ms == Some(seg.start_ms))
         {
             a.needs_review = false;
         }
-        self.corrections.push(c);
+        self.save(i, true)?;
         Ok(seg)
     }
 
     pub fn confirm_client(&mut self, meeting_id: &str, client: &str) -> Result<Meeting> {
-        let m = self.meeting_mut(meeting_id)?;
+        let i = self.idx(meeting_id)?;
+        let m = &mut self.entries[i].meeting;
         if let Some(a) = m.answers.as_mut() {
             a.client.value = client.into();
             a.client.confirmed = true;
             a.client.probability = 1.0;
         }
         m.client = client.into();
-        Ok(m.clone())
+        self.save(i, false)?;
+        Ok(labeled(&self.entries[i]))
     }
 
     /// Name an unknown voice everywhere it appears.
@@ -200,7 +491,14 @@ impl Store {
         let old = person.name.clone();
         rename(person);
         let person = person.clone();
-        for m in &mut self.meetings {
+        for i in 0..self.entries.len() {
+            let e = &mut self.entries[i];
+            let touched = e.meeting.speakers.iter().any(|s| s.id == speaker_id)
+                || e.items.iter().any(|a| a.owner == old);
+            if !touched {
+                continue;
+            }
+            let m = &mut e.meeting;
             m.speakers
                 .iter_mut()
                 .filter(|s| s.id == speaker_id)
@@ -215,187 +513,113 @@ impl Store {
                     }
                 }
             }
+            for a in e.items.iter_mut().filter(|a| a.owner == old) {
+                a.owner = name.into();
+            }
+            self.save(i, true)?;
         }
-        for a in self.action_items.iter_mut().filter(|a| a.owner == old) {
-            a.owner = name.into();
-        }
+        self.refresh_people();
         Ok(person)
     }
 
-    /// Turning privacy on moves every stage back to a local provider.
-    pub fn set_privacy(&mut self, on: bool) -> Vec<Stage> {
-        self.privacy = on;
-        if on {
-            for st in &mut self.stages {
-                let cloud = st
-                    .options
-                    .iter()
-                    .any(|o| o.id == st.selected && o.locality == Locality::Cloud);
-                if cloud {
-                    st.selected = st
-                        .options
-                        .iter()
-                        .find(|o| o.locality == Locality::Local)
-                        .unwrap()
-                        .id
-                        .clone();
-                }
+    // --- Internals ---
+
+    /// People are whoever appears in a meeting, newest meeting first.
+    /// ponytail: no separate people registry yet; voiceprints get one with diarization (M2).
+    fn refresh_people(&mut self) {
+        self.people.clear();
+        for sp in self.entries.iter().flat_map(|e| &e.meeting.speakers) {
+            if !self.people.iter().any(|p| p.id == sp.id) {
+                self.people.push(sp.clone());
             }
         }
-        self.stages.clone()
     }
 
-    pub fn select_provider(&mut self, stage_id: &str, option_id: &str) -> Result<Stage> {
-        let privacy = self.privacy;
-        let st = self
-            .stages
-            .iter_mut()
-            .find(|s| s.id == stage_id)
-            .ok_or("no stage")?;
-        let opt = st
-            .options
+    fn idx(&self, id: &str) -> Result<usize> {
+        self.entries
             .iter()
-            .find(|o| o.id == option_id)
-            .ok_or("no provider")?;
-        check_privacy(opt, privacy).map_err(|e| e.to_string())?;
-        st.selected = option_id.into();
-        Ok(st.clone())
+            .position(|e| e.meeting.id == id)
+            .ok_or(format!("no meeting {id}"))
     }
 
-    pub fn llm_name(&self) -> String {
-        let st = self.stages.iter().find(|s| s.id == "llm").unwrap();
-        st.options
-            .iter()
-            .find(|o| o.id == st.selected)
-            .unwrap()
-            .name
-            .clone()
+    /// Writes `meeting.md` (and the whole transcript if asked) and reindexes the meeting.
+    fn save(&mut self, i: usize, transcript: bool) -> Result<()> {
+        let e = &mut self.entries[i];
+        files::normalize(e);
+        if transcript {
+            files::write_transcript(e)?;
+        }
+        files::write_meeting(e)?;
+        index::reindex_meeting(&mut self.db, e)
     }
 
-    pub fn log_agent_call(&mut self, call: AgentCall) {
-        self.mcp.log.insert(0, call);
-        self.mcp.log.truncate(6);
-    }
-
-    // --- Live recording (fake capture pipeline) ---
-
-    pub fn start_meeting(&mut self, id: &str) -> Meeting {
-        let m = Meeting {
-            id: id.into(),
-            title: "New meeting".into(),
-            client: "Unsorted".into(),
-            when: "now".into(),
-            date_label: "Thu 5 Nov 2026 · now".into(),
-            duration_min: 0,
-            language: "English".into(),
-            sample: true,
-            speakers: vec![],
-            segments: vec![],
-            answers: None,
-            notes: Note {
-                raw: vec![],
-                enhanced: vec![],
-                enhanced_by: String::new(),
+    /// `<root>/<YYYY-MM-DD-HHMM>-<slug>`, suffixed `-2`, `-3`… if taken (`current` is free).
+    fn free_dir(&self, created: &str, title: &str, current: Option<&Path>) -> PathBuf {
+        let stamp = timestamp(created).map_or_else(
+            || "undated".into(),
+            |t| {
+                t.to_zoned(jiff::tz::TimeZone::system())
+                    .strftime("%Y-%m-%d-%H%M")
+                    .to_string()
             },
-            summary: None,
-        };
-        self.meetings.insert(0, m.clone());
-        m
-    }
-
-    pub fn push_segment(&mut self, meeting_id: &str, seg: Segment) -> Result<Speaker> {
-        let speaker = self
-            .people
-            .iter()
-            .find(|p| p.id == seg.speaker_id)
-            .cloned()
-            .ok_or("no speaker")?;
-        let m = self.meeting_mut(meeting_id)?;
-        if !m.speakers.iter().any(|s| s.id == speaker.id) {
-            m.speakers.push(speaker.clone());
-        }
-        m.segments.push(seg);
-        Ok(speaker)
-    }
-
-    pub fn set_notes(&mut self, meeting_id: &str, raw: Vec<String>) -> Result<()> {
-        self.meeting_mut(meeting_id)?.notes.raw = raw;
-        Ok(())
-    }
-
-    /// Stop-and-process: name the meeting, answer meeting-level questions, write summary and notes.
-    pub fn finish_meeting(&mut self, meeting_id: &str, elapsed_ms: u32) -> Result<Meeting> {
-        let llm = self.llm_name();
-        let m = self.meeting_mut(meeting_id)?;
-        let id = m.id.clone();
-        m.title = "Evaluation dashboard follow-up".into();
-        m.client = "Lumenix".into();
-        m.when = "just now".into();
-        m.duration_min = (elapsed_ms / 60_000).max(1);
-        let tagged = |k: TagKind| {
-            m.segments
-                .iter()
-                .filter(move |s| s.tags.iter().any(|t| t.kind == k))
-        };
-        let enhanced: Vec<EnhancedNote> = m
-            .segments
-            .iter()
-            .filter_map(|s| {
-                s.tags.first().map(|t| EnhancedNote {
-                    kind: t.kind,
-                    text: s.text.clone(),
-                    at_ms: s.start_ms,
-                })
+        );
+        let base = format!("{stamp}-{}", files::slug(title));
+        (1..10_000)
+            .map(|n| {
+                let name = if n == 1 {
+                    base.clone()
+                } else {
+                    format!("{base}-{n}")
+                };
+                self.root.join(name)
             })
-            .collect();
-        let decisions = tagged(TagKind::Decision)
-            .map(|s| mirona_core::Decision {
-                text: s.text.clone(),
-                at_ms: s.start_ms,
-            })
-            .collect();
-        let open = tagged(TagKind::OpenQuestion)
-            .map(|s| mirona_core::Decision {
-                text: s.text.clone(),
-                at_ms: s.start_ms,
-            })
-            .collect();
-        let actions: Vec<Segment> = tagged(TagKind::Action).cloned().collect();
-        m.notes.enhanced = enhanced;
-        m.notes.enhanced_by.clone_from(&llm);
-        m.summary = Some(Summary {
-            template: "Client call".into(),
-            overview: "Follow-up on the Lumenix evaluation dashboard. The board demo is set; one ownership question is open.".into(),
-            decisions,
-            open_questions: open,
-            written_by: llm,
-            quality: format!("Quality check: the summary covers {0} of {0} confirmed action items (score 1.0)", actions.len()),
-        });
-        let mut ans = sample::meetings()[0].answers.clone().unwrap();
-        ans.client = sample::meetings()[3].answers.clone().unwrap().client;
-        ans.priority = 3.2;
-        ans.follow_up_draft = "Hi Keiko,\n\nThanks for the call. The evaluation dashboard demo is set for the board on the 20th, and I'll send a short demo script by Tuesday.\n\nStill open: who owns the data export for legal.\n\nAryan".into();
-        m.answers = Some(ans);
-        let title = m.title.clone();
-        for (i, s) in actions.iter().enumerate() {
-            self.action_items.insert(
-                0,
-                ActionItem {
-                    id: format!("{id}-a{i}"),
-                    meeting_id: id.clone(),
-                    meeting_title: title.clone(),
-                    at_ms: Some(s.start_ms),
-                    text: "Prepare a short demo script".into(),
-                    owner: "Aryan".into(),
-                    due: Some("Tue".into()),
-                    client: "Lumenix".into(),
-                    done: false,
-                    needs_review: false,
-                },
-            );
-        }
-        let m = self.meeting(&id)?;
-        Ok(m)
+            .find(|p| Some(p.as_path()) == current || !p.exists())
+            .expect("fewer than 10k meetings per minute and title")
+    }
+}
+
+fn timestamp(created: &str) -> Option<jiff::Timestamp> {
+    created.parse().ok()
+}
+
+/// ("today" | "yesterday" | "Tue" | "last week" | "5 Nov", "Thu 5 Nov 2026 · 09:30").
+fn when_labels(created: &str) -> (String, String) {
+    let Some(t) = timestamp(created) else {
+        return (created.into(), created.into());
+    };
+    let tz = jiff::tz::TimeZone::system();
+    let z = t.to_zoned(tz.clone());
+    let today = jiff::Zoned::now().with_time_zone(tz).date();
+    let days = z.date().until(today).map_or(0, |s| s.get_days());
+    let when = match days {
+        0 => "today".into(),
+        1 => "yesterday".into(),
+        2..=6 => z.strftime("%a").to_string(),
+        7..=13 => "last week".into(),
+        _ => z.strftime("%-d %b").to_string(),
+    };
+    (when, z.strftime("%a %-d %b %Y · %H:%M").to_string())
+}
+
+fn labeled(e: &Entry) -> Meeting {
+    let mut m = e.meeting.clone();
+    (m.when, m.date_label) = when_labels(&e.created);
+    m
+}
+
+fn new_speaker(id: &str) -> Speaker {
+    let mut c = id.chars();
+    let name: String = c
+        .next()
+        .map_or_else(|| "Unknown".into(), |f| f.to_uppercase().chain(c).collect());
+    Speaker {
+        id: id.into(),
+        initial: name.chars().next().unwrap_or('?').to_string(),
+        name,
+        tint: Tint::Indigo,
+        subtitle: String::new(),
+        voiceprint: None,
+        suggestion: None,
     }
 }
 
@@ -424,67 +648,4 @@ pub fn new_id() -> Id {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn privacy_and_corrections() {
-        let mut s = Store::sample();
-        assert!(
-            s.select_provider("llm", "anthropic").is_err(),
-            "cloud blocked in privacy mode"
-        );
-        s.set_privacy(false);
-        s.select_provider("llm", "anthropic").unwrap();
-        s.set_privacy(true);
-        assert_eq!(s.stages[3].selected, "ollama", "privacy on resets to local");
-
-        let seg = s
-            .correct(Correction {
-                segment_id: "c9".into(),
-                answer_id: "action".into(),
-                value: true,
-            })
-            .unwrap();
-        assert!(seg.tags.iter().any(|t| t.kind == TagKind::Action));
-        assert!(!seg.tags.iter().any(|t| t.kind == TagKind::Review));
-        assert!(!s.action_items[2].needs_review);
-
-        s.enroll_speaker("s3", "Inés").unwrap();
-        assert_eq!(s.action_items[0].owner, "Inés");
-        assert_eq!(s.search("insurer").len(), 1);
-    }
-
-    #[test]
-    fn config_picks_providers_through_the_privacy_gate() {
-        let mut s = Store::sample();
-        let sel = |s: &Store, id: &str| {
-            s.stages
-                .iter()
-                .find(|x| x.id == id)
-                .unwrap()
-                .selected
-                .clone()
-        };
-        assert_eq!(
-            sel(&s, "classification"),
-            "local-llm",
-            "privacy on by default"
-        );
-
-        let mut cfg = Config::default();
-        cfg.providers.insert("classification".into(), "jev".into());
-        assert!(
-            s.apply_config(&cfg).is_err(),
-            "cloud refused while privacy is on"
-        );
-
-        cfg.privacy = false;
-        s.apply_config(&cfg).unwrap();
-        assert_eq!(sel(&s, "classification"), "jev");
-        assert_eq!(s.config().providers["classification"], "jev");
-
-        cfg.providers.insert("stt".into(), "nope".into());
-        assert!(s.apply_config(&cfg).is_err(), "unknown provider");
-    }
-}
+mod tests;

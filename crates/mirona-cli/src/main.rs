@@ -33,7 +33,7 @@ fn main() {
             Err(e) => eprintln!("{e}"),
         },
         Some("actions") => {
-            for a in &store.action_items {
+            for a in &store.action_items() {
                 let done = if a.done { "x" } else { " " };
                 println!(
                     "[{done}] {} · {} · {}",
