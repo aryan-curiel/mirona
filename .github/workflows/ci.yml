@@ -19,6 +19,11 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+        with:
+          # sherpa-onnx's build script downloads its native libs here; cache them with the
+          # build outputs, or a restored cache skips the script and linking fails.
+          cache-directories: target/sherpa-onnx-prebuilt
+          prefix-key: v1-sherpa
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -56,6 +61,11 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          # sherpa-onnx's build script downloads its native libs here; cache them with the
+          # build outputs, or a restored cache skips the script and linking fails.
+          cache-directories: target/sherpa-onnx-prebuilt
+          prefix-key: v1-sherpa
       - run: cargo clippy -p mirona-providers --all-targets --all-features
       - run: cargo test -p mirona-providers --all-features
 
