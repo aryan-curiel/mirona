@@ -142,6 +142,14 @@ function Field({ label, value, placeholder, onSave, type = "text" }: { label: st
   );
 }
 
+/** Models Mirona runs, with the credit their licenses ask for (NOTICE has the full text). */
+const CREDITS: [string, string, string][] = [
+  ["Parakeet TDT 0.6B v2", "NVIDIA · ONNX export by sherpa-onnx", "CC-BY-4.0"],
+  ["Whisper", "OpenAI · ggml weights by whisper.cpp", "MIT"],
+  ["Silero VAD", "Silero Team", "MIT"],
+  ["Speaker models (M2)", "pyannote, WeSpeaker · packaged by speakrs", "MIT · CC-BY-4.0"],
+];
+
 function ApiKey({ provider, label, saved }: { provider: string; label: string; saved: boolean }) {
   const refresh = useStore((s) => s.refreshStatus);
   const flash = useStore((s) => s.flash);
@@ -300,6 +308,22 @@ export function ModelsView() {
         <CopyLine text={`claude mcp add mirona -- ${status.cli.includes(" ") ? `"${status.cli}"` : status.cli} mcp`} />
         <p className="mt-4 text-[14px] text-ink-3">Claude Desktop (claude_desktop_config.json):</p>
         <CopyLine text={desktop} />
+      </section>
+
+      <section className="mi-card mt-5 p-6" aria-labelledby="credits">
+        <h2 id="credits" className="text-[16px] font-semibold">
+          Models and credits
+        </h2>
+        <p className="mt-1 text-[14px] text-ink-3">Mirona runs these open models on your Mac. Full notices are in the NOTICE file that ships with the app.</p>
+        <ul className="mt-3 flex flex-col gap-2 text-[14px]">
+          {CREDITS.map(([name, by, license]) => (
+            <li key={name} className="flex flex-wrap gap-x-2">
+              <span className="font-medium">{name}</span>
+              <span className="text-ink-3">{by}</span>
+              <span className="mi-chip mi-chip--neutral">{license}</span>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <p className="mt-5 text-[13px] text-muted">

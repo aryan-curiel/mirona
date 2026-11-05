@@ -1,0 +1,50 @@
+Mirona
+Copyright 2026 Aryan Curiel Pardo (Nagare Studio)
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Mirona runs third-party models and uses third-party code. Their notices follow. Models are
+downloaded on first use (scripts/fetch-models.sh) unless noted; none are modified.
+
+MODELS
+------
+
+Parakeet TDT 0.6B v2 (speech-to-text, the default)
+  NVIDIA. https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2
+  int8 ONNX export by the sherpa-onnx project (k2-fsa).
+  License: Creative Commons Attribution 4.0 International (CC-BY-4.0)
+  https://creativecommons.org/licenses/by/4.0/
+
+Whisper (speech-to-text, the alternative): ggml weights of OpenAI Whisper base.en / small.en
+  OpenAI. https://github.com/openai/whisper (weights converted by whisper.cpp)
+  License: MIT
+
+Silero VAD (voice activity detection)
+  Silero Team. https://github.com/snakers4/silero-vad
+  License: MIT
+
+Speaker diarization models, through speakrs (used once diarization ships, milestone 2)
+  pyannote segmentation: pyannote.audio, Hervé Bredin et al. License: MIT
+  WeSpeaker speaker embedding and the pyannote "community-1" clustering parameters.
+  License: CC-BY-4.0
+  Conversions packaged by the speakrs project (avencera). https://github.com/avencera/speakrs
+
+Hosted and local language models are not distributed with Mirona: Jev (TypeSafe), Ollama models,
+OpenAI-compatible endpoints and Anthropic are used under each user's own terms and keys.
+
+CODE
+----
+
+sherpa-onnx (k2-fsa), Apache-2.0. https://github.com/k2-fsa/sherpa-onnx
+ONNX Runtime (Microsoft), MIT. https://github.com/microsoft/onnxruntime
+whisper.cpp (ggml-org), MIT, through whisper-rs (Unlicense)
+speakrs (avencera), Apache-2.0
+cpal, Apache-2.0 / MIT
+Tauri, Apache-2.0 / MIT
+The full dependency list with licenses: `cargo about` / `pnpm licenses list`.
+
+TEST DATA (repository only, not in the app)
+---------
+
+LibriSpeech ASR corpus, Panayotov, Chen, Povey, Khudanpur. https://www.openslr.org/12, CC-BY-4.0
+AMI Meeting Corpus and VoxConverse (spikes only), CC-BY-4.0

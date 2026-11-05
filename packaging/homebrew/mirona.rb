@@ -6,9 +6,9 @@
 # The build downloads sherpa-onnx's prebuilt static libraries from GitHub (sherpa-onnx-sys).
 class Mirona < Formula
   desc "Local-first meeting memory: record, transcribe, summarize, MCP server"
-  homepage "https://github.com/nagare-studio/mirona"
+  homepage "https://github.com/aryan-curiel/mirona"
   license "Apache-2.0"
-  head "https://github.com/nagare-studio/mirona.git", branch: "main"
+  head "https://github.com/aryan-curiel/mirona.git", branch: "main"
 
   depends_on "rust" => :build
   depends_on :macos # live capture is macOS-only in M1

@@ -16,7 +16,7 @@
 | Embeddings (milestone 3) | Not chosen yet. Candidates: bge-small-en-v1.5 (MIT), all-MiniLM-L6-v2 (Apache-2.0) | | Small enough to bundle | |
 | VAD (NGR-138) | Silero VAD | MIT | Allowed (~2 MB) | |
 
-**Rule:** large models are downloaded on first run with checksums. Small models with permissive licenses may be bundled. Every CC-BY model needs credit on an "About → Models" screen and in `NOTICE`.
+**Rule:** large models are downloaded on first run with checksums. Small models with permissive licenses may be bundled. Every CC-BY model is credited in `NOTICE` and on the Models and credits section of the settings screen.
 
 ## Code
 
@@ -34,4 +34,5 @@
 
 - **Trademark:** a web search found no "Mirona" registration for software. Similar marks exist (MIRA, MIRIXA in class 42). This isn't a legal search; check USPTO, EUIPO and WIPO before launch.
 - **Domains:** `mirona.com` (since 2000) and `mirona.ai` (since 2025) are taken. `mirona.app`, `mirona.dev` and `getmirona.com` were unregistered when checked.
-- **GitHub:** the `nagare-studio` organization doesn't exist yet. The repo lives at `aryan-curiel/mirona` (private) until it's moved.
+- **GitHub:** the repo is `aryan-curiel/mirona` (private). Package names stay under Nagare Studio: app id `com.nagare.mirona`, Homebrew tap `nagare-studio/tap`.
+- **Credits:** `NOTICE` (shipped inside the app bundle) and Settings → Models and MCP → Models and credits.
