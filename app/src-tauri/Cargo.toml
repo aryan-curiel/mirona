@@ -18,9 +18,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api"] }
+tauri = "2"
 mirona-core.workspace = true
 mirona-providers.workspace = true
 mirona-store.workspace = true
 serde.workspace = true
 
+
+# Vibrancy needs the private API; only tauri.macos.conf.json allows it, so only macOS enables it.
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri = { version = "2", features = ["macos-private-api"] }
