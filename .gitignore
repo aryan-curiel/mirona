@@ -7,3 +7,5 @@ app/src-tauri/gen/
 spikes/**/models/
 spikes/**/audio/
 spikes/**/target/
+__pycache__/
+.venv/

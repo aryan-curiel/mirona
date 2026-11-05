@@ -1,0 +1,15 @@
+[package]
+name = "speakrs-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Standalone: not part of the Mirona root workspace.
+[workspace]
+
+[dependencies]
+speakrs = { version = "=0.7.0", features = ["coreml", "cpu"] }
+hound = "3.5"
+
+[profile.release]
+debug = false

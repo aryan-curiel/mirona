@@ -1,0 +1,3059 @@
+{
+ "meta": {
+  "endpoint": "https://api.typesafe.ai/v1/systemone",
+  "model_requested": "jev-latest",
+  "run_at": "2026-11-05T19:55:04"
+ },
+ "rows": [
+  {
+   "id": "s01",
+   "latency_ms": 281.75862499847426,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.82,
+     "conf": 0.82
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "standup": 1.0,
+      "client_call": 0.0,
+      "one_on_one": 0.0,
+      "planning": 0.0,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1021,
+    "output_tokens": 218
+   }
+  },
+  {
+   "id": "s02",
+   "latency_ms": 164.5619999981136,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "open_question": {
+     "answer": "yes",
+     "p_yes": 0.96,
+     "conf": 0.96
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.09,
+     "conf": 0.91
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 0.93,
+     "jev_confidence": 0.91,
+     "probabilities": {
+      "standup": 0.93,
+      "client_call": 0.0,
+      "one_on_one": 0.0,
+      "planning": 0.0,
+      "other": 0.07
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1021,
+    "output_tokens": 218
+   }
+  },
+  {
+   "id": "s03",
+   "latency_ms": 234.34720899967942,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.9,
+     "conf": 0.9
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.65,
+     "conf": 0.65
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 0.95,
+     "jev_confidence": 0.94,
+     "probabilities": {
+      "standup": 0.95,
+      "client_call": 0.02,
+      "one_on_one": 0.03,
+      "planning": 0.0,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "bluepeak_retail",
+     "conf": 0.98,
+     "jev_confidence": 0.98,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.98,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 0.02
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1014,
+    "output_tokens": 223
+   }
+  },
+  {
+   "id": "s04",
+   "latency_ms": 189.78058300126577,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.07,
+     "conf": 0.9299999999999999
+    },
+    "open_question": {
+     "answer": "yes",
+     "p_yes": 0.82,
+     "conf": 0.82
+    },
+    "small_talk": {
+     "answer": "yes",
+     "p_yes": 0.9,
+     "conf": 0.9
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.58,
+     "jev_confidence": 0.47,
+     "probabilities": {
+      "standup": 0.4,
+      "client_call": 0.0,
+      "one_on_one": 0.0,
+      "planning": 0.02,
+      "other": 0.58
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1013,
+    "output_tokens": 217
+   }
+  },
+  {
+   "id": "s05",
+   "latency_ms": 178.95408299955307,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.94,
+     "conf": 0.94
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.91,
+     "conf": 0.91
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.12,
+     "conf": 0.88
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.07,
+     "conf": 0.9299999999999999
+    },
+    "sensitive": {
+     "answer": "yes",
+     "p_yes": 0.92,
+     "conf": 0.92
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.4,
+     "jev_confidence": 0.25,
+     "probabilities": {
+      "standup": 0.29,
+      "client_call": 0.0,
+      "one_on_one": 0.21,
+      "planning": 0.1,
+      "other": 0.4
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.99,
+     "jev_confidence": 0.99,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.01,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 0.99
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1038,
+    "output_tokens": 217
+   }
+  },
+  {
+   "id": "s06",
+   "latency_ms": 175.93045800094842,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.95,
+     "conf": 0.95
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 0.59,
+     "jev_confidence": 0.49,
+     "probabilities": {
+      "standup": 0.59,
+      "client_call": 0.0,
+      "one_on_one": 0.03,
+      "planning": 0.09,
+      "other": 0.29
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1014,
+    "output_tokens": 218
+   }
+  },
+  {
+   "id": "s07",
+   "latency_ms": 177.69079199933913,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.71,
+     "conf": 0.71
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "open_question": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 0.93,
+     "jev_confidence": 0.91,
+     "probabilities": {
+      "standup": 0.93,
+      "client_call": 0.0,
+      "one_on_one": 0.06,
+      "planning": 0.0,
+      "other": 0.01
+     }
+    },
+    "client": {
+     "answer": "orbital_freight",
+     "conf": 0.86,
+     "jev_confidence": 0.83,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.86,
+      "lumen_studios": 0.0,
+      "none": 0.14
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1008,
+    "output_tokens": 222
+   }
+  },
+  {
+   "id": "s08",
+   "latency_ms": 325.4647079993447,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.2,
+     "conf": 0.8
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.28,
+     "conf": 0.72
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 0.5,
+     "jev_confidence": 0.37,
+     "probabilities": {
+      "standup": 0.5,
+      "client_call": 0.0,
+      "one_on_one": 0.34,
+      "planning": 0.0,
+      "other": 0.16
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1014,
+    "output_tokens": 218
+   }
+  },
+  {
+   "id": "s09",
+   "latency_ms": 209.6014170019771,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.96,
+     "conf": 0.96
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.43,
+     "conf": 0.5700000000000001
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.1,
+     "conf": 0.9
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "standup": 1.0,
+      "client_call": 0.0,
+      "one_on_one": 0.0,
+      "planning": 0.0,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1015,
+    "output_tokens": 218
+   }
+  },
+  {
+   "id": "s10",
+   "latency_ms": 167.7674999991723,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.1,
+     "conf": 0.9
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "standup": 1.0,
+      "client_call": 0.0,
+      "one_on_one": 0.0,
+      "planning": 0.0,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "lumen_studios",
+     "conf": 0.92,
+     "jev_confidence": 0.9,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.92,
+      "none": 0.08
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1007,
+    "output_tokens": 221
+   }
+  },
+  {
+   "id": "c01",
+   "latency_ms": 179.6497499999532,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.96,
+     "conf": 0.96
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.9,
+     "conf": 0.9
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.1,
+     "conf": 0.9
+    },
+    "meeting_type": {
+     "answer": "client_call",
+     "conf": 0.65,
+     "jev_confidence": 0.56,
+     "probabilities": {
+      "standup": 0.02,
+      "client_call": 0.65,
+      "one_on_one": 0.1,
+      "planning": 0.22,
+      "other": 0.01
+     }
+    },
+    "client": {
+     "answer": "northwind_bank",
+     "conf": 0.95,
+     "jev_confidence": 0.94,
+     "probabilities": {
+      "northwind_bank": 0.95,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 0.05
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1017,
+    "output_tokens": 221
+   }
+  },
+  {
+   "id": "c02",
+   "latency_ms": 186.03512499976205,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.84,
+     "conf": 0.84
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "open_question": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "yes",
+     "p_yes": 0.52,
+     "conf": 0.52
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.79,
+     "jev_confidence": 0.74,
+     "probabilities": {
+      "standup": 0.01,
+      "client_call": 0.02,
+      "one_on_one": 0.18,
+      "planning": 0.79,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "helio_health",
+     "conf": 0.98,
+     "jev_confidence": 0.98,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.98,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 0.02
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1036,
+    "output_tokens": 221
+   }
+  },
+  {
+   "id": "c03",
+   "latency_ms": 184.72633299825247,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.17,
+     "conf": 0.83
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.98,
+     "conf": 0.98
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.82,
+     "jev_confidence": 0.77,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.15,
+      "one_on_one": 0.02,
+      "planning": 0.82,
+      "other": 0.01
+     }
+    },
+    "client": {
+     "answer": "bluepeak_retail",
+     "conf": 0.98,
+     "jev_confidence": 0.98,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.98,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 0.02
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1020,
+    "output_tokens": 224
+   }
+  },
+  {
+   "id": "c04",
+   "latency_ms": 276.43437499864376,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.31,
+     "conf": 0.69
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.94,
+     "conf": 0.94
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.12,
+     "conf": 0.88
+    },
+    "meeting_type": {
+     "answer": "client_call",
+     "conf": 0.9,
+     "jev_confidence": 0.87,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.9,
+      "one_on_one": 0.02,
+      "planning": 0.03,
+      "other": 0.05
+     }
+    },
+    "client": {
+     "answer": "orbital_freight",
+     "conf": 0.98,
+     "jev_confidence": 0.98,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.98,
+      "lumen_studios": 0.0,
+      "none": 0.02
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1020,
+    "output_tokens": 222
+   }
+  },
+  {
+   "id": "c05",
+   "latency_ms": 219.0747079985158,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.11,
+     "conf": 0.89
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.09,
+     "conf": 0.91
+    },
+    "small_talk": {
+     "answer": "yes",
+     "p_yes": 0.83,
+     "conf": 0.83
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.86,
+     "jev_confidence": 0.82,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 0.86,
+      "planning": 0.0,
+      "other": 0.14
+     }
+    },
+    "client": {
+     "answer": "lumen_studios",
+     "conf": 0.7,
+     "jev_confidence": 0.64,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.7,
+      "none": 0.3
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1017,
+    "output_tokens": 222
+   }
+  },
+  {
+   "id": "c06",
+   "latency_ms": 349.13254200000665,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.85,
+     "conf": 0.85
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "meeting_type": {
+     "answer": "client_call",
+     "conf": 0.5,
+     "jev_confidence": 0.37,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.5,
+      "one_on_one": 0.38,
+      "planning": 0.01,
+      "other": 0.11
+     }
+    },
+    "client": {
+     "answer": "northwind_bank",
+     "conf": 0.82,
+     "jev_confidence": 0.78,
+     "probabilities": {
+      "northwind_bank": 0.82,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 0.18
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1013,
+    "output_tokens": 221
+   }
+  },
+  {
+   "id": "c07",
+   "latency_ms": 324.4945419974101,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.09,
+     "conf": 0.91
+    },
+    "open_question": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.09,
+     "conf": 0.91
+    },
+    "meeting_type": {
+     "answer": "client_call",
+     "conf": 0.66,
+     "jev_confidence": 0.57,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.66,
+      "one_on_one": 0.25,
+      "planning": 0.06,
+      "other": 0.03
+     }
+    },
+    "client": {
+     "answer": "helio_health",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 1.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 0.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1020,
+    "output_tokens": 220
+   }
+  },
+  {
+   "id": "c08",
+   "latency_ms": 215.36666699830675,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "open_question": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.57,
+     "jev_confidence": 0.46,
+     "probabilities": {
+      "standup": 0.06,
+      "client_call": 0.16,
+      "one_on_one": 0.19,
+      "planning": 0.57,
+      "other": 0.02
+     }
+    },
+    "client": {
+     "answer": "bluepeak_retail",
+     "conf": 0.88,
+     "jev_confidence": 0.86,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.88,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 0.12
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1013,
+    "output_tokens": 224
+   }
+  },
+  {
+   "id": "c09",
+   "latency_ms": 190.13950000226032,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.98,
+     "conf": 0.98
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.63,
+     "jev_confidence": 0.54,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.26,
+      "one_on_one": 0.1,
+      "planning": 0.63,
+      "other": 0.01
+     }
+    },
+    "client": {
+     "answer": "orbital_freight",
+     "conf": 0.9,
+     "jev_confidence": 0.88,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.9,
+      "lumen_studios": 0.0,
+      "none": 0.1
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1010,
+    "output_tokens": 223
+   }
+  },
+  {
+   "id": "c10",
+   "latency_ms": 276.30245800173725,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.25,
+     "conf": 0.75
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.68,
+     "conf": 0.68
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.07,
+     "conf": 0.9299999999999999
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "sensitive": {
+     "answer": "yes",
+     "p_yes": 0.98,
+     "conf": 0.98
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.9,
+     "jev_confidence": 0.87,
+     "probabilities": {
+      "standup": 0.01,
+      "client_call": 0.02,
+      "one_on_one": 0.9,
+      "planning": 0.0,
+      "other": 0.07
+     }
+    },
+    "client": {
+     "answer": "lumen_studios",
+     "conf": 0.71,
+     "jev_confidence": 0.65,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.71,
+      "none": 0.29
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1032,
+    "output_tokens": 222
+   }
+  },
+  {
+   "id": "o01",
+   "latency_ms": 162.75587500058464,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.93,
+     "conf": 0.93
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.13,
+     "conf": 0.87
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.46,
+     "conf": 0.54
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "yes",
+     "p_yes": 0.96,
+     "conf": 0.96
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 1.0,
+      "planning": 0.0,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1033,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "o02",
+   "latency_ms": 203.41633300267858,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "open_question": {
+     "answer": "yes",
+     "p_yes": 0.95,
+     "conf": 0.95
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.31,
+     "conf": 0.69
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 1.0,
+      "planning": 0.0,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1015,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "o03",
+   "latency_ms": 178.92600000050152,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.09,
+     "conf": 0.91
+    },
+    "small_talk": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.81,
+     "jev_confidence": 0.76,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 0.19,
+      "planning": 0.0,
+      "other": 0.81
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1015,
+    "output_tokens": 217
+   }
+  },
+  {
+   "id": "o04",
+   "latency_ms": 201.4151250004943,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.94,
+     "conf": 0.94
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.91,
+     "conf": 0.91
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "sensitive": {
+     "answer": "yes",
+     "p_yes": 0.85,
+     "conf": 0.85
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 1.0,
+      "planning": 0.0,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1031,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "o05",
+   "latency_ms": 178.63829099951545,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.19,
+     "conf": 0.81
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.14,
+     "conf": 0.86
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.89,
+     "jev_confidence": 0.86,
+     "probabilities": {
+      "standup": 0.02,
+      "client_call": 0.0,
+      "one_on_one": 0.89,
+      "planning": 0.09,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1005,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "o06",
+   "latency_ms": 217.98120899984497,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.1,
+     "conf": 0.9
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.75,
+     "conf": 0.75
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.82,
+     "jev_confidence": 0.77,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 0.18,
+      "planning": 0.82,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1013,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "o07",
+   "latency_ms": 270.4995830026746,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.26,
+     "conf": 0.74
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.36,
+     "conf": 0.64
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.11,
+     "conf": 0.89
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 1.0,
+      "planning": 0.0,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1029,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "o08",
+   "latency_ms": 180.30508300216752,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.95,
+     "conf": 0.95
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "open_question": {
+     "answer": "yes",
+     "p_yes": 0.98,
+     "conf": 0.98
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.76,
+     "jev_confidence": 0.7,
+     "probabilities": {
+      "standup": 0.05,
+      "client_call": 0.0,
+      "one_on_one": 0.76,
+      "planning": 0.17,
+      "other": 0.02
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1003,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "o09",
+   "latency_ms": 208.30887500051176,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.95,
+     "conf": 0.95
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.94,
+     "conf": 0.94
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.87,
+     "jev_confidence": 0.84,
+     "probabilities": {
+      "standup": 0.04,
+      "client_call": 0.03,
+      "one_on_one": 0.87,
+      "planning": 0.06,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "helio_health",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 1.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 0.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1031,
+    "output_tokens": 221
+   }
+  },
+  {
+   "id": "o10",
+   "latency_ms": 218.3578750009474,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.14,
+     "conf": 0.86
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.37,
+     "conf": 0.63
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.12,
+     "conf": 0.88
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.4,
+     "conf": 0.6
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.9,
+     "jev_confidence": 0.87,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.02,
+      "one_on_one": 0.9,
+      "planning": 0.07,
+      "other": 0.01
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1019,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "p01",
+   "latency_ms": 197.97716699758894,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.98,
+     "conf": 0.98
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.13,
+     "conf": 0.87
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.99,
+     "jev_confidence": 0.99,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 0.01,
+      "planning": 0.99,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1020,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "p02",
+   "latency_ms": 244.320207999408,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "open_question": {
+     "answer": "yes",
+     "p_yes": 0.96,
+     "conf": 0.96
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.82,
+     "jev_confidence": 0.77,
+     "probabilities": {
+      "standup": 0.18,
+      "client_call": 0.0,
+      "one_on_one": 0.0,
+      "planning": 0.82,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1015,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "p03",
+   "latency_ms": 190.10154200077523,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.07,
+     "conf": 0.9299999999999999
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.96,
+     "conf": 0.96
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.11,
+     "conf": 0.89
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.84,
+     "jev_confidence": 0.8,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 0.16,
+      "planning": 0.84,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 996,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "p04",
+   "latency_ms": 189.72020799992606,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.9,
+     "conf": 0.9
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.95,
+     "conf": 0.95
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.99,
+     "jev_confidence": 0.99,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.01,
+      "one_on_one": 0.0,
+      "planning": 0.99,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "bluepeak_retail",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 1.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 0.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1021,
+    "output_tokens": 224
+   }
+  },
+  {
+   "id": "p05",
+   "latency_ms": 164.1046250006184,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.07,
+     "conf": 0.9299999999999999
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.4,
+     "conf": 0.6
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.7,
+     "jev_confidence": 0.62,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 0.01,
+      "planning": 0.7,
+      "other": 0.29
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1015,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "p06",
+   "latency_ms": 174.294791999273,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.85,
+     "conf": 0.85
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.93,
+     "conf": 0.93
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.09,
+     "conf": 0.91
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.7,
+     "jev_confidence": 0.62,
+     "probabilities": {
+      "standup": 0.27,
+      "client_call": 0.0,
+      "one_on_one": 0.03,
+      "planning": 0.7,
+      "other": 0.0
+     }
+    },
+    "client": {
+     "answer": "orbital_freight",
+     "conf": 0.61,
+     "jev_confidence": 0.53,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.61,
+      "lumen_studios": 0.0,
+      "none": 0.39
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1034,
+    "output_tokens": 223
+   }
+  },
+  {
+   "id": "p07",
+   "latency_ms": 200.98454199978733,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.33,
+     "conf": 0.6699999999999999
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.1,
+     "conf": 0.9
+    },
+    "small_talk": {
+     "answer": "yes",
+     "p_yes": 0.77,
+     "conf": 0.77
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 0.56,
+     "jev_confidence": 0.45,
+     "probabilities": {
+      "standup": 0.56,
+      "client_call": 0.0,
+      "one_on_one": 0.01,
+      "planning": 0.04,
+      "other": 0.39
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1007,
+    "output_tokens": 218
+   }
+  },
+  {
+   "id": "p08",
+   "latency_ms": 290.9944169987284,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.09,
+     "conf": 0.91
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.93,
+     "conf": 0.93
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.13,
+     "conf": 0.87
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.61,
+     "jev_confidence": 0.51,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 0.1,
+      "planning": 0.61,
+      "other": 0.29
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1021,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "p09",
+   "latency_ms": 185.38750000152504,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.11,
+     "conf": 0.89
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "open_question": {
+     "answer": "yes",
+     "p_yes": 0.98,
+     "conf": 0.98
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.73,
+     "jev_confidence": 0.66,
+     "probabilities": {
+      "standup": 0.07,
+      "client_call": 0.0,
+      "one_on_one": 0.19,
+      "planning": 0.73,
+      "other": 0.01
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1008,
+    "output_tokens": 219
+   }
+  },
+  {
+   "id": "p10",
+   "latency_ms": 196.95354099894757,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.96,
+     "conf": 0.96
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.26,
+     "conf": 0.74
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.77,
+     "jev_confidence": 0.71,
+     "probabilities": {
+      "standup": 0.01,
+      "client_call": 0.0,
+      "one_on_one": 0.21,
+      "planning": 0.77,
+      "other": 0.01
+     }
+    },
+    "client": {
+     "answer": "lumen_studios",
+     "conf": 0.98,
+     "jev_confidence": 0.98,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.98,
+      "none": 0.02
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1017,
+    "output_tokens": 222
+   }
+  },
+  {
+   "id": "t01",
+   "latency_ms": 183.44708299991908,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.93,
+     "conf": 0.93
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.92,
+     "jev_confidence": 0.9,
+     "probabilities": {
+      "standup": 0.01,
+      "client_call": 0.0,
+      "one_on_one": 0.0,
+      "planning": 0.07,
+      "other": 0.92
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1027,
+    "output_tokens": 217
+   }
+  },
+  {
+   "id": "t02",
+   "latency_ms": 176.50508299993817,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.85,
+     "conf": 0.85
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.92,
+     "jev_confidence": 0.9,
+     "probabilities": {
+      "standup": 0.07,
+      "client_call": 0.0,
+      "one_on_one": 0.0,
+      "planning": 0.01,
+      "other": 0.92
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1010,
+    "output_tokens": 217
+   }
+  },
+  {
+   "id": "t03",
+   "latency_ms": 179.6260830014944,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.27,
+     "conf": 0.73
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.07,
+     "conf": 0.9299999999999999
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "sensitive": {
+     "answer": "yes",
+     "p_yes": 0.91,
+     "conf": 0.91
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.96,
+     "jev_confidence": 0.95,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 0.04,
+      "planning": 0.0,
+      "other": 0.96
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1012,
+    "output_tokens": 217
+   }
+  },
+  {
+   "id": "t04",
+   "latency_ms": 204.81187499899534,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "open_question": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.09,
+     "conf": 0.91
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.98,
+     "jev_confidence": 0.98,
+     "probabilities": {
+      "standup": 0.01,
+      "client_call": 0.0,
+      "one_on_one": 0.01,
+      "planning": 0.0,
+      "other": 0.98
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1015,
+    "output_tokens": 217
+   }
+  },
+  {
+   "id": "t05",
+   "latency_ms": 207.0311249990482,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.1,
+     "conf": 0.9
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.06,
+     "conf": 0.94
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "meeting_type": {
+     "answer": "client_call",
+     "conf": 0.86,
+     "jev_confidence": 0.82,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.86,
+      "one_on_one": 0.0,
+      "planning": 0.0,
+      "other": 0.14
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.99,
+     "jev_confidence": 0.99,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.01,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 0.99
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1010,
+    "output_tokens": 218
+   }
+  },
+  {
+   "id": "t06",
+   "latency_ms": 253.02295800065622,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.98,
+     "conf": 0.98
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.92,
+     "conf": 0.92
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.05,
+     "conf": 0.95
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.98,
+     "jev_confidence": 0.98,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 0.01,
+      "planning": 0.01,
+      "other": 0.98
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1015,
+    "output_tokens": 217
+   }
+  },
+  {
+   "id": "t07",
+   "latency_ms": 156.90520799762453,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.08,
+     "conf": 0.92
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.96,
+     "conf": 0.96
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.17,
+     "conf": 0.83
+    },
+    "small_talk": {
+     "answer": "yes",
+     "p_yes": 0.97,
+     "conf": 0.97
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 0.0,
+      "planning": 0.0,
+      "other": 1.0
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1002,
+    "output_tokens": 217
+   }
+  },
+  {
+   "id": "t08",
+   "latency_ms": 195.01545800085296,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "p_yes": 0.95,
+     "conf": 0.95
+    },
+    "decision": {
+     "answer": "yes",
+     "p_yes": 0.96,
+     "conf": 0.96
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.16,
+     "conf": 0.84
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "yes",
+     "p_yes": 0.9,
+     "conf": 0.9
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.99,
+     "jev_confidence": 0.99,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.0,
+      "one_on_one": 0.01,
+      "planning": 0.0,
+      "other": 0.99
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1007,
+    "output_tokens": 217
+   }
+  },
+  {
+   "id": "t09",
+   "latency_ms": 189.4899999970221,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.09,
+     "conf": 0.91
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.36,
+     "conf": 0.64
+    },
+    "open_question": {
+     "answer": "no",
+     "p_yes": 0.1,
+     "conf": 0.9
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "no",
+     "p_yes": 0.03,
+     "conf": 0.97
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.98,
+     "jev_confidence": 0.98,
+     "probabilities": {
+      "standup": 0.0,
+      "client_call": 0.01,
+      "one_on_one": 0.01,
+      "planning": 0.0,
+      "other": 0.98
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1007,
+    "output_tokens": 217
+   }
+  },
+  {
+   "id": "t10",
+   "latency_ms": 189.78483299724758,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "p_yes": 0.1,
+     "conf": 0.9
+    },
+    "decision": {
+     "answer": "no",
+     "p_yes": 0.04,
+     "conf": 0.96
+    },
+    "open_question": {
+     "answer": "yes",
+     "p_yes": 0.92,
+     "conf": 0.92
+    },
+    "small_talk": {
+     "answer": "no",
+     "p_yes": 0.02,
+     "conf": 0.98
+    },
+    "sensitive": {
+     "answer": "yes",
+     "p_yes": 0.94,
+     "conf": 0.94
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.61,
+     "jev_confidence": 0.51,
+     "probabilities": {
+      "standup": 0.02,
+      "client_call": 0.0,
+      "one_on_one": 0.06,
+      "planning": 0.31,
+      "other": 0.61
+     }
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0,
+     "jev_confidence": 1.0,
+     "probabilities": {
+      "northwind_bank": 0.0,
+      "helio_health": 0.0,
+      "bluepeak_retail": 0.0,
+      "orbital_freight": 0.0,
+      "lumen_studios": 0.0,
+      "none": 1.0
+     }
+    }
+   },
+   "model": "jev-1.14.0",
+   "usage": {
+    "input_tokens": 1024,
+    "output_tokens": 217
+   }
+  }
+ ]
+}

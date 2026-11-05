@@ -1,0 +1,1959 @@
+{
+ "meta": {
+  "endpoint": "http://localhost:11434/api/chat",
+  "model": "qwen3:4b",
+  "run_at": "2026-11-05T19:42:51"
+ },
+ "rows": [
+  {
+   "id": "s01",
+   "latency_ms": 2352.699416998803,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.6791903359121528,
+     "p_yes": 0.6791903359121528
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9991326054794374,
+     "p_yes": 0.0008673945205626143
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999999802506776,
+     "p_yes": 1.974932239967586e-08
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999937439517,
+     "p_yes": 6.256048346031662e-09
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.999999999662097,
+     "p_yes": 3.3790303888281414e-10
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 0.999672356953601
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9999999997386215
+    }
+   }
+  },
+  {
+   "id": "s02",
+   "latency_ms": 2369.191082998441,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9157457963584996,
+     "p_yes": 0.08425420364150038
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999992779197155,
+     "p_yes": 7.220802844543073e-07
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9660136564777986,
+     "p_yes": 0.03398634352220142
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999996787168488,
+     "p_yes": 3.212831511945069e-07
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999626546454,
+     "p_yes": 3.734535458654875e-08
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 0.986517069804607
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.999999995406771
+    }
+   }
+  },
+  {
+   "id": "s03",
+   "latency_ms": 2745.302540999546,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9985607905589692,
+     "p_yes": 0.9985607905589692
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999875667488998,
+     "p_yes": 1.243325110023008e-05
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999999170897903,
+     "p_yes": 8.291020969775076e-08
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999870799317,
+     "p_yes": 1.2920068348520886e-08
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999995375313,
+     "p_yes": 4.6246872997812716e-10
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.5317881658722623
+    },
+    "client": {
+     "answer": "bluepeak_retail",
+     "conf": 0.9999992155305498
+    }
+   }
+  },
+  {
+   "id": "s04",
+   "latency_ms": 2299.8856250014796,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.999683293139197,
+     "p_yes": 0.0003167068608029844
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999999513121032,
+     "p_yes": 4.8687896825327925e-08
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9994476211807103,
+     "p_yes": 0.0005523788192897117
+    },
+    "small_talk": {
+     "answer": "yes",
+     "conf": 0.9999222322581586,
+     "p_yes": 0.9999222322581586
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999970205098,
+     "p_yes": 2.9794902101087928e-09
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.9998526446259107
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9999999997697862
+    }
+   }
+  },
+  {
+   "id": "s05",
+   "latency_ms": 2449.808249999478,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.75600414372708,
+     "p_yes": 0.24399585627291998
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999998779182939,
+     "p_yes": 1.220817060776369e-07
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.999990472184925,
+     "p_yes": 9.527815075016655e-06
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.501344680263986,
+     "p_yes": 0.49865531973601396
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9970769933765684,
+     "p_yes": 0.00292300662343159
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.9844695112946611
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0
+    }
+   }
+  },
+  {
+   "id": "s06",
+   "latency_ms": 2467.1837919995596,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9973546588825754,
+     "p_yes": 0.9973546588825754
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.5775596945081176,
+     "p_yes": 0.4224403054918824
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999997903452645,
+     "p_yes": 2.0965473546130653e-07
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999954101786,
+     "p_yes": 4.589821411826733e-09
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999984458294,
+     "p_yes": 1.554170570017277e-09
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 0.9996957870944215
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9999999609489162
+    }
+   }
+  },
+  {
+   "id": "s07",
+   "latency_ms": 3060.31208299828,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9862462388597509,
+     "p_yes": 0.013753761140249066
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.999998469700462,
+     "p_yes": 1.530299537977342e-06
+    },
+    "open_question": {
+     "answer": "yes",
+     "conf": 0.5198747220254454,
+     "p_yes": 0.5198747220254454
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999974792562,
+     "p_yes": 2.520743835887629e-09
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.99999999913156,
+     "p_yes": 8.684399865899195e-10
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.8754350184924324
+    },
+    "client": {
+     "answer": "orbital_freight",
+     "conf": 0.9999367757784534
+    }
+   }
+  },
+  {
+   "id": "s08",
+   "latency_ms": 2419.022957998095,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.5142750082683072,
+     "p_yes": 0.5142750082683072
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9991374220258469,
+     "p_yes": 0.0008625779741531225
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999999145794046,
+     "p_yes": 8.542059537486324e-08
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999868926053,
+     "p_yes": 1.3107394725153654e-08
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.8426227970453142,
+     "p_yes": 0.15737720295468582
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 0.837940037398321
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9999998886656527
+    }
+   }
+  },
+  {
+   "id": "s09",
+   "latency_ms": 2400.6960000006075,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.6220038174932173,
+     "p_yes": 0.3779961825067827
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999967577408396,
+     "p_yes": 3.242259160374239e-06
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999998796963203,
+     "p_yes": 1.2030367968485223e-07
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999369666094,
+     "p_yes": 6.303339061819457e-08
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999997306952,
+     "p_yes": 2.693048006818799e-10
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 0.9930642648700163
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.999999894790668
+    }
+   }
+  },
+  {
+   "id": "s10",
+   "latency_ms": 2539.8414170012984,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9759074187940684,
+     "p_yes": 0.024092581205931607
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.99999941245664,
+     "p_yes": 5.875433599644708e-07
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999999936280044,
+     "p_yes": 6.371995597831415e-09
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999998915838388,
+     "p_yes": 1.0841616115975228e-07
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999998910092,
+     "p_yes": 1.0899081637205654e-10
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 0.5450094724568966
+    },
+    "client": {
+     "answer": "lumen_studios",
+     "conf": 0.9999333486032963
+    }
+   }
+  },
+  {
+   "id": "c01",
+   "latency_ms": 2575.76437500029,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9867924999024099,
+     "p_yes": 0.9867924999024099
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9924643536042959,
+     "p_yes": 0.007535646395704143
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999999708237486,
+     "p_yes": 2.9176251414853027e-08
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999986039299,
+     "p_yes": 1.3960701483739513e-09
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999687934104,
+     "p_yes": 3.120658964572698e-08
+    },
+    "meeting_type": {
+     "answer": "client_call",
+     "conf": 0.9987743501073862
+    },
+    "client": {
+     "answer": "northwind_bank",
+     "conf": 0.9999994784826114
+    }
+   }
+  },
+  {
+   "id": "c02",
+   "latency_ms": 2784.1676249990996,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9698522362670583,
+     "p_yes": 0.9698522362670583
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9740943713842046,
+     "p_yes": 0.025905628615795373
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9217710771267345,
+     "p_yes": 0.07822892287326555
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999808768385,
+     "p_yes": 1.912316149876858e-08
+    },
+    "sensitive": {
+     "answer": "yes",
+     "conf": 0.9816883149634793,
+     "p_yes": 0.9816883149634793
+    },
+    "meeting_type": {
+     "answer": "client_call",
+     "conf": 0.9332612606744713
+    },
+    "client": {
+     "answer": "helio_health",
+     "conf": 0.9999999808909122
+    }
+   }
+  },
+  {
+   "id": "c03",
+   "latency_ms": 2470.4070830011915,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9967880110729455,
+     "p_yes": 0.9967880110729455
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.9999999263215397,
+     "p_yes": 0.9999999263215397
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999999132398526,
+     "p_yes": 8.67601473997226e-08
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999994349396,
+     "p_yes": 5.650604428808492e-10
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999995188205,
+     "p_yes": 4.811795406567398e-10
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.9999392708119865
+    },
+    "client": {
+     "answer": "bluepeak_retail",
+     "conf": 0.9999994791822665
+    }
+   }
+  },
+  {
+   "id": "c04",
+   "latency_ms": 2499.407457999041,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9212756171956717,
+     "p_yes": 0.07872438280432825
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.9794188441709929,
+     "p_yes": 0.9794188441709929
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999999416805176,
+     "p_yes": 5.831948235446305e-08
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999979906864,
+     "p_yes": 2.0093136043897175e-09
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999993799076,
+     "p_yes": 6.200924218546788e-10
+    },
+    "meeting_type": {
+     "answer": "client_call",
+     "conf": 0.46906491703365316
+    },
+    "client": {
+     "answer": "orbital_freight",
+     "conf": 0.9999998101945825
+    }
+   }
+  },
+  {
+   "id": "c05",
+   "latency_ms": 2459.025374999328,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9999447725605117,
+     "p_yes": 5.5227439488270136e-05
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999999987415311,
+     "p_yes": 1.2584688846573044e-09
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999999773384528,
+     "p_yes": 2.2661547194324783e-08
+    },
+    "small_talk": {
+     "answer": "yes",
+     "conf": 0.9997605773019885,
+     "p_yes": 0.9997605773019885
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999995663307,
+     "p_yes": 4.3366932267474567e-10
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.9998410143518006
+    },
+    "client": {
+     "answer": "lumen_studios",
+     "conf": 0.9901283671475425
+    }
+   }
+  },
+  {
+   "id": "c06",
+   "latency_ms": 2971.864375002042,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9890841185391945,
+     "p_yes": 0.010915881460805466
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9995430552111337,
+     "p_yes": 0.00045694478886626477
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999348332069968,
+     "p_yes": 6.516679300316852e-05
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999946422187,
+     "p_yes": 5.357781329706768e-09
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999992869743314,
+     "p_yes": 7.130256686194159e-07
+    },
+    "meeting_type": {
+     "answer": "client_call",
+     "conf": 0.9551555769513163
+    },
+    "client": {
+     "answer": "northwind_bank",
+     "conf": 0.9999992903270192
+    }
+   }
+  },
+  {
+   "id": "c07",
+   "latency_ms": 2739.6960000005492,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9966608189589489,
+     "p_yes": 0.9966608189589489
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9983097250127588,
+     "p_yes": 0.0016902749872411693
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.5875709069685501,
+     "p_yes": 0.4124290930314499
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999662546747,
+     "p_yes": 3.374532531186247e-08
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999885771161,
+     "p_yes": 1.1422883861023081e-08
+    },
+    "meeting_type": {
+     "answer": "client_call",
+     "conf": 0.9968023252876029
+    },
+    "client": {
+     "answer": "helio_health",
+     "conf": 0.9999999893433157
+    }
+   }
+  },
+  {
+   "id": "c08",
+   "latency_ms": 2189.2489999991085,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9916754396086545,
+     "p_yes": 0.008324560391345548
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999770456036512,
+     "p_yes": 2.2954396348806583e-05
+    },
+    "open_question": {
+     "answer": "yes",
+     "conf": 0.7181719895021856,
+     "p_yes": 0.7181719895021856
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999979821872,
+     "p_yes": 2.017812805732433e-09
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999990906636,
+     "p_yes": 9.093363839696167e-10
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.404313997969847
+    },
+    "client": {
+     "answer": "bluepeak_retail",
+     "conf": 0.9999907847178557
+    }
+   }
+  },
+  {
+   "id": "c09",
+   "latency_ms": 2158.5255409991078,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.999507674068622,
+     "p_yes": 0.999507674068622
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.999999884601505,
+     "p_yes": 0.999999884601505
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999999113649964,
+     "p_yes": 8.86350035589345e-08
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999992199764,
+     "p_yes": 7.800236012656114e-10
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999994293072,
+     "p_yes": 5.706928263293776e-10
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.9906104953652456
+    },
+    "client": {
+     "answer": "orbital_freight",
+     "conf": 0.9999808056051164
+    }
+   }
+  },
+  {
+   "id": "c10",
+   "latency_ms": 2232.3659590001625,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.5964514814382756,
+     "p_yes": 0.40354851856172436
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999864527358197,
+     "p_yes": 1.3547264180346907e-05
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.999999127981031,
+     "p_yes": 8.72018969033661e-07
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999920121830193,
+     "p_yes": 7.987816980747908e-06
+    },
+    "sensitive": {
+     "answer": "yes",
+     "conf": 0.9991483448780081,
+     "p_yes": 0.9991483448780081
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.990795112243981
+    },
+    "client": {
+     "answer": "lumen_studios",
+     "conf": 0.9999940184847557
+    }
+   }
+  },
+  {
+   "id": "o01",
+   "latency_ms": 2129.108291999728,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9915972791310482,
+     "p_yes": 0.9915972791310482
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.9991822827372908,
+     "p_yes": 0.9991822827372908
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999929659894202,
+     "p_yes": 7.034010579776151e-06
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999209323848,
+     "p_yes": 7.90676152329084e-08
+    },
+    "sensitive": {
+     "answer": "yes",
+     "conf": 0.9995238828698957,
+     "p_yes": 0.9995238828698957
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.9845169672634585
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9999999991981836
+    }
+   }
+  },
+  {
+   "id": "o02",
+   "latency_ms": 1783.4242499993707,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9999005194421782,
+     "p_yes": 9.948055782182941e-05
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999869722687552,
+     "p_yes": 1.3027731244785734e-05
+    },
+    "open_question": {
+     "answer": "yes",
+     "conf": 0.7707911168942118,
+     "p_yes": 0.7707911168942118
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9298383807803068,
+     "p_yes": 0.07016161921969322
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999818645526,
+     "p_yes": 1.8135447366063318e-08
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.9808589500852786
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0
+    }
+   }
+  },
+  {
+   "id": "o03",
+   "latency_ms": 1650.26349999971,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9999764328280876,
+     "p_yes": 2.356717191243085e-05
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999999992087423,
+     "p_yes": 7.912577260071885e-10
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999982589172974,
+     "p_yes": 1.7410827025665654e-06
+    },
+    "small_talk": {
+     "answer": "yes",
+     "conf": 0.9999853348781763,
+     "p_yes": 0.9999853348781763
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999990723483,
+     "p_yes": 9.276517332068579e-10
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.9999813639204315
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0
+    }
+   }
+  },
+  {
+   "id": "o04",
+   "latency_ms": 1701.5687080020143,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9598585853794587,
+     "p_yes": 0.04014141462054133
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9839589613096495,
+     "p_yes": 0.01604103869035045
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999969599886337,
+     "p_yes": 3.0400113663064943e-06
+    },
+    "small_talk": {
+     "answer": "yes",
+     "conf": 0.998725922840502,
+     "p_yes": 0.998725922840502
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9783010001833032,
+     "p_yes": 0.021698999816696762
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.8193836481833316
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0
+    }
+   }
+  },
+  {
+   "id": "o05",
+   "latency_ms": 1725.1741250001942,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9988455649006935,
+     "p_yes": 0.9988455649006935
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999658815078643,
+     "p_yes": 3.411849213574847e-05
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999999768526745,
+     "p_yes": 2.3147325500794125e-08
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999994854585,
+     "p_yes": 5.145415205021209e-10
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999997887621,
+     "p_yes": 2.1123791604793496e-10
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.9134096555288009
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9977405837324768
+    }
+   }
+  },
+  {
+   "id": "o06",
+   "latency_ms": 1575.0278750019788,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9972748287651166,
+     "p_yes": 0.002725171234883361
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.885883326790323,
+     "p_yes": 0.885883326790323
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999999747299199,
+     "p_yes": 2.5270080139527806e-08
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.999999997400107,
+     "p_yes": 2.599892967580786e-09
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999998581911,
+     "p_yes": 1.418088979576737e-10
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.502197928662839
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0
+    }
+   }
+  },
+  {
+   "id": "o07",
+   "latency_ms": 1651.8952079968585,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.7523012900657111,
+     "p_yes": 0.7523012900657111
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.8601158322647767,
+     "p_yes": 0.13988416773522327
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999046279528421,
+     "p_yes": 9.537204715792669e-05
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999155761954,
+     "p_yes": 8.442380461382015e-08
+    },
+    "sensitive": {
+     "answer": "yes",
+     "conf": 0.9982787234949483,
+     "p_yes": 0.9982787234949483
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.9990104351412417
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9999999949723941
+    }
+   }
+  },
+  {
+   "id": "o08",
+   "latency_ms": 1643.330041999434,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9679262455310367,
+     "p_yes": 0.03207375446896332
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999844601886345,
+     "p_yes": 1.5539811365483658e-05
+    },
+    "open_question": {
+     "answer": "yes",
+     "conf": 0.7253034429962373,
+     "p_yes": 0.7253034429962373
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999800095688,
+     "p_yes": 1.9990431199268244e-08
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999042513031,
+     "p_yes": 9.574869686002074e-08
+    },
+    "meeting_type": {
+     "answer": "client_call",
+     "conf": 0.5412819041737427
+    },
+    "client": {
+     "answer": "northwind_bank",
+     "conf": 0.6916822036585346
+    }
+   }
+  },
+  {
+   "id": "o09",
+   "latency_ms": 1679.08529199849,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.999494833154103,
+     "p_yes": 0.999494833154103
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.9991411748961831,
+     "p_yes": 0.9991411748961831
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999989527185464,
+     "p_yes": 1.0472814535589237e-06
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999966181436712,
+     "p_yes": 3.381856328754651e-06
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999907101088,
+     "p_yes": 9.289891189645516e-09
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.8368885152971881
+    },
+    "client": {
+     "answer": "helio_health",
+     "conf": 0.9999999560990548
+    }
+   }
+  },
+  {
+   "id": "o10",
+   "latency_ms": 1618.2758340000873,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9945346656680074,
+     "p_yes": 0.0054653343319925884
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999928555605755,
+     "p_yes": 7.144439424511262e-06
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9704596296231435,
+     "p_yes": 0.02954037037685653
+    },
+    "small_talk": {
+     "answer": "yes",
+     "conf": 0.9998788948860888,
+     "p_yes": 0.9998788948860888
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999968655211,
+     "p_yes": 3.134478898658699e-09
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.9998365650926658
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0
+    }
+   }
+  },
+  {
+   "id": "p01",
+   "latency_ms": 1528.6259589993278,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9999009882372019,
+     "p_yes": 0.9999009882372019
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.9980781235494939,
+     "p_yes": 0.9980781235494939
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999998099594555,
+     "p_yes": 1.9004054452320673e-07
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.999999999543393,
+     "p_yes": 4.5660697445271126e-10
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999995317457,
+     "p_yes": 4.682543242040538e-10
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.9999750035378522
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9999717458732612
+    }
+   }
+  },
+  {
+   "id": "p02",
+   "latency_ms": 1610.6591659990954,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9963280065270599,
+     "p_yes": 0.003671993472940116
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999946981629442,
+     "p_yes": 5.3018370558266525e-06
+    },
+    "open_question": {
+     "answer": "yes",
+     "conf": 0.7640548135035841,
+     "p_yes": 0.7640548135035841
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999977411997,
+     "p_yes": 2.2588002579482236e-09
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999996492484,
+     "p_yes": 3.507516499468011e-10
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.9908636858712415
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9995822565051198
+    }
+   }
+  },
+  {
+   "id": "p03",
+   "latency_ms": 1742.963458000304,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9996217180804663,
+     "p_yes": 0.00037828191953370727
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.9826643678903478,
+     "p_yes": 0.9826643678903478
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.999999985009628,
+     "p_yes": 1.4990372054768386e-08
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999984929278,
+     "p_yes": 1.5070722447774187e-09
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999998616129,
+     "p_yes": 1.383870795734765e-10
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.8872635768039647
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9930048481423273
+    }
+   }
+  },
+  {
+   "id": "p04",
+   "latency_ms": 1806.14641700231,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9948443110809024,
+     "p_yes": 0.9948443110809024
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.9999811499649438,
+     "p_yes": 0.9999811499649438
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999998979768729,
+     "p_yes": 1.0202312705764882e-07
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999998163553,
+     "p_yes": 1.8364465503850624e-10
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999997103095,
+     "p_yes": 2.896904938154421e-10
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.9999884807843907
+    },
+    "client": {
+     "answer": "bluepeak_retail",
+     "conf": 0.9999999599961505
+    }
+   }
+  },
+  {
+   "id": "p05",
+   "latency_ms": 1752.072915998724,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9795112435123535,
+     "p_yes": 0.020488756487646476
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999018128110767,
+     "p_yes": 9.818718892329326e-05
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999818664571031,
+     "p_yes": 1.813354289692537e-05
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999854468703,
+     "p_yes": 1.455312970133349e-08
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999997317395,
+     "p_yes": 2.682605249049175e-10
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.9999274264514258
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9999999768905258
+    }
+   }
+  },
+  {
+   "id": "p06",
+   "latency_ms": 1825.7408749996102,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9993305511261822,
+     "p_yes": 0.9993305511261822
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.8811907514298167,
+     "p_yes": 0.8811907514298167
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999998058775558,
+     "p_yes": 1.9412244423033798e-07
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999995273976,
+     "p_yes": 4.726024016576957e-10
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999991341897,
+     "p_yes": 8.658103123337924e-10
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.9840720702464182
+    },
+    "client": {
+     "answer": "orbital_freight",
+     "conf": 1.0
+    }
+   }
+  },
+  {
+   "id": "p07",
+   "latency_ms": 1599.0941670024768,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9995406306574594,
+     "p_yes": 0.00045936934254064976
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999999984573622,
+     "p_yes": 1.5426377952820758e-09
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999994790015634,
+     "p_yes": 5.209984366150167e-07
+    },
+    "small_talk": {
+     "answer": "yes",
+     "conf": 0.9959333714449862,
+     "p_yes": 0.9959333714449862
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999968399489,
+     "p_yes": 3.1600511096741e-09
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.9998739169554424
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0
+    }
+   }
+  },
+  {
+   "id": "p08",
+   "latency_ms": 1967.5481250014855,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.8691466235678071,
+     "p_yes": 0.8691466235678071
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.9836321326820839,
+     "p_yes": 0.9836321326820839
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999973215943221,
+     "p_yes": 2.6784056779138865e-06
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999978242333,
+     "p_yes": 2.175766677936508e-09
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9991687052246174,
+     "p_yes": 0.0008312947753825739
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.9938042400558559
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9813117011751605
+    }
+   }
+  },
+  {
+   "id": "p09",
+   "latency_ms": 1932.4833749997197,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9848919382158552,
+     "p_yes": 0.01510806178414481
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999657445835397,
+     "p_yes": 3.425541646029373e-05
+    },
+    "open_question": {
+     "answer": "yes",
+     "conf": 0.7067885532087786,
+     "p_yes": 0.7067885532087786
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999983968035,
+     "p_yes": 1.6031964644724894e-09
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999993882205,
+     "p_yes": 6.117795159354955e-10
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.5483114677826731
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9992357160097681
+    }
+   }
+  },
+  {
+   "id": "p10",
+   "latency_ms": 1696.4169579987356,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.999573927823865,
+     "p_yes": 0.999573927823865
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9929174668747255,
+     "p_yes": 0.007082533125274515
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999988643049903,
+     "p_yes": 1.135695009701898e-06
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999991041055,
+     "p_yes": 8.958944697212701e-10
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999993506099,
+     "p_yes": 6.493900972515121e-10
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.5309106244116706
+    },
+    "client": {
+     "answer": "lumen_studios",
+     "conf": 0.9999996362318508
+    }
+   }
+  },
+  {
+   "id": "t01",
+   "latency_ms": 1687.804249999317,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9998971615938969,
+     "p_yes": 0.9998971615938969
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.9997053146942394,
+     "p_yes": 0.9997053146942394
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999998799846348,
+     "p_yes": 1.200153652014535e-07
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999997553146,
+     "p_yes": 2.446853830662121e-10
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999996584761,
+     "p_yes": 3.4152392025532663e-10
+    },
+    "meeting_type": {
+     "answer": "planning",
+     "conf": 0.999970059717352
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9983211436542411
+    }
+   }
+  },
+  {
+   "id": "t02",
+   "latency_ms": 1567.9999159983709,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9698888595446433,
+     "p_yes": 0.030111140455356677
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9998932772029114,
+     "p_yes": 0.00010672279708856536
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999996848348499,
+     "p_yes": 3.151651500887809e-07
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.999999431383207,
+     "p_yes": 5.686167929841446e-07
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999988931185,
+     "p_yes": 1.1068814753656397e-09
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.7221363703309072
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9999999327385312
+    }
+   }
+  },
+  {
+   "id": "t03",
+   "latency_ms": 1599.7268749997602,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.801967331582662,
+     "p_yes": 0.19803266841733802
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9703616566158982,
+     "p_yes": 0.029638343384101762
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9978975450630494,
+     "p_yes": 0.002102454936950604
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.6865138791338445,
+     "p_yes": 0.31348612086615546
+    },
+    "sensitive": {
+     "answer": "yes",
+     "conf": 0.9994614567167419,
+     "p_yes": 0.9994614567167419
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.9072611505675187
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9999999988762451
+    }
+   }
+  },
+  {
+   "id": "t04",
+   "latency_ms": 1669.2597080000269,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9994890627662391,
+     "p_yes": 0.0005109372337609441
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999989717183578,
+     "p_yes": 1.0282816421680607e-06
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9565327827665824,
+     "p_yes": 0.04346721723341762
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999779454192,
+     "p_yes": 2.2054580828267945e-08
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999992849055169,
+     "p_yes": 7.150944830724981e-07
+    },
+    "meeting_type": {
+     "answer": "standup",
+     "conf": 0.5352449514676041
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9999999560066578
+    }
+   }
+  },
+  {
+   "id": "t05",
+   "latency_ms": 1716.377625001769,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9808771047777157,
+     "p_yes": 0.019122895222284275
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999761136851513,
+     "p_yes": 2.388631484873116e-05
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.999964283402824,
+     "p_yes": 3.57165971760498e-05
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999587724855,
+     "p_yes": 4.122751451340889e-08
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999993658029,
+     "p_yes": 6.341971392487267e-10
+    },
+    "meeting_type": {
+     "answer": "client_call",
+     "conf": 0.9488598261699549
+    },
+    "client": {
+     "answer": "northwind_bank",
+     "conf": 0.9627962914184542
+    }
+   }
+  },
+  {
+   "id": "t06",
+   "latency_ms": 1580.259375001333,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9999822398386491,
+     "p_yes": 0.9999822398386491
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.9916462831178563,
+     "p_yes": 0.9916462831178563
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999998117061135,
+     "p_yes": 1.8829388648278211e-07
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999992127677,
+     "p_yes": 7.872322793645026e-10
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999975311076,
+     "p_yes": 2.4688924238347454e-09
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.9942055069056545
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9999999650602723
+    }
+   }
+  },
+  {
+   "id": "t07",
+   "latency_ms": 1567.4141669987876,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.9995324917507123,
+     "p_yes": 0.00046750824928765145
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9999999983299352,
+     "p_yes": 1.6700647531564528e-09
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999997213867146,
+     "p_yes": 2.786132854426526e-07
+    },
+    "small_talk": {
+     "answer": "yes",
+     "conf": 0.9999336870910057,
+     "p_yes": 0.9999336870910057
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999992004469,
+     "p_yes": 7.995530904025827e-10
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.9999994594536561
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0
+    }
+   }
+  },
+  {
+   "id": "t08",
+   "latency_ms": 1579.0052920019662,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.9980242968814655,
+     "p_yes": 0.9980242968814655
+    },
+    "decision": {
+     "answer": "yes",
+     "conf": 0.9999177879131267,
+     "p_yes": 0.9999177879131267
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9999998248964087,
+     "p_yes": 1.751035912933574e-07
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999975297509,
+     "p_yes": 2.4702491163708373e-09
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999793136203,
+     "p_yes": 2.068637972030274e-08
+    },
+    "meeting_type": {
+     "answer": "one_on_one",
+     "conf": 0.996494591042733
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9999999987410557
+    }
+   }
+  },
+  {
+   "id": "t09",
+   "latency_ms": 1577.9105830006301,
+   "answers": {
+    "action_item": {
+     "answer": "no",
+     "conf": 0.7610670874699259,
+     "p_yes": 0.2389329125300741
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9745689537151629,
+     "p_yes": 0.025431046284837056
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.9997508032785887,
+     "p_yes": 0.00024919672141132665
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999998836034375,
+     "p_yes": 1.1639656249951003e-07
+    },
+    "sensitive": {
+     "answer": "no",
+     "conf": 0.9999999993683669,
+     "p_yes": 6.316330791733549e-10
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.9979103625565499
+    },
+    "client": {
+     "answer": "none",
+     "conf": 1.0
+    }
+   }
+  },
+  {
+   "id": "t10",
+   "latency_ms": 1633.5363340003823,
+   "answers": {
+    "action_item": {
+     "answer": "yes",
+     "conf": 0.6430084019323435,
+     "p_yes": 0.6430084019323435
+    },
+    "decision": {
+     "answer": "no",
+     "conf": 0.9935174098222667,
+     "p_yes": 0.006482590177733338
+    },
+    "open_question": {
+     "answer": "no",
+     "conf": 0.7236480155212862,
+     "p_yes": 0.2763519844787138
+    },
+    "small_talk": {
+     "answer": "no",
+     "conf": 0.9999999397509294,
+     "p_yes": 6.024907062140983e-08
+    },
+    "sensitive": {
+     "answer": "yes",
+     "conf": 0.6084816056635927,
+     "p_yes": 0.6084816056635927
+    },
+    "meeting_type": {
+     "answer": "other",
+     "conf": 0.989477500342108
+    },
+    "client": {
+     "answer": "none",
+     "conf": 0.9971664705116202
+    }
+   }
+  }
+ ]
+}

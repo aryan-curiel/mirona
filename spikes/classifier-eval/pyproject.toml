@@ -1,0 +1,6 @@
+[project]
+name = "classifier-eval"
+version = "0.0.0"
+description = "NGR-130: Jev vs local LLM on labelled transcript chunks"
+requires-python = ">=3.11"
+dependencies = []

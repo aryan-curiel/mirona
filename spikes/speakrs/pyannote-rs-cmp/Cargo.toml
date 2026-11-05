@@ -1,0 +1,12 @@
+[package]
+name = "pyannote-rs-cmp"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+pyannote-rs = "=0.3.4"
+# pyannote-rs 0.3.4 asks for ort "2.0.0-rc.10" which semver-resolves to rc.15 and fails to compile; pin it.
+ort = "=2.0.0-rc.10"

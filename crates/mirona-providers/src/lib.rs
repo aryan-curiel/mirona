@@ -12,6 +12,8 @@ pub enum Error {
     /// A cloud provider was asked to run while privacy mode is on.
     PrivacyBlocked(String),
     Unknown(String),
+    /// The provider ran and failed (model missing, decode error, HTTP error…).
+    Provider(String),
 }
 
 impl std::fmt::Display for Error {
@@ -19,6 +21,7 @@ impl std::fmt::Display for Error {
         match self {
             Self::PrivacyBlocked(p) => write!(f, "{p} is a cloud provider; privacy mode is on"),
             Self::Unknown(p) => write!(f, "unknown provider {p}"),
+            Self::Provider(e) => write!(f, "provider failed: {e}"),
         }
     }
 }
@@ -42,9 +45,35 @@ pub trait SttProvider: Provider {
     fn transcribe(&self, pcm: &[f32]) -> impl Future<Output = Result<String>> + Send;
 }
 
+/// One stretch of speech by one (anonymous) speaker.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Turn {
+    pub start_ms: u32,
+    pub end_ms: u32,
+    /// Index into `Diarization::speakers`.
+    pub speaker: usize,
+}
+
+/// A speaker found in a recording, with the averaged embedding used to match voiceprints.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FoundSpeaker {
+    pub embedding: Vec<f32>,
+    pub speech_ms: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Diarization {
+    /// Ordered by start; may overlap.
+    pub turns: Vec<Turn>,
+    pub speakers: Vec<FoundSpeaker>,
+}
+
+/// Who spoke when. Runs once after the call (ADR 0001); voiceprint matching lives in the store.
 pub trait Diarizer: Provider {
-    /// Speaker index for each chunk.
-    fn diarize(&self, pcm: &[f32]) -> impl Future<Output = Result<Vec<u32>>> + Send;
+    /// Diarize a whole recording of 16 kHz mono PCM.
+    fn diarize(&self, pcm: &[f32]) -> impl Future<Output = Result<Diarization>> + Send;
+    /// Speaker embedding of an enrollment clip (≥ 30 s of one person).
+    fn voiceprint(&self, pcm: &[f32]) -> impl Future<Output = Result<Vec<f32>>> + Send;
 }
 
 pub trait Classifier: Provider {
@@ -63,8 +92,8 @@ pub trait Embedder: Provider {
 /// Deterministic fakes for the prototype and tests.
 pub mod fake {
     use super::{
-        Answer, Classifier, Diarizer, Embedder, LlmProvider, Locality, Provider, Result, Segment,
-        SttProvider,
+        Answer, Classifier, Diarization, Diarizer, Embedder, FoundSpeaker, LlmProvider, Locality,
+        Provider, Result, Segment, SttProvider, Turn,
     };
     use mirona_core::{AnswerSource, QuestionKind};
 
@@ -88,9 +117,24 @@ pub mod fake {
         }
     }
 
+    /// One speaker talking the whole time.
     impl Diarizer for Fake {
-        fn diarize(&self, pcm: &[f32]) -> impl Future<Output = Result<Vec<u32>>> + Send {
-            ready(Ok(vec![0; pcm.len().div_ceil(16_000)]))
+        fn diarize(&self, pcm: &[f32]) -> impl Future<Output = Result<Diarization>> + Send {
+            let ms = u32::try_from(pcm.len() / 16).unwrap_or(u32::MAX);
+            ready(Ok(Diarization {
+                turns: vec![Turn {
+                    start_ms: 0,
+                    end_ms: ms,
+                    speaker: 0,
+                }],
+                speakers: vec![FoundSpeaker {
+                    embedding: vec![1.0, 0.0],
+                    speech_ms: ms,
+                }],
+            }))
+        }
+        fn voiceprint(&self, _pcm: &[f32]) -> impl Future<Output = Result<Vec<f32>>> + Send {
+            ready(Ok(vec![1.0, 0.0]))
         }
     }
 
@@ -142,7 +186,13 @@ mod tests {
     fn fakes_answer() {
         let f = fake::Fake("fake");
         let one_second = vec![0.0; 16_000];
-        assert_eq!(now(f.diarize(&one_second)).unwrap(), vec![0]);
+        let d = now(f.diarize(&one_second)).unwrap();
+        assert_eq!(d.turns[0].end_ms, 1000);
+        assert_eq!(d.speakers[0].speech_ms, 1000);
+        assert_eq!(
+            now(f.voiceprint(&one_second)).unwrap(),
+            d.speakers[0].embedding
+        );
         assert_eq!(
             now(f.transcribe(&one_second)).unwrap(),
             "Sample transcript line."
