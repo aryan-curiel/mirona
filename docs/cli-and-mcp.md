@@ -47,6 +47,9 @@ fail if it is turned off while running).
 **Claude Code**
 
 ```bash
+# With the app installed, nothing else needed (Settings → Models and MCP shows the exact path):
+claude mcp add mirona -- /Applications/Mirona.app/Contents/MacOS/mirona-app mcp
+# Or with the CLI installed:
 claude mcp add mirona -- mirona mcp
 # or, without the CLI on PATH:
 claude mcp add mirona -- /path/to/mirona-mcp

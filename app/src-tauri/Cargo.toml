@@ -24,6 +24,7 @@ tauri-plugin-global-shortcut = "2"
 mirona-core.workspace = true
 mirona-providers = { workspace = true, features = ["openai", "keychain"] }
 mirona-store.workspace = true
+mirona-mcp = { path = "../../crates/mirona-mcp" }
 mirona-engine.workspace = true
 mirona-capture.workspace = true
 mirona-summary.workspace = true

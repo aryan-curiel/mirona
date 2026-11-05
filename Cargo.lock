@@ -3094,6 +3094,7 @@ dependencies = [
  "mirona-capture",
  "mirona-core",
  "mirona-engine",
+ "mirona-mcp",
  "mirona-providers",
  "mirona-store",
  "mirona-summary",

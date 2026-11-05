@@ -517,12 +517,25 @@ impl Store {
 
     /// Name an unknown voice everywhere it appears.
     pub fn enroll_speaker(&mut self, speaker_id: &str, name: &str) -> Result<Speaker> {
+        // The meetings this voice is in; entries are oldest first, so the last is the newest.
+        let seen: Vec<&str> = self
+            .entries
+            .iter()
+            .filter(|e| e.meeting.speakers.iter().any(|s| s.id == speaker_id))
+            .map(|e| e.meeting.title.as_str())
+            .collect();
+        let subtitle = match seen.as_slice() {
+            [] => String::new(),
+            [only] => format!("Named in {only}"),
+            [.., last] => format!("Named in {last} and {} more", seen.len() - 1),
+        };
+        let meetings = u32::try_from(seen.len()).unwrap_or(u32::MAX);
         let rename = |s: &mut Speaker| {
             s.name = name.into();
             s.initial = name.chars().next().unwrap_or('?').to_string();
-            s.subtitle = "Enrolled from Claims Desk weekly sync".into();
+            s.subtitle.clone_from(&subtitle);
             s.suggestion = None;
-            s.voiceprint = Some(mirona_core::Voiceprint { meetings: 1 });
+            s.voiceprint = Some(mirona_core::Voiceprint { meetings });
         };
         let person = self
             .people

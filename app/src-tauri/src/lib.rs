@@ -370,7 +370,7 @@ struct Status {
     /// Providers with an API key in the keychain.
     keys: Vec<String>,
     config_path: PathBuf,
-    /// How MCP clients start the server: the `mirona` CLI.
+    /// How MCP clients start the server: this app binary, run with `mcp`.
     cli: String,
     shortcut: &'static str,
     errors: Vec<String>,
@@ -416,18 +416,10 @@ fn fetch_command(engine: &Engine) -> String {
     )
 }
 
-/// The `mirona` CLI next to the app binary when bundled, else whatever is on PATH.
+/// The command MCP clients run: this app's own binary with `mcp` (see `main.rs`), so it works
+/// without installing the CLI.
 fn cli_path() -> String {
-    let exe = if cfg!(windows) {
-        "mirona.exe"
-    } else {
-        "mirona"
-    };
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| Some(p.parent()?.join(exe)))
-        .filter(|p| p.is_file())
-        .map_or_else(|| "mirona".into(), |p| p.display().to_string())
+    std::env::current_exe().map_or_else(|_| "mirona".into(), |p| p.display().to_string())
 }
 
 /// Empty `key` removes it. Keys never touch `config.toml`.

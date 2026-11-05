@@ -415,3 +415,33 @@ fn delete_meeting_removes_folder_index_and_items() {
     s.reindex().unwrap();
     assert!(s.meeting(&id).is_err(), "gone from disk too");
 }
+
+#[test]
+fn enrolling_names_the_real_meetings() {
+    let (_dir, mut s) = seeded();
+    let mut a = live_seg("a-0", "them", 0, "hello");
+    let id_a = new_meeting("Design review", &mut s);
+    a.id = format!("{id_a}-0");
+    s.push_segment(&id_a, a).unwrap();
+    let p = s.enroll_speaker("them", "Nadia").unwrap();
+    assert_eq!(p.subtitle, "Named in Design review");
+    assert_eq!(p.voiceprint.unwrap().meetings, 1);
+
+    let id_b = new_meeting("Budget sync", &mut s);
+    s.push_segment(&id_b, live_seg(&format!("{id_b}-0"), "them", 0, "hi"))
+        .unwrap();
+    let p = s.enroll_speaker("them", "Nadia").unwrap();
+    assert!(
+        p.subtitle.starts_with("Named in ") && p.subtitle.ends_with(" and 1 more"),
+        "{}",
+        p.subtitle
+    );
+    assert_eq!(p.voiceprint.unwrap().meetings, 2);
+}
+
+fn new_meeting(title: &str, s: &mut Store) -> String {
+    let id = format!("m-{title}");
+    s.start_meeting(&id).unwrap();
+    s.set_title(&id, title).unwrap();
+    id
+}
