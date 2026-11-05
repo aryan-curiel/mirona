@@ -376,6 +376,10 @@ struct Status {
     errors: Vec<String>,
 }
 
+/// Providers whose API key the user brings, kept in the OS keychain (account = provider id).
+/// Jev classifies segments (M2); `OpenAI` and Anthropic write summaries.
+const KEY_PROVIDERS: [&str; 3] = ["openai", "anthropic", "jev"];
+
 #[tauri::command]
 fn status(st: St, keys: bool) -> Status {
     let engine = st.engine();
@@ -388,7 +392,7 @@ fn status(st: St, keys: bool) -> Status {
         fetch_command: fetch_command(&engine),
         // Only when asked: reading the keychain can prompt on unsigned dev builds.
         keys: if keys {
-            ["openai", "anthropic"]
+            KEY_PROVIDERS
                 .into_iter()
                 .filter(|p| matches!(keychain::api_key(p), Ok(Some(_))))
                 .map(String::from)
@@ -429,7 +433,7 @@ fn cli_path() -> String {
 /// Empty `key` removes it. Keys never touch `config.toml`.
 #[tauri::command]
 fn set_api_key(provider: String, key: String) -> Res<()> {
-    if !["openai", "anthropic"].contains(&provider.as_str()) {
+    if !KEY_PROVIDERS.contains(&provider.as_str()) {
         return Err(format!("no API key for {provider}"));
     }
     let key = key.trim();

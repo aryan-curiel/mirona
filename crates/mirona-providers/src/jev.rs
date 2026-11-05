@@ -2,6 +2,9 @@
 //!
 //! One `POST /v1/systemone` per segment carries every yes/no question. Jev is a cloud provider,
 //! so privacy mode refuses it through `check_privacy`; the local fallback is `ollama::Ollama`.
+//!
+//! Each user brings their own key: Settings → API keys stores it in the OS keychain under the
+//! account `jev` (`keychain::api_key("jev")`), never in `config.toml`.
 
 use crate::questions::{SEGMENT_QUESTIONS, answer};
 use crate::{Classifier, Error, Locality, Provider, Result};

@@ -142,7 +142,7 @@ function Field({ label, value, placeholder, onSave, type = "text" }: { label: st
   );
 }
 
-function ApiKey({ provider, saved }: { provider: string; saved: boolean }) {
+function ApiKey({ provider, label, saved }: { provider: string; label: string; saved: boolean }) {
   const refresh = useStore((s) => s.refreshStatus);
   const flash = useStore((s) => s.flash);
   const [key, setKey] = useState("");
@@ -159,7 +159,7 @@ function ApiKey({ provider, saved }: { provider: string; saved: boolean }) {
   return (
     <div className="flex items-end gap-2">
       <label className="flex flex-1 flex-col gap-1 text-[13px] text-muted">
-        API key {saved ? "· saved in the keychain" : "· not set"}
+        {label} {saved ? "· saved in the keychain" : "· not set"}
         <input type="password" className="mi-field text-[14px] text-ink" value={key} placeholder={saved ? "••••••••  (enter a new key to replace it)" : "Paste your key"} onChange={(e) => setKey(e.target.value)} autoComplete="off" />
       </label>
       <button type="button" className="mi-ghost" disabled={!key.trim()} onClick={() => save(key)}>
@@ -242,10 +242,8 @@ export function ModelsView() {
               />
             )}
           </div>
-          {st.llm !== "ollama" && (
-            <div className="mt-3">
-              <ApiKey provider={st.llm} saved={status.keys.includes(st.llm)} />
-            </div>
+          {st.llm !== "ollama" && !status.keys.includes(st.llm) && (
+            <p className="mt-2 text-[12px] text-record-text">Add your {st.llm === "openai" ? "OpenAI" : "Anthropic"} API key under API keys below.</p>
           )}
           {privacy && <p className="mt-2 text-[12px] text-muted">Cloud options are off while privacy mode is on.</p>}
         </Row>
@@ -261,6 +259,16 @@ export function ModelsView() {
         </Row>
         <Row title="Speaker diarization" sub="Splits “them” into each person">
           <span className="mi-chip mi-chip--neutral">Coming in M2</span>
+        </Row>
+      </section>
+
+      <section className="mi-card mt-5 overflow-hidden">
+        <Row title="API keys" sub="Bring your own. Stored in the system keychain on this Mac, never in config.toml or sent anywhere else">
+          <div className="flex flex-col gap-4">
+            <ApiKey provider="openai" label="OpenAI (summaries)" saved={status.keys.includes("openai")} />
+            <ApiKey provider="anthropic" label="Anthropic (summaries)" saved={status.keys.includes("anthropic")} />
+            <ApiKey provider="jev" label="Jev by TypeSafe (classification, M2)" saved={status.keys.includes("jev")} />
+          </div>
         </Row>
       </section>
 
