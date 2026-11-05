@@ -673,8 +673,27 @@ pub fn run() {
             get_settings,
             save_settings,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Mirona");
+        // Closing the window keeps Mirona in the menu bar, so recording can still be started
+        // from the tray or the shortcut. Quit from the tray menu.
+        .on_window_event(|w, e| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+                w.hide().ok();
+                api.prevent_close();
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while starting Mirona")
+        .run(|app, e| {
+            // Clicking the Dock icon brings the hidden window back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = e
+                && let Some(w) = app.get_webview_window("main")
+            {
+                w.show().ok();
+                w.set_focus().ok();
+            }
+            let _ = (app, e);
+        });
 }
 
 #[cfg(test)]

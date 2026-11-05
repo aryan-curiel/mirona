@@ -416,3 +416,18 @@ fn live_summary_and_notes_with_qwen3() {
     assert!(notes.len() >= 3, "{notes:?}");
     assert!(notes.iter().all(|n| starts.contains(&n.at_ms)));
 }
+
+#[test]
+fn enhance_tells_the_model_when_each_note_was_written() {
+    let mut m = claims();
+    // First line typed at 03:05 during the call, second one afterwards (no time).
+    m.notes.raw_at_ms = vec![Some(185_000), None];
+    let llm = Scripted::new(&[r#"{"notes": []}"#]);
+    block_on(enhance_notes(&m, &llm)).unwrap();
+    let (system, user, _) = &llm.prompts()[0];
+    assert!(system.contains("(at m:ss)"), "{system}");
+    assert!(
+        user.contains("- (at 03:05) insurer grouping → monday?\n- overdue filter\n"),
+        "{user}"
+    );
+}

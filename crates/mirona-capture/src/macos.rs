@@ -27,6 +27,9 @@ struct Input {
     source: Source,
     stream: Option<cpal::Stream>,
     device: Option<DeviceId>,
+    /// Sample rate the stream was built with. Bluetooth headsets keep their name but switch
+    /// rate (and break existing taps) when their mic opens, so a change means rebuild.
+    rate: Option<u32>,
     last_error: Option<String>,
 }
 
@@ -38,7 +41,8 @@ impl Input {
             _ => host.default_output_device(),
         };
         let id = dev.as_ref().and_then(|d| d.id().ok());
-        if self.stream.is_some() && id == self.device {
+        let rate = dev.as_ref().and_then(|d| current_rate(d, self.source));
+        if self.stream.is_some() && id == self.device && rate == self.rate {
             return;
         }
         self.stream = None; // drop first: destroys the old tap before making a new one
@@ -53,6 +57,7 @@ impl Input {
             Ok(stream) => {
                 self.stream = Some(stream);
                 self.device = id;
+                self.rate = rate;
                 self.last_error = None;
                 let name = dev.map(|d| d.to_string()).unwrap_or_default();
                 let _ = events.send(Event::Device {
@@ -71,6 +76,15 @@ impl Input {
             Err(_) => {}
         }
     }
+}
+
+fn current_rate(dev: &cpal::Device, source: Source) -> Option<u32> {
+    match source {
+        Source::Mic => dev.default_input_config(),
+        _ => dev.default_output_config(),
+    }
+    .ok()
+    .map(|c| c.sample_rate())
 }
 
 fn build(dev: &cpal::Device, source: Source, tx: Sender<Msg>) -> Result<cpal::Stream, String> {
@@ -147,6 +161,7 @@ pub(crate) fn run(
             source,
             stream: None,
             device: None,
+            rate: None,
             last_error: None,
         })
         .collect();

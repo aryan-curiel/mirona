@@ -385,6 +385,7 @@ const NOTES_RULES: &str = r#"You turn a person's rough meeting notes into clear 
 Each transcript line starts with [line number, time]. Rules:
 - Keep the person's own wording where it exists; complete it into a short sentence with the details from the transcript (who, what, when).
 - Add the important decisions, action items and open questions the person did not write down.
+- A note may start with (at m:ss): when the person wrote it during the call. The matching moment is usually just before that time.
 - Every note cites the transcript line it comes from. Only use what was actually said.
 Reply with one JSON object and nothing else, in this shape:
 {"notes": [{"kind": "decision" | "action" | "question", "text": "...", "segment": 12}]}
@@ -405,20 +406,24 @@ pub async fn enhance_notes(meeting: &Meeting, llm: &impl LlmProvider) -> Result<
     if meeting.segments.is_empty() {
         return Err("nothing to enhance: the transcript is empty".into());
     }
-    let raw: Vec<&str> = meeting
+    // Lines typed during the call carry the meeting time they were written (NGR-144).
+    let raw: Vec<String> = meeting
         .notes
         .raw
         .iter()
-        .map(|n| n.trim())
-        .filter(|n| !n.is_empty())
+        .enumerate()
+        .filter(|(_, n)| !n.trim().is_empty())
+        .map(
+            |(i, n)| match meeting.notes.raw_at_ms.get(i).copied().flatten() {
+                Some(ms) => format!("- (at {}) {}", clock(ms), n.trim()),
+                None => format!("- {}", n.trim()),
+            },
+        )
         .collect();
     let notes = if raw.is_empty() {
         "(none: write the notes from the transcript)".to_string()
     } else {
-        raw.iter()
-            .map(|n| format!("- {n}"))
-            .collect::<Vec<_>>()
-            .join("\n")
+        raw.join("\n")
     };
     let parts = chunks(&transcript_lines(meeting), CHUNK_CHARS);
     let mut out = vec![];
