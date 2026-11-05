@@ -317,4 +317,12 @@ pub enum PipelineEvent {
     },
     #[serde(rename_all = "camelCase")]
     Summarized { meeting_id: Id },
+    /// Something the user should see: a device change, or a stage that failed. The recording
+    /// is never lost because a later stage failed.
+    #[serde(rename_all = "camelCase")]
+    Notice {
+        meeting_id: Id,
+        message: String,
+        error: bool,
+    },
 }

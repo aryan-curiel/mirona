@@ -2940,6 +2940,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "mirona-engine"
+version = "0.1.0"
+dependencies = [
+ "mirona-capture",
+ "mirona-core",
+ "mirona-providers",
+ "mirona-store",
+ "mirona-summary",
+ "tempfile",
+]
+
+[[package]]
 name = "mirona-mcp"
 version = "0.1.0"
 dependencies = [

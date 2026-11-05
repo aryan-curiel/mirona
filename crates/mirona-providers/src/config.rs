@@ -9,7 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -18,6 +18,23 @@ pub struct Config {
     pub privacy: bool,
     /// Stage id → provider id. Stages left out keep their default.
     pub providers: BTreeMap<String, String>,
+    /// Where meeting folders live. `None`: the app's default (`~/Documents/Mirona`).
+    pub meetings_dir: Option<PathBuf>,
+    /// Speech, VAD and diarization models (`scripts/fetch-models.sh`). `None`: app default.
+    pub models_dir: Option<PathBuf>,
+    /// Summary template id used after each recording (NGR-146).
+    pub template: String,
+    pub llm: LlmSettings,
+}
+
+/// Which model the summary stage uses. API keys live in the OS keychain, never here.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LlmSettings {
+    /// e.g. `qwen3:4b`, `gpt-4.1-mini`, `claude-opus-5-5`. Empty: the provider's default.
+    pub model: String,
+    /// OpenAI-compatible endpoint (LM Studio, vLLM…). Empty: the provider's default.
+    pub base_url: String,
 }
 
 impl Default for Config {
@@ -25,6 +42,10 @@ impl Default for Config {
         Self {
             privacy: true,
             providers: BTreeMap::new(),
+            meetings_dir: None,
+            models_dir: None,
+            template: "client-call".into(),
+            llm: LlmSettings::default(),
         }
     }
 }

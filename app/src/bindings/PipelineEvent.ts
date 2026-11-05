@@ -6,4 +6,4 @@ import type { Tag } from "./Tag";
 /**
  * Events emitted by each pipeline stage, in order, while a meeting is recorded and processed.
  */
-export type PipelineEvent = { "stage": "captured", meetingId: string, elapsedMs: number, levels: Array<number>, } | { "stage": "transcribed", meetingId: string, segment: Segment, speaker: Speaker, } | { "stage": "diarized", meetingId: string, speakers: number, } | { "stage": "classified", meetingId: string, segmentId: string, tags: Array<Tag>, } | { "stage": "summarized", meetingId: string, };
+export type PipelineEvent = { "stage": "captured", meetingId: string, elapsedMs: number, levels: Array<number>, } | { "stage": "transcribed", meetingId: string, segment: Segment, speaker: Speaker, } | { "stage": "diarized", meetingId: string, speakers: number, } | { "stage": "classified", meetingId: string, segmentId: string, tags: Array<Tag>, } | { "stage": "summarized", meetingId: string, } | { "stage": "notice", meetingId: string, message: string, error: boolean, };

@@ -1,0 +1,19 @@
+[package]
+name = "mirona-engine"
+description = "Record → transcribe → store → summarize, shared by the app and the CLI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mirona-core.workspace = true
+mirona-store.workspace = true
+mirona-capture.workspace = true
+mirona-summary.workspace = true
+mirona-providers = { workspace = true, features = ["ollama", "openai", "anthropic", "keychain"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

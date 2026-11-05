@@ -14,6 +14,7 @@ mirona-providers = { path = "crates/mirona-providers" }
 mirona-store = { path = "crates/mirona-store" }
 mirona-capture = { path = "crates/mirona-capture" }
 mirona-summary = { path = "crates/mirona-summary" }
+mirona-engine = { path = "crates/mirona-engine" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ts-rs = "12"
