@@ -70,6 +70,7 @@ impl Models {
                 .iter()
                 .map(|s| (s.id.clone(), s.selected.clone()))
                 .collect(),
+            ..Config::default()
         }
     }
 
