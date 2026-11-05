@@ -25,6 +25,8 @@ pub struct Config {
     /// Summary template id used after each recording (NGR-146).
     pub template: String,
     pub llm: LlmSettings,
+    /// Let MCP clients read meetings. Off: `mirona mcp` refuses to serve (NGR-148/150).
+    pub mcp_enabled: bool,
 }
 
 /// Which model the summary stage uses. API keys live in the OS keychain, never here.
@@ -46,6 +48,7 @@ impl Default for Config {
             models_dir: None,
             template: "client-call".into(),
             llm: LlmSettings::default(),
+            mcp_enabled: true,
         }
     }
 }
