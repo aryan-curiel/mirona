@@ -2,6 +2,16 @@
 //! land in later milestones; the `fake` module backs the prototype and tests.
 
 pub mod config;
+pub mod questions;
+
+#[cfg(feature = "jev")]
+pub mod jev;
+#[cfg(feature = "ollama")]
+pub mod ollama;
+#[cfg(feature = "parakeet")]
+pub mod parakeet;
+#[cfg(feature = "speakrs")]
+pub mod speakrs;
 
 use mirona_core::{Answer, Locality, ProviderOption, Segment};
 
@@ -174,7 +184,7 @@ mod tests {
     use super::*;
 
     /// Fakes are ready immediately, so one poll is enough.
-    fn now<T>(fut: impl Future<Output = T>) -> T {
+    pub(crate) fn now<T>(fut: impl Future<Output = T>) -> T {
         let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
         match std::pin::pin!(fut).poll(&mut cx) {
             std::task::Poll::Ready(v) => v,

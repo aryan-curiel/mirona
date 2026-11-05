@@ -62,6 +62,8 @@ See [licenses.md](../licenses.md). Large models (Parakeet, and speakrs CoreML) a
 
 ## Consequences
 
+- The chosen providers are implemented in `mirona-providers` behind features: `parakeet::Parakeet`, `speakrs::Speakrs`, `jev::Jev` and `ollama::Ollama`. Tests against the real models reproduce the spike results: Parakeet 0.3% WER on LibriSpeech clean; speakrs finds 2 speakers and covers 99.6% of the speech on VoxConverse `crixb`, and all 4 AMI voiceprints match across ES2004a/b; Jev 0.96 mean on the 5 segment questions with sensitive recall 1.00; qwen3:4b 0.87. They aren't wired into the live pipeline yet; that's NGR-139, NGR-152 and NGR-155.
+
 - `Diarizer` now returns turns with times plus one averaged embedding per speaker, and has a `voiceprint()` for enrollment clips. The old per-chunk `Vec<u32>` loses everything voice enrollment needs. `Error` gains `Provider(String)` for runtime failures. Both changes are made in `mirona-providers` alongside this ADR.
 - NGR-138 (VAD): Silero, 5 s maximum, 0.25 s minimum silence.
 - NGR-139 (STT): implement with sherpa-onnx using Parakeet, plus whisper-rs.

@@ -4,10 +4,31 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+# Real providers are opt-in so the default build (and the fakes) stay light.
+# Gate 0 defaults: ADR 0001.
+[features]
+jev = ["dep:ureq", "dep:serde_json"]
+ollama = ["dep:ureq", "dep:serde_json"]
+parakeet = ["dep:sherpa-onnx"]
+speakrs = ["dep:speakrs"]
+
 [dependencies]
 mirona-core.workspace = true
 serde.workspace = true
 toml.workspace = true
+serde_json = { workspace = true, optional = true }
+ureq = { version = "3", features = ["json"], optional = true }
+sherpa-onnx = { version = "2.0.1", optional = true }
+speakrs = { version = "=0.7.0", features = ["coreml", "cpu"], optional = true }
+
+[dev-dependencies]
+hound = "3.5"
+serde_json.workspace = true
+
+# The NGR-130 eval, run through the real Rust classifiers (ignored: needs a key and Ollama).
+[[test]]
+name = "classifier_eval"
+required-features = ["jev", "ollama"]
 
 [lints]
 workspace = true

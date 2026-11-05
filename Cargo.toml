@@ -30,3 +30,13 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# speakrs CPU inference is native Rust: unoptimized it is ~10x slower (dev builds + model tests).
+[profile.dev.package.speakrs]
+opt-level = 3
+[profile.dev.package.ndarray]
+opt-level = 3
+[profile.dev.package.matrixmultiply]
+opt-level = 3
+[profile.dev.package.rustfft]
+opt-level = 3

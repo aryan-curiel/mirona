@@ -46,6 +46,19 @@ jobs:
         run: pnpm tauri build --debug --no-bundle
         working-directory: app
 
+  # Real providers (Parakeet, speakrs, Jev, Ollama) behind features. macOS only: speakrs
+  # builds with CoreML. Tests that need models, an API key or Ollama are #[ignore]d here.
+  providers:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -p mirona-providers --all-targets --all-features
+      - run: cargo test -p mirona-providers --all-features
+
   tokens:
     runs-on: ubuntu-22.04
     steps:

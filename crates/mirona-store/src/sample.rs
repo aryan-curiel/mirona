@@ -5,14 +5,8 @@ use mirona_core::{
     Locality, McpStatus, Meeting, MeetingAnswers, NameSuggestion, Note, ProviderOption,
     QuestionKind, Segment, Speaker, Stage, Summary, Tag, TagKind, Tint, Voiceprint,
 };
+use mirona_providers::questions::SEGMENT_QUESTIONS;
 
-pub const QUESTIONS: [(&str, &str); 5] = [
-    ("action", "Is this an action item?"),
-    ("decision", "Is this a decision?"),
-    ("unanswered", "Is this a question nobody answered?"),
-    ("smalltalk", "Is this small talk?"),
-    ("sensitive", "Is this sensitive?"),
-];
 pub const THRESHOLD: f32 = 0.6;
 pub const CLIENTS: [&str; 4] = [
     "Alder Restoration",
@@ -34,12 +28,12 @@ fn tag(kind: TagKind, label: &str) -> Tag {
 }
 
 fn answers(p: [f32; 5]) -> Vec<Answer> {
-    QUESTIONS
+    SEGMENT_QUESTIONS
         .iter()
         .zip(p)
-        .map(|((id, q), p)| Answer {
-            id: (*id).into(),
-            question: (*q).into(),
+        .map(|(q, p)| Answer {
+            id: q.id.into(),
+            question: q.question.into(),
             kind: QuestionKind::YesNo,
             answer: p >= THRESHOLD,
             probability: p,
