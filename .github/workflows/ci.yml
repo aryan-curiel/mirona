@@ -24,6 +24,18 @@ jobs:
           # build outputs, or a restored cache skips the script and linking fails.
           cache-directories: target/sherpa-onnx-prebuilt
           prefix-key: v1-sherpa
+      - name: sherpa-onnx native libs (macOS)
+        # Point every build at one download instead of the build script's cache in target/,
+        # which a restored Rust cache can leave half-present (the app build then fails to link).
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          v=$(awk '/name = "sherpa-onnx-sys"/{getline; print $3}' Cargo.lock | tr -d '"')
+          n="sherpa-onnx-v$v-osx-arm64-static-lib"
+          mkdir -p "$RUNNER_TEMP/sherpa" && cd "$RUNNER_TEMP/sherpa"
+          curl -fsSL -o "$n.tar.bz2" "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$v/$n.tar.bz2"
+          tar xjf "$n.tar.bz2"
+          echo "SHERPA_ONNX_LIB_DIR=$RUNNER_TEMP/sherpa/$n/lib" >> "$GITHUB_ENV"
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -66,6 +78,18 @@ jobs:
           # build outputs, or a restored cache skips the script and linking fails.
           cache-directories: target/sherpa-onnx-prebuilt
           prefix-key: v1-sherpa
+      - name: sherpa-onnx native libs (macOS)
+        # Point every build at one download instead of the build script's cache in target/,
+        # which a restored Rust cache can leave half-present (the app build then fails to link).
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          v=$(awk '/name = "sherpa-onnx-sys"/{getline; print $3}' Cargo.lock | tr -d '"')
+          n="sherpa-onnx-v$v-osx-arm64-static-lib"
+          mkdir -p "$RUNNER_TEMP/sherpa" && cd "$RUNNER_TEMP/sherpa"
+          curl -fsSL -o "$n.tar.bz2" "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$v/$n.tar.bz2"
+          tar xjf "$n.tar.bz2"
+          echo "SHERPA_ONNX_LIB_DIR=$RUNNER_TEMP/sherpa/$n/lib" >> "$GITHUB_ENV"
       - run: cargo clippy -p mirona-providers --all-targets --all-features
       - run: cargo test -p mirona-providers --all-features
 
