@@ -1,0 +1,21 @@
+{
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Mirona",
+        "theme": "Light",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 1100,
+        "minHeight": 680,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 18, "y": 24 },
+        "transparent": true,
+        "windowEffects": { "effects": ["sidebar"], "state": "followsWindowActiveState" }
+      }
+    ]
+  }
+}

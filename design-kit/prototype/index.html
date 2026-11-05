@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mirona · app prototype</title>
+<script src="dc-lite.js"></script>
+</head>
+<body style="margin:0">
+<div id="app"></div>
+<template id="dc" data-props='{"$preview":{"width":1440,"height":1000}}'>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#ECEFEE}
+a{color:#0E7466}a:hover{color:#0A5248}
+button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer}
+button:disabled{cursor:not-allowed}
+button:focus-visible,input:focus-visible{outline:2px solid #0E7466;outline-offset:2px}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:500;line-height:18px;white-space:nowrap}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.ghost{background:rgba(255,255,255,0.6);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.9);box-shadow:0 1px 3px rgba(20,40,36,0.08);border-radius:10px;padding:6px 12px;min-height:36px;font-weight:500}
+.ghost:hover{background:rgba(255,255,255,0.88)}
+.label{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#5E5E58}
+</style>
+</helmet>
+<div style="min-height: 1000px; width: 100%; display: flex; flex-wrap: wrap; background: radial-gradient(900px 640px at 8% 0%, rgba(14,116,102,0.24), transparent 62%), radial-gradient(820px 620px at 96% 12%, rgba(63,79,184,0.18), transparent 60%), radial-gradient(1000px 720px at 55% 105%, rgba(214,150,80,0.20), transparent 62%), #ECEFEE; color: #1C1C1A; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45;">
+
+<!-- Sidebar -->
+<aside style="flex: 1 1 248px; max-width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.35); -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%); border-right: 1px solid rgba(255,255,255,0.7); padding: 20px 16px; display: flex; flex-direction: column; gap: 20px;">
+  <div style="display: flex; align-items: center; gap: 10px; padding: 0 4px;">
+    <svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#0E7466"></rect><path d="M28 72V46M39 72V32M50 72V26M61 72V36M72 72V48" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"></path><rect x="16" y="72" width="68" height="8" rx="4" fill="#FFFFFF"></rect></svg>
+    <span style="font-size: 18px; font-weight: 700; letter-spacing: -0.01em;">Mirona</span>
+    <span class="chip" style="background: #E3F1EE; color: #0B5C51; margin-left: auto;">{{privacyBadge}}</span>
+  </div>
+
+  <button onClick="{{toggleRec}}" style="{{recBtnStyle}}">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>
+    <span>{{recBtnLabel}}</span>
+  </button>
+
+  <nav aria-label="Main" style="display: flex; flex-direction: column; gap: 2px;">
+    <button onClick="{{goMeeting}}" style="{{nav.meeting}}">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
+      <span>Meetings</span>
+    </button>
+    <button onClick="{{goActions}}" style="{{nav.actions}}">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"></rect><path d="M8 12l3 3 5-6"></path></svg>
+      <span>Action items</span>
+      <span class="chip" style="background: #FFFFFF; color: #3A3A36; margin-left: auto;">{{openCount}}</span>
+    </button>
+    <button onClick="{{goPeople}}" style="{{nav.people}}">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.7c1.8.7 3 2.6 3.5 5.3"></path></svg>
+      <span>People and voices</span>
+    </button>
+    <button onClick="{{goModels}}" style="{{nav.models}}">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
+      <span>Models and MCP</span>
+    </button>
+  </nav>
+
+  <div style="display: flex; flex-direction: column; gap: 6px;">
+    <span class="label" style="padding: 0 8px;">Recent</span>
+    <sc-for list="{{meetings}}" as="m" hint-placeholder-count="4">
+      <button onClick="{{m.pick}}" style="{{m.style}}">
+        <span style="display: block; font-weight: 600; font-size: 13px;">{{m.title}}</span>
+        <span style="display: block; font-size: 12px; color: #5E5E58;">{{m.sub}}</span>
+      </button>
+    </sc-for>
+  </div>
+
+  <div style="flex-grow: 1;"></div>
+
+  <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07), inset 0 1px 0 rgba(255,255,255,0.9); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0E7466" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"></path></svg>
+      <span style="font-weight: 600;">Privacy mode</span>
+      <button onClick="{{togglePrivacy}}" aria-pressed="{{privacy}}" aria-label="Toggle privacy mode" style="{{switchTrack}}"><span style="{{switchKnob}}"></span></button>
+    </div>
+    <span style="font-size: 12px; color: #5E5E58;">{{privacyText}}</span>
+  </div>
+</aside>
+
+<!-- Content -->
+<main style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column;">
+
+  <sc-if value="{{recording}}" hint-placeholder-val="{{ false }}">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 12px 32px; background: rgba(253,236,232,0.7); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border-bottom: 1px solid rgba(241,207,201,0.85);">
+      <span style="width: 10px; height: 10px; border-radius: 50%; background: #C2362B;"></span>
+      <span style="font-weight: 600; color: #8E2219;">Recording</span>
+      <span class="mono" style="font-weight: 500; color: #8E2219;">{{elapsedLabel}}</span>
+      <span style="display: flex; align-items: flex-end; gap: 3px; height: 18px;" aria-hidden="true">
+        <sc-for list="{{levels}}" as="lv" hint-placeholder-count="12"><span style="{{lv.style}}"></span></sc-for>
+      </span>
+      <span style="font-size: 13px; color: #5E2A24;">Mic + system audio · {{sttName}} on this device · Kev tags segments as they arrive</span>
+      <button class="ghost" onClick="{{toggleRec}}" style="margin-left: auto;">Stop and process</button>
+    </div>
+  </sc-if>
+
+  <!-- MEETING VIEW -->
+  <sc-if value="{{isMeeting1}}" hint-placeholder-val="{{ true }}">
+    <div style="display: flex; flex-wrap: wrap; flex-grow: 1;">
+      <section style="flex: 999 1 520px; min-width: 0; padding: 28px 32px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px;">
+        <header style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+            <span class="chip" style="background: #E3F1EE; color: #0B5C51;">Client call · 0.93</span>
+            <span class="chip" style="{{clientChipStyle}}">{{clientChipLabel}}</span>
+            <span class="chip" style="background: #EDEDE8; color: #55554F;">Sample data</span>
+          </div>
+          <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.015em;">Claims Desk weekly sync</h1>
+          <div style="font-size: 13px; color: #5E5E58;">Thu 5 Nov 2026 · 09:30 · 8 min · 3 speakers · English</div>
+        </header>
+
+        <div role="tablist" aria-label="Meeting views" style="display: flex; gap: 4px; border-bottom: 1px solid #E2E2DC;">
+          <button role="tab" aria-selected="{{tabOn.transcript}}" onClick="{{tabTranscript}}" style="{{tabs.transcript}}">Transcript</button>
+          <button role="tab" aria-selected="{{tabOn.notes}}" onClick="{{tabNotes}}" style="{{tabs.notes}}">Notes</button>
+          <button role="tab" aria-selected="{{tabOn.summary}}" onClick="{{tabSummary}}" style="{{tabs.summary}}">Summary</button>
+        </div>
+
+        <!-- Transcript -->
+        <sc-if value="{{tabOn.transcript}}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px;">
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 13px;"><input type="checkbox" checked="{{hideSmall}}" onChange="{{toggleHideSmall}}"> Hide small talk</label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 13px;"><input type="checkbox" checked="{{onlyFlagged}}" onChange="{{toggleOnlyFlagged}}"> Only tagged segments</label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 13px;"><input type="checkbox" checked="{{revealed}}" onChange="{{toggleReveal}}"> Show sensitive text</label>
+              <span style="font-size: 12px; color: #5E5E58; margin-left: auto;">{{legend}}</span>
+            </div>
+            <sc-for list="{{segs}}" as="sg" hint-placeholder-count="6">
+              <sc-if value="{{sg.visible}}" hint-placeholder-val="{{ true }}">
+                <div style="{{sg.rowStyle}}">
+                  <span style="{{sg.avatarStyle}}" aria-hidden="true">{{sg.initials}}</span>
+                  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+                      <span style="font-weight: 600;">{{sg.name}}</span>
+                      <span class="mono" style="font-size: 12px; color: #5E5E58;">{{sg.t}}</span>
+                      <sc-if value="{{sg.suggest}}" hint-placeholder-val="{{ false }}">
+                        <button onClick="{{nameS3}}" class="chip" style="background: #FFF4D6; color: #7A4800; border: 1px dashed #B7791F; cursor: pointer;">Inés? 0.84 from “Inés, can you…” · Confirm</button>
+                      </sc-if>
+                      <sc-for list="{{sg.tags}}" as="tg" hint-placeholder-count="1"><span class="chip" style="{{tg.style}}">{{tg.label}}</span></sc-for>
+                    </div>
+                    <span style="{{sg.textStyle}}">{{sg.shown}}</span>
+                  </div>
+                  <button class="ghost" onClick="{{sg.pick}}" aria-label="Inspect classification for this segment" style="{{sg.inspectStyle}}">{{sg.inspectLabel}}</button>
+                </div>
+              </sc-if>
+            </sc-for>
+            <sc-if value="{{recording}}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; gap: 12px; padding: 14px 16px; border: 1px dashed #D9A39C; border-radius: 12px; background: #FFFFFF; color: #5E5E58;">
+                <span class="mono" style="font-size: 12px;">{{elapsedLabel}}</span>
+                <span>Listening… new segments appear here, with speaker and tags, a few seconds after they are spoken.</span>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <!-- Notes -->
+        <sc-if value="{{tabOn.notes}}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-wrap: wrap; gap: 16px;">
+            <div style="flex: 1 1 260px; background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07), inset 0 1px 0 rgba(255,255,255,0.9); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 10px;">
+              <span class="label">Your notes · typed during the call</span>
+              <div class="mono" style="font-size: 13px; display: flex; flex-direction: column; gap: 6px; color: #2C2C29;">
+                <span>- insurer grouping → monday?</span>
+                <span>- overdue filter</span>
+                <span>- paid claims before migration??</span>
+              </div>
+              <button onClick="{{enhance}}" style="{{enhanceBtnStyle}}">{{enhanceLabel}}</button>
+            </div>
+            <div style="flex: 2 1 340px; background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07), inset 0 1px 0 rgba(255,255,255,0.9); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 12px;">
+              <span class="label">Enhanced notes</span>
+              <sc-if value="{{enhanced}}" hint-placeholder-val="{{ true }}">
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  <sc-for list="{{enhancedNotes}}" as="en" hint-placeholder-count="4">
+                    <div style="display: flex; gap: 10px; align-items: baseline;">
+                      <span class="chip" style="{{en.style}}">{{en.kind}}</span>
+                      <span style="flex-grow: 1;">{{en.text}}</span>
+                      <span class="mono" style="font-size: 12px; color: #5E5E58;">{{en.t}}</span>
+                    </div>
+                  </sc-for>
+                  <span style="font-size: 12px; color: #5E5E58;">Your three lines, expanded with the transcript. Written by {{llmName}}; each line links back to its moment in the call.</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{notEnhanced}}" hint-placeholder-val="{{ false }}">
+                <span style="color: #5E5E58;">Your rough notes stay yours. Enhance merges them with what was said, keeping your wording where it exists.</span>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- Summary -->
+        <sc-if value="{{tabOn.summary}}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+              <span style="font-size: 13px; color: #5E5E58;">Written by</span>
+              <sc-for list="{{llmOpts}}" as="o" hint-placeholder-count="3">
+                <button onClick="{{o.pick}}" disabled="{{o.disabled}}" style="{{o.style}}">{{o.label}} <span style="font-size: 11px; opacity: .85;">{{o.tag}}</span></button>
+              </sc-for>
+              <span style="font-size: 12px; color: #5E5E58;">{{cloudNote}}</span>
+            </div>
+            <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07), inset 0 1px 0 rgba(255,255,255,0.9); border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 16px;">
+              <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                <span class="label">Template: client call</span>
+                <span style="font-size: 12px; color: #5E5E58;">picked by classification (meeting type 0.93)</span>
+              </div>
+              <p style="margin: 0;">Weekly check-in on the Claims Desk collections workspace. Insurer grouping is ready and ships to the field team on Monday. One migration question is still open.</p>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <span style="font-weight: 600;">Decisions</span>
+                <span>Ship insurer grouping to the field team on Monday <span class="mono" style="font-size: 12px; color: #5E5E58;">03:02</span></span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <span style="font-weight: 600;">Action items</span>
+                <sc-for list="{{summaryActions}}" as="it" hint-placeholder-count="2">
+                  <label style="display: flex; align-items: center; gap: 8px;"><input type="checkbox" checked="{{it.done}}" onChange="{{it.toggle}}"> <span style="{{it.textStyle}}">{{it.who}}: {{it.what}} · due {{it.due}}</span></label>
+                </sc-for>
+                <span class="chip" style="background: #FFF4D6; color: #7A4800; border: 1px dashed #B7791F; align-self: flex-start;">1 possible action item waiting for your review (08:05)</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <span style="font-weight: 600;">Open questions</span>
+                <span>What happens to claims already paid before the migration? <span class="mono" style="font-size: 12px; color: #5E5E58;">07:30</span></span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px; padding-top: 12px; border-top: 1px solid #EDEDE8;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E7466" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>
+                <span style="font-size: 13px;">Quality check: the summary covers 2 of 2 confirmed action items (score 1.0)</span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </section>
+
+      <!-- Inspector -->
+      <aside aria-label="Classification and agents" style="flex: 1 1 340px; max-width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.45); -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%); border-left: 1px solid rgba(255,255,255,0.75); padding: 24px 20px; display: flex; flex-direction: column; gap: 22px;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="label">This meeting</span>
+            <span class="chip mono" style="background: #EDEDE8; color: #3A3A36; margin-left: auto;">{{clsName}}</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <span style="font-size: 13px; color: #5E5E58;">Meeting type · choice</span>
+            <span style="font-weight: 600;">Client call <span class="mono" style="font-weight: 400; font-size: 12px; color: #5E5E58;">0.93</span></span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 13px; color: #5E5E58;">Client · choice · threshold 0.75</span>
+            <span style="font-weight: 600;">{{clientLine}}</span>
+            <sc-if value="{{clientUnsure}}" hint-placeholder-val="{{ true }}">
+              <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                <sc-for list="{{clientOpts}}" as="co" hint-placeholder-count="3">
+                  <button class="ghost" onClick="{{co.pick}}" style="font-size: 12px; min-height: 32px; padding: 4px 10px;">{{co.label}}</button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 13px; color: #5E5E58;">Priority · score</span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="flex-grow: 1; height: 6px; border-radius: 3px; background: #EDEDE8; position: relative;"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 72%; border-radius: 3px; background: #0E7466;"></span></span>
+              <span class="mono" style="font-size: 12px;">3.6 / 5</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 13px; color: #5E5E58;">Needs a follow-up email? · yes/no</span>
+            <span class="chip" style="background: #E3F1EE; color: #0B5C51; margin-left: auto;">Yes · 0.86</span>
+          </div>
+          <button class="ghost" onClick="{{toggleDraft}}">{{draftLabel}}</button>
+          <sc-if value="{{draftOpen}}" hint-placeholder-val="{{ false }}">
+            <div style="background: #F6F6F3; border-radius: 10px; padding: 12px; font-size: 13px; white-space: pre-line;">{{draftText}}</div>
+          </sc-if>
+        </div>
+
+        <div style="height: 1px; background: #EDEDE8;"></div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <span class="label">Selected segment</span>
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
+            <span style="font-weight: 600;">{{sel.name}}</span>
+            <span class="mono" style="font-size: 12px; color: #5E5E58;">{{sel.t}}</span>
+          </div>
+          <span style="font-size: 13px; color: #3A3A36; background: #F6F6F3; border-radius: 8px; padding: 8px 10px;">“{{sel.shown}}”</span>
+          <span style="font-size: 12px; color: #5E5E58;">{{clsName}} answered {{qCount}} typed questions in one call. Threshold 0.60; below it, you decide.</span>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 13px; flex-grow: 1;">{{r.label}}</span>
+                <span class="chip" style="{{r.ansStyle}}">{{r.ans}}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="flex-grow: 1; height: 6px; border-radius: 3px; background: #EDEDE8; position: relative;">
+                  <span style="{{r.barStyle}}"></span>
+                  <span style="position: absolute; left: 60%; top: -3px; bottom: -3px; width: 2px; background: #3A3A36;" aria-hidden="true"></span>
+                </span>
+                <span class="mono" style="font-size: 12px; width: 32px; text-align: right;">{{r.p}}</span>
+                <button onClick="{{r.correct}}" style="background: none; border: none; padding: 4px; font-size: 12px; font-weight: 500; color: #0E7466; text-decoration: underline;">{{r.correctLabel}}</button>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{sel.hasOwner}}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-size: 13px;">Who owns it? · choice among speakers</span>
+              <sc-for list="{{sel.owners}}" as="ow" hint-placeholder-count="3">
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                  <span style="width: 72px;">{{ow.name}}</span>
+                  <span style="flex-grow: 1; height: 6px; border-radius: 3px; background: #EDEDE8; position: relative;"><span style="{{ow.barStyle}}"></span></span>
+                  <span class="mono" style="font-size: 12px; width: 32px; text-align: right;">{{ow.p}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <span style="font-size: 12px; color: #0B5C51; background: #E3F1EE; border-radius: 8px; padding: 8px 10px;">{{corrCount}} corrections saved as labelled examples for evaluating and fine-tuning Kev.</span>
+        </div>
+
+        <div style="height: 1px; background: #EDEDE8;"></div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="label">Agent activity · MCP</span>
+            <span class="chip" style="{{mcpChipStyle}}">{{mcpChipLabel}}</span>
+          </div>
+          <sc-if value="{{mcpOn}}" hint-placeholder-val="{{ true }}">
+            <sc-for list="{{agentLog}}" as="lg" hint-placeholder-count="3">
+              <div style="display: flex; flex-direction: column; gap: 3px; padding: 10px; border: 1px solid #EDEDE8; border-radius: 10px;">
+                <div style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: #5E5E58;"><span style="font-weight: 600; color: #1C1C1A;">{{lg.client}}</span><span>· {{lg.when}}</span></div>
+                <span class="mono" style="font-size: 12px; color: #0B5C51;">{{lg.call}}</span>
+                <span style="font-size: 12px; color: #3A3A36;">{{lg.result}}</span>
+              </div>
+            </sc-for>
+          </sc-if>
+          <sc-if value="{{mcpOff}}" hint-placeholder-val="{{ false }}">
+            <span style="font-size: 13px; color: #5E5E58;">The MCP server is off. Turn it on in Models and MCP.</span>
+          </sc-if>
+        </div>
+      </aside>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{isOtherMeeting}}" hint-placeholder-val="{{ false }}">
+    <div style="padding: 48px 32px; display: flex; flex-direction: column; gap: 12px; max-width: 640px;">
+      <span class="chip" style="background: #EDEDE8; color: #55554F; align-self: flex-start;">{{otherClient}}</span>
+      <h1 style="margin: 0; font-size: 26px; font-weight: 700;">{{otherTitle}}</h1>
+      <p style="margin: 0; color: #5E5E58;">This prototype carries full sample data for one meeting only. Open the Claims Desk weekly sync to walk through transcript, notes, summary and classification.</p>
+      <button class="ghost" onClick="{{openM1}}" style="align-self: flex-start;">Open Claims Desk weekly sync</button>
+    </div>
+  </sc-if>
+
+  <!-- ACTION ITEMS VIEW -->
+  <sc-if value="{{viewOn.actions}}" hint-placeholder-val="{{ false }}">
+    <div style="padding: 28px 32px; display: flex; flex-direction: column; gap: 16px; max-width: 980px;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 700;">Action items</h1>
+        <span style="color: #5E5E58;">Detected by classification across meetings. Agents read the same list through <span class="mono" style="font-size: 13px;">list_action_items</span>.</span>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+        <sc-for list="{{actFilters}}" as="f" hint-placeholder-count="4">
+          <button onClick="{{f.pick}}" style="{{f.style}}">{{f.label}}</button>
+        </sc-for>
+      </div>
+      <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07), inset 0 1px 0 rgba(255,255,255,0.9); border-radius: 16px; overflow-x: auto;">
+        <sc-for list="{{actItems}}" as="it" hint-placeholder-count="5">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #EDEDE8;">
+            <input type="checkbox" checked="{{it.done}}" onChange="{{it.toggle}}" aria-label="Mark done">
+            <div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 2px;">
+              <span style="{{it.textStyle}}">{{it.what}}</span>
+              <span style="font-size: 12px; color: #5E5E58;">{{it.mtg}}</span>
+            </div>
+            <span style="width: 90px; font-weight: 500;">{{it.who}}</span>
+            <span class="mono" style="width: 48px; font-size: 12px;">{{it.due}}</span>
+            <span class="chip" style="{{it.clientStyle}}">{{it.client}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- PEOPLE VIEW -->
+  <sc-if value="{{viewOn.people}}" hint-placeholder-val="{{ false }}">
+    <div style="padding: 28px 32px; display: flex; flex-direction: column; gap: 16px; max-width: 980px;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 700;">People and voices</h1>
+        <span style="color: #5E5E58;">Diarization splits each call by voice; enrolled voiceprints turn “Speaker 2” into a name across meetings. Voiceprints never leave this device.</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px;">
+        <sc-for list="{{people}}" as="p" hint-placeholder-count="3">
+          <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07), inset 0 1px 0 rgba(255,255,255,0.9); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="{{p.avatarStyle}}" aria-hidden="true">{{p.initials}}</span>
+              <div style="display: flex; flex-direction: column;">
+                <span style="font-weight: 600;">{{p.name}}</span>
+                <span style="font-size: 12px; color: #5E5E58;">{{p.role}}</span>
+              </div>
+            </div>
+            <span class="chip" style="{{p.statusStyle}}">{{p.status}}</span>
+            <sc-if value="{{p.canEnroll}}" hint-placeholder-val="{{ false }}">
+              <button class="ghost" onClick="{{nameS3}}">Enroll as Inés</button>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- MODELS VIEW -->
+  <sc-if value="{{viewOn.models}}" hint-placeholder-val="{{ false }}">
+    <div style="padding: 28px 32px; display: flex; flex-direction: column; gap: 18px; max-width: 1040px;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 700;">Models and MCP</h1>
+        <span style="color: #5E5E58;">Every stage is a provider you can swap. Local runs by default; cloud options unlock only when privacy mode is off.</span>
+      </div>
+      <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07), inset 0 1px 0 rgba(255,255,255,0.9); border-radius: 16px;">
+        <sc-for list="{{stages}}" as="st" hint-placeholder-count="5">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #EDEDE8;">
+            <div style="flex: 0 1 220px; display: flex; flex-direction: column;">
+              <span style="font-weight: 600;">{{st.name}}</span>
+              <span style="font-size: 12px; color: #5E5E58;">{{st.note}}</span>
+            </div>
+            <div style="flex: 1 1 360px; display: flex; flex-wrap: wrap; gap: 6px;">
+              <sc-for list="{{st.opts}}" as="o" hint-placeholder-count="3">
+                <button onClick="{{o.pick}}" disabled="{{o.disabled}}" style="{{o.style}}">{{o.label}} <span style="font-size: 11px; opacity: .85;">{{o.tag}}</span></button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <span style="font-size: 12px; color: #5E5E58;">{{cloudNote}}</span>
+
+      <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07), inset 0 1px 0 rgba(255,255,255,0.9); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0E7466" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0zM12 16v5"></path></svg>
+          <span style="font-weight: 600;">MCP server</span>
+          <span class="chip" style="{{mcpChipStyle}}">{{mcpChipLabel}}</span>
+          <button class="ghost" onClick="{{toggleMcp}}" style="margin-left: auto;">{{mcpBtn}}</button>
+        </div>
+        <span class="mono" style="font-size: 12px; color: #3A3A36;">stdio · http://127.0.0.1:[PORT]/mcp</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          <span class="chip mono" style="background: #EDEDE8; color: #3A3A36;">search_meetings</span>
+          <span class="chip mono" style="background: #EDEDE8; color: #3A3A36;">get_meeting</span>
+          <span class="chip mono" style="background: #EDEDE8; color: #3A3A36;">get_transcript</span>
+          <span class="chip mono" style="background: #EDEDE8; color: #3A3A36;">list_action_items</span>
+          <span class="chip mono" style="background: #EDEDE8; color: #3A3A36;">ask_meeting</span>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px;">
+          <span><span style="font-weight: 600;">Connected:</span> Claude Code, Claude Desktop</span>
+          <span><span style="font-weight: 600;">Also ships:</span> a Claude Code skill and the <span class="mono" style="font-size: 12px;">mirona</span> CLI</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</main>
+</div>
+</template>
+<script type="text/plain" id="logic">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      view: 'meeting', meetingId: 'm1', tab: 'transcript', sel: 's5',
+      recording: false, elapsed: 0, privacy: true,
+      hideSmall: false, onlyFlagged: false, revealed: false,
+      s3Named: false, client: null, draftOpen: false, enhanced: false,
+      corr: {}, done: { a2: false }, actClient: 'All', mcp: true,
+      models: { stt: 0, diar: 0, cls: 0, llm: 0, emb: 0 }
+    };
+  }
+  componentDidMount() {
+    this.timer = setInterval(() => {
+      if (this.state.recording) this.setState({ elapsed: this.state.elapsed + 1 });
+    }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+
+  renderVals() {
+    const s = this.state;
+    const TH = 0.6;
+    const set = (o) => () => this.setState(o);
+    const pct = (p) => Math.round(p * 100) + '%';
+    const two = (p) => p.toFixed(2);
+    const names = { aryan: 'Aryan', nadia: 'Nadia', s3: s.s3Named ? 'Inés' : 'Speaker 3' };
+    const initials = { aryan: 'A', nadia: 'D', s3: s.s3Named ? 'M' : '3' };
+    const avatarBg = { aryan: 'background:#D5EBE6;color:#0B5C51', nadia: 'background:#E1E4F8;color:#2F3C99', s3: 'background:#F8E7C7;color:#6E4100' };
+    const avatar = (k) => avatarBg[k] + ';width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;flex-shrink:0';
+    const TAG = {
+      action: 'background:#E3F1EE;color:#0B5C51',
+      decision: 'background:#E8EAFA;color:#2F3C99',
+      question: 'background:#FBF0DC;color:#7A4800',
+      review: 'background:#FFF4D6;color:#7A4800;border:1px dashed #B7791F',
+      small: 'background:#EDEDE8;color:#55554F',
+      sensitive: 'background:#FBE9E7;color:#9B2C22'
+    };
+
+    const STAGES = [
+      { key: 'stt', name: 'Speech-to-text', note: 'Live transcript', opts: [['Parakeet-TDT-0.6B', 0], ['Whisper (whisper-rs)', 0], ['Cloud STT API', 1]] },
+      { key: 'diar', name: 'Speaker detection', note: 'Who said what', opts: [['speakrs', 0], ['pyannote-rs', 0]] },
+      { key: 'cls', name: 'Classification', note: 'Typed questions: choice, yes/no, score', opts: [['Kev-0.8B', 0], ['Kev-4B', 0], ['Jev (hosted)', 1]] },
+      { key: 'llm', name: 'Summaries and notes', note: 'The only stage that writes prose', opts: [['Ollama (local)', 0], ['Anthropic Claude', 1], ['OpenAI-compatible', 1]] },
+      { key: 'emb', name: 'Search embeddings', note: 'Hybrid search for agents', opts: [['Local embeddings', 0], ['Embeddings API', 1]] }
+    ];
+    const optStyle = (on, dis) => 'border-radius:8px;padding:6px 12px;min-height:36px;font-weight:500;font-size:13px;' +
+      (on ? 'background:#0E7466;color:#FFFFFF;border:1px solid #0E7466' :
+        dis ? 'background:#F6F6F3;color:#77776F;border:1px dashed #CFCFC7' : 'background:rgba(255,255,255,0.6);color:#1C1C1A;border:1px solid rgba(255,255,255,0.9);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)');
+    const stages = STAGES.map((st) => ({
+      name: st.name, note: st.note,
+      opts: st.opts.map(([label, cloud], i) => ({
+        label, tag: cloud ? 'Cloud' : 'Local',
+        disabled: !!(s.privacy && cloud),
+        style: optStyle(s.models[st.key] === i, s.privacy && cloud),
+        pick: () => this.setState({ models: Object.assign({}, s.models, { [st.key]: i }) })
+      }))
+    }));
+    const pickName = (k) => STAGES.find((x) => x.key === k).opts[s.models[k]][0];
+    const llmName = pickName('llm');
+    const clsName = pickName('cls');
+    const sttName = pickName('stt');
+
+    const SEGS = [
+      { id: 's1', t: '00:00:12', spk: 'nadia', text: 'Morning! Before we start, did anyone catch the match last night?', q: { action: 0.03, decision: 0.01, question: 0.12, small: 0.94, sensitive: 0.01 } },
+      { id: 's2', t: '00:01:05', spk: 'aryan', text: 'Quick update: the collections workspace now groups claims by insurer, and the export works end to end.', q: { action: 0.18, decision: 0.09, question: 0.04, small: 0.05, sensitive: 0.02 } },
+      { id: 's3', t: '00:02:40', spk: 's3', text: 'Great. Can we ship the insurer grouping to the field team on Monday?', q: { action: 0.22, decision: 0.14, question: 0.31, small: 0.03, sensitive: 0.01 } },
+      { id: 's4', t: '00:03:02', spk: 'nadia', text: 'Yes, let’s ship it Monday. Inés, can you let the field team know?', q: { action: 0.34, decision: 0.91, question: 0.08, small: 0.02, sensitive: 0.01 } },
+      { id: 's5', t: '00:03:20', spk: 's3', owner: 's3', due: 'Fri', text: 'Sure, I’ll send the announcement by Friday.', q: { action: 0.89, decision: 0.12, question: 0.02, small: 0.04, sensitive: 0.01 }, owners: [['s3', 0.86], ['nadia', 0.09], ['aryan', 0.05]] },
+      { id: 's6', t: '00:04:45', spk: 'aryan', owner: 'aryan', due: 'Thu', text: 'I’ll add the overdue filter and send a preview build by Thursday.', q: { action: 0.95, decision: 0.07, question: 0.01, small: 0.02, sensitive: 0.01 }, owners: [['aryan', 0.93], ['nadia', 0.04], ['s3', 0.03]] },
+      { id: 's7', t: '00:06:10', spk: 'nadia', text: 'The test login for the portal is admin / Winter-2026.', q: { action: 0.06, decision: 0.03, question: 0.02, small: 0.05, sensitive: 0.97 } },
+      { id: 's8', t: '00:07:30', spk: 's3', text: 'What happens to claims that were already paid before the migration?', q: { action: 0.12, decision: 0.03, question: 0.82, small: 0.02, sensitive: 0.02 } },
+      { id: 's9', t: '00:08:05', spk: 'aryan', owner: 'aryan', text: 'Let me think about whether we migrate those or archive them.', q: { action: 0.48, decision: 0.10, question: 0.21, small: 0.06, sensitive: 0.01 }, owners: [['aryan', 0.71], ['nadia', 0.18], ['s3', 0.11]] }
+    ];
+    const KEYS = [['action', 'Is this an action item?'], ['decision', 'Is this a decision?'], ['question', 'Is this a question nobody answered?'], ['small', 'Is this small talk?'], ['sensitive', 'Is this sensitive?']];
+    const isCorr = (id, k) => !!s.corr[id + ':' + k];
+    const yes = (sg, k) => (sg.q[k] >= TH) !== isCorr(sg.id, k);
+    const unsure = (sg, k) => !isCorr(sg.id, k) && sg.q[k] >= 0.4 && sg.q[k] < TH;
+    const redact = (sg) => (yes(sg, 'sensitive') && !s.revealed) ? '[Credentials redacted on this device]' : sg.text;
+
+    const counts = { action: 0, decision: 0, question: 0, sensitive: 0, review: 0 };
+    const segs = SEGS.map((sg) => {
+      const tags = [];
+      if (yes(sg, 'action')) { counts.action++; tags.push({ label: 'Action · ' + names[sg.owner || sg.spk] + (sg.due ? ' · ' + sg.due : ''), style: TAG.action }); }
+      else if (unsure(sg, 'action')) { counts.review++; tags.push({ label: 'Needs review · action? ' + two(sg.q.action), style: TAG.review }); }
+      if (yes(sg, 'decision')) { counts.decision++; tags.push({ label: 'Decision', style: TAG.decision }); }
+      if (yes(sg, 'question')) { counts.question++; tags.push({ label: 'Open question', style: TAG.question }); }
+      if (yes(sg, 'small')) tags.push({ label: 'Small talk', style: TAG.small });
+      if (yes(sg, 'sensitive')) { counts.sensitive++; tags.push({ label: s.revealed ? 'Sensitive' : 'Sensitive · redacted', style: TAG.sensitive }); }
+      const small = yes(sg, 'small');
+      const selected = s.sel === sg.id;
+      const visible = !(s.hideSmall && small) && !(s.onlyFlagged && tags.length === 0);
+      return {
+        id: sg.id, t: sg.t.slice(3), name: names[sg.spk], initials: initials[sg.spk], tags, visible,
+        suggest: sg.id === 's3' && !s.s3Named,
+        avatarStyle: avatar(sg.spk),
+        shown: redact(sg),
+        textStyle: small ? 'color:#5E5E58' : (yes(sg, 'sensitive') && !s.revealed ? 'color:#9B2C22;font-style:italic' : 'color:#1C1C1A'),
+        rowStyle: 'display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-radius:12px;border:1px solid ' + (selected ? '#0E7466;background:rgba(240,248,246,0.82);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);box-shadow:inset 3px 0 0 #0E7466,0 10px 28px rgba(14,116,102,0.12)' : 'rgba(255,255,255,0.8);background:rgba(255,255,255,0.52);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);box-shadow:0 4px 18px rgba(20,40,36,0.05),inset 0 1px 0 rgba(255,255,255,0.9)'),
+        inspectStyle: 'font-size:12px;min-height:32px;padding:4px 10px;flex-shrink:0;' + (selected ? 'background:#0E7466;color:#FFFFFF;border-color:#0E7466' : ''),
+        inspectLabel: selected ? 'Inspecting' : 'Inspect',
+        pick: set({ sel: sg.id })
+      };
+    });
+    const legendParts = [];
+    if (counts.action) legendParts.push(counts.action + ' action items');
+    if (counts.decision) legendParts.push(counts.decision + ' decision');
+    if (counts.question) legendParts.push(counts.question + ' open question');
+    if (counts.sensitive) legendParts.push(counts.sensitive + ' sensitive');
+    if (counts.review) legendParts.push(counts.review + ' to review');
+
+    const selSeg = SEGS.find((x) => x.id === s.sel) || SEGS[4];
+    const rows = KEYS.map(([k, label]) => {
+      const p = selSeg.q[k];
+      const c = isCorr(selSeg.id, k);
+      const y = (p >= TH) !== c;
+      const u = unsure(selSeg, k);
+      const color = c ? '#2F3C99' : u ? '#B7791F' : y ? '#0E7466' : '#B9B9B1';
+      return {
+        label, p: two(p),
+        ans: c ? (y ? 'Yes · you' : 'No · you') : u ? 'Unsure' : y ? 'Yes' : 'No',
+        ansStyle: c ? TAG.decision : u ? TAG.review : y ? TAG.action : TAG.small,
+        barStyle: 'position:absolute;left:0;top:0;bottom:0;border-radius:3px;width:' + pct(p) + ';background:' + color,
+        correctLabel: c ? 'Undo' : 'Correct',
+        correct: () => {
+          const corr = Object.assign({}, s.corr);
+          corr[selSeg.id + ':' + k] = !corr[selSeg.id + ':' + k];
+          this.setState({ corr });
+        }
+      };
+    });
+    const sel = {
+      name: names[selSeg.spk], t: selSeg.t, shown: redact(selSeg),
+      hasOwner: !!selSeg.owners && (yes(selSeg, 'action') || unsure(selSeg, 'action')),
+      owners: (selSeg.owners || []).map(([k, p]) => ({ name: names[k], p: two(p), barStyle: 'position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:#0E7466;width:' + pct(p) }))
+    };
+    const corrCount = Object.keys(s.corr).filter((k) => s.corr[k]).length + (s.client ? 1 : 0) + (s.s3Named ? 1 : 0);
+
+    const clientUnsure = !s.client;
+    const clientLabel = s.client || 'Alder Restoration';
+    const clientOpts = ['Alder Restoration', 'Juniper Apparel', 'Corvo', 'Lumenix'].map((c) => ({ label: c, pick: set({ client: c }) }));
+
+    const doneOf = (id) => !!s.done[id];
+    const toggleDone = (id) => () => this.setState({ done: Object.assign({}, s.done, { [id]: !s.done[id] }) });
+    const strike = (d) => d ? 'color:#77776F;text-decoration:line-through' : 'color:#1C1C1A';
+    const ALL = [
+      { id: 'a1', who: names.s3, what: 'Announce the insurer grouping to the field team', due: 'Fri', client: 'Alder Restoration', mtg: 'Claims Desk weekly sync · 03:20' },
+      { id: 'a2', who: 'Aryan', what: 'Add the overdue filter and send a preview build', due: 'Thu', client: 'Alder Restoration', mtg: 'Claims Desk weekly sync · 04:45' },
+      { id: 'a3', who: 'Aryan', what: 'Decide whether to migrate or archive claims paid before the migration (needs review)', due: '—', client: 'Alder Restoration', mtg: 'Claims Desk weekly sync · 08:05' },
+      { id: 'a4', who: 'Aryan', what: 'Share the tagging estimate', due: 'Mon', client: 'Juniper Apparel', mtg: 'Sprint planning · sample' },
+      { id: 'a5', who: 'Aryan', what: 'Review onboarding copy for the mobile app', due: 'Wed', client: 'Corvo', mtg: 'Corvo Live product review · sample' }
+    ];
+    const CLIENT_STYLE = { 'Alder Restoration': 'background:#E3F1EE;color:#0B5C51', 'Juniper Apparel': 'background:#E8EAFA;color:#2F3C99', 'Corvo': 'background:#FBF0DC;color:#7A4800', 'Lumenix': 'background:#EDEDE8;color:#3A3A36' };
+    const actItems = ALL.filter((it) => s.actClient === 'All' || it.client === s.actClient).map((it) => Object.assign({}, it, {
+      done: doneOf(it.id), toggle: toggleDone(it.id), textStyle: strike(doneOf(it.id)) + ';font-weight:500', clientStyle: CLIENT_STYLE[it.client]
+    }));
+    const pill = (on) => 'border-radius:999px;padding:6px 14px;min-height:36px;font-weight:500;font-size:13px;' + (on ? 'background:#1C1C1A;color:#FFFFFF;border:1px solid #1C1C1A' : 'background:rgba(255,255,255,0.6);color:#1C1C1A;border:1px solid rgba(255,255,255,0.9);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)');
+    const actFilters = ['All', 'Alder Restoration', 'Juniper Apparel', 'Corvo'].map((c) => ({ label: c, style: pill(s.actClient === c), pick: set({ actClient: c }) }));
+    const openCount = String(ALL.filter((it) => !doneOf(it.id)).length);
+    const summaryActions = ALL.slice(0, 2).map((it) => ({ who: it.who, what: it.what, due: it.due, done: doneOf(it.id), toggle: toggleDone(it.id), textStyle: strike(doneOf(it.id)) }));
+
+    const enhancedNotes = [
+      { kind: 'Decision', style: TAG.decision, text: 'Insurer grouping ships to the field team on Monday.', t: '03:02' },
+      { kind: 'Action', style: TAG.action, text: names.s3 + ' announces it to the field team by Friday.', t: '03:20' },
+      { kind: 'Action', style: TAG.action, text: 'Aryan adds the overdue filter and sends a preview build by Thursday.', t: '04:45' },
+      { kind: 'Open', style: TAG.question, text: 'Claims paid before the migration: migrate or archive? Aryan to decide.', t: '07:30' }
+    ];
+
+    const draftText = 'Hi Nadia,\n\nThanks for today. Confirming: the insurer grouping ships to the field team on Monday, ' + names.s3 + ' announces it by Friday, and I’ll send a preview build with the overdue filter by Thursday.\n\nStill open: what we do with claims paid before the migration.\n\nAryan';
+
+    const agentLog = [
+      { client: 'Claude Code', when: '2 min ago', call: 'search_meetings("insurer grouping")', result: '1 meeting · Claims Desk weekly sync' },
+      { client: 'Claude Desktop', when: '5 min ago', call: 'ask_meeting("what did we decide for Monday?")', result: 'Routed by ' + clsName + ' to: decisions lookup · no LLM call needed' },
+      { client: 'Claude Code', when: '9 min ago', call: 'list_action_items(client="Alder Restoration")', result: '3 items · 1 needs review' }
+    ];
+
+    const navStyle = (on) => 'display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:none;border-radius:8px;padding:9px 10px;min-height:40px;font-weight:500;' + (on ? 'background:rgba(255,255,255,0.72);color:#0B5C51;box-shadow:0 0 0 1px rgba(255,255,255,0.9),0 4px 14px rgba(20,40,36,0.08)' : 'background:transparent;color:#2C2C29');
+    const tabStyle = (on) => 'background:none;border:none;border-bottom:2px solid ' + (on ? '#0E7466' : 'transparent') + ';padding:10px 14px;margin-bottom:-1px;font-weight:600;color:' + (on ? '#0B5C51' : '#5E5E58');
+
+    const MEETINGS = [
+      { id: 'm1', title: 'Claims Desk weekly sync', sub: 'Alder Restoration · today', client: 'Alder Restoration' },
+      { id: 'm2', title: 'Sprint planning', sub: 'Juniper Apparel · Tue', client: 'Juniper Apparel' },
+      { id: 'm3', title: 'Corvo Live product review', sub: 'Corvo · Mon', client: 'Corvo' },
+      { id: 'm4', title: 'Roadmap check-in', sub: 'Lumenix · last week', client: 'Lumenix' }
+    ];
+    const meetings = MEETINGS.map((m) => ({
+      title: m.title, sub: m.sub,
+      style: 'display:block;width:100%;text-align:left;border:none;border-radius:8px;padding:8px 10px;' + (s.view === 'meeting' && s.meetingId === m.id ? 'background:rgba(255,255,255,0.72);box-shadow:0 0 0 1px rgba(255,255,255,0.9),0 4px 14px rgba(20,40,36,0.08)' : 'background:transparent'),
+      pick: set({ view: 'meeting', meetingId: m.id })
+    }));
+    const other = MEETINGS.find((m) => m.id === s.meetingId);
+
+    const levels = [6, 10, 16, 9, 14, 18, 7, 12, 15, 8, 11, 5].map((h, i) => ({ style: 'width:3px;border-radius:2px;background:#C2362B;height:' + (((h + s.elapsed * (i + 3)) % 16) + 3) + 'px' }));
+    const mm = String(Math.floor(s.elapsed / 60)).padStart(2, '0');
+    const ss = String(s.elapsed % 60).padStart(2, '0');
+
+    const togglePrivacy = () => {
+      const on = !s.privacy;
+      const models = Object.assign({}, s.models);
+      if (on) STAGES.forEach((st) => { if (st.opts[models[st.key]][1]) models[st.key] = 0; });
+      this.setState({ privacy: on, models });
+    };
+
+    return {
+      privacy: s.privacy,
+      privacyBadge: s.privacy ? 'Local only' : 'Cloud allowed',
+      privacyText: s.privacy ? 'On. No network calls: audio, transcripts and voiceprints stay on this device. Cloud providers are blocked.' : 'Off. Cloud providers you pick can receive transcript text. Audio never leaves the device.',
+      switchTrack: 'margin-left:auto;width:40px;height:24px;border-radius:12px;border:none;padding:2px;position:relative;background:' + (s.privacy ? '#0E7466' : '#B9B9B1'),
+      switchKnob: 'display:block;width:20px;height:20px;border-radius:50%;background:#FFFFFF;transform:translateX(' + (s.privacy ? '16px' : '0') + ');transition:transform .15s',
+      togglePrivacy,
+      toggleRec: () => this.setState(s.recording ? { recording: false } : { recording: true, elapsed: 0, view: 'meeting', meetingId: 'm1', tab: 'transcript' }),
+      recording: s.recording,
+      recBtnLabel: s.recording ? 'Stop recording' : 'Start recording',
+      recBtnStyle: 'display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border-radius:10px;font-weight:600;border:1px solid ' + (s.recording ? '#C2362B;background:#FFFFFF;color:#8E2219' : '#0E7466;background:#0E7466;color:#FFFFFF'),
+      elapsedLabel: mm + ':' + ss, levels, sttName,
+      nav: { meeting: navStyle(s.view === 'meeting'), actions: navStyle(s.view === 'actions'), people: navStyle(s.view === 'people'), models: navStyle(s.view === 'models') },
+      goMeeting: set({ view: 'meeting' }), goActions: set({ view: 'actions' }), goPeople: set({ view: 'people' }), goModels: set({ view: 'models' }),
+      viewOn: { actions: s.view === 'actions', people: s.view === 'people', models: s.view === 'models' },
+      openCount, meetings,
+      isMeeting1: s.view === 'meeting' && s.meetingId === 'm1',
+      isOtherMeeting: s.view === 'meeting' && s.meetingId !== 'm1',
+      otherTitle: other.title, otherClient: other.client, openM1: set({ meetingId: 'm1' }),
+      tabs: { transcript: tabStyle(s.tab === 'transcript'), notes: tabStyle(s.tab === 'notes'), summary: tabStyle(s.tab === 'summary') },
+      tabOn: { transcript: s.tab === 'transcript', notes: s.tab === 'notes', summary: s.tab === 'summary' },
+      tabTranscript: set({ tab: 'transcript' }), tabNotes: set({ tab: 'notes' }), tabSummary: set({ tab: 'summary' }),
+      clientChipLabel: s.client ? s.client + ' · confirmed' : 'Alder Restoration? · 0.71',
+      clientChipStyle: s.client ? TAG.action : TAG.review,
+      clientLine: s.client ? s.client + ' (you confirmed)' : 'Alder Restoration · 0.71, below threshold. Confirm:',
+      clientUnsure, clientOpts,
+      hideSmall: s.hideSmall, onlyFlagged: s.onlyFlagged, revealed: s.revealed,
+      toggleHideSmall: set({ hideSmall: !s.hideSmall }), toggleOnlyFlagged: set({ onlyFlagged: !s.onlyFlagged }), toggleReveal: set({ revealed: !s.revealed }),
+      legend: legendParts.join(' · '),
+      segs, nameS3: set({ s3Named: true }),
+      enhanced: s.enhanced, notEnhanced: !s.enhanced, enhance: set({ enhanced: !s.enhanced }),
+      enhanceLabel: s.enhanced ? 'Show my notes only' : 'Enhance with transcript',
+      enhanceBtnStyle: 'align-self:flex-start;min-height:40px;border-radius:8px;padding:8px 14px;font-weight:600;border:1px solid #0E7466;' + (s.enhanced ? 'background:#FFFFFF;color:#0B5C51' : 'background:#0E7466;color:#FFFFFF'),
+      enhancedNotes, llmName, clsName,
+      llmOpts: stages[3].opts,
+      cloudNote: s.privacy ? 'Cloud options are off while privacy mode is on.' : 'Cloud providers receive transcript text only, never audio.',
+      summaryActions,
+      draftOpen: s.draftOpen, toggleDraft: set({ draftOpen: !s.draftOpen }),
+      draftLabel: s.draftOpen ? 'Hide follow-up draft' : 'Draft follow-up email', draftText,
+      sel, rows, qCount: String(KEYS.length + (sel.hasOwner ? 1 : 0)), corrCount: String(corrCount),
+      mcpOn: s.mcp, mcpOff: !s.mcp, toggleMcp: set({ mcp: !s.mcp }), mcpBtn: s.mcp ? 'Stop server' : 'Start server',
+      mcpChipLabel: s.mcp ? 'Running' : 'Off', mcpChipStyle: s.mcp ? TAG.action : TAG.small,
+      agentLog,
+      actItems, actFilters,
+      people: [
+        { name: 'Aryan', role: 'You', initials: 'A', avatarStyle: avatar('aryan'), status: 'Voiceprint enrolled · 12 meetings', statusStyle: TAG.action, canEnroll: false },
+        { name: 'Nadia', role: 'Alder Restoration', initials: 'D', avatarStyle: avatar('nadia'), status: 'Voiceprint enrolled · 4 meetings', statusStyle: TAG.action, canEnroll: false },
+        { name: names.s3, role: s.s3Named ? 'Alder Restoration' : 'Unknown voice in Claims Desk weekly sync', initials: initials.s3, avatarStyle: avatar('s3'), status: s.s3Named ? 'Enrolled from this meeting' : 'Suggested name: Inés · 0.84 from context', statusStyle: s.s3Named ? TAG.action : TAG.review, canEnroll: !s.s3Named }
+      ],
+      stages
+    };
+  }
+}
+</script>
+<script>
+  mountDC(document.getElementById('dc'), document.getElementById('logic').textContent, document.getElementById('app'));
+</script>
+</body>
+</html>

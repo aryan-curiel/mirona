@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mirona · design system</title>
+<script src="../prototype/dc-lite.js"></script>
+</head>
+<body style="margin:0">
+<div id="app"></div>
+<template id="dc" data-props='{"$preview":{"width":1440,"height":2000}}'>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:500;line-height:18px;white-space:nowrap}
+.label{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#5E5E58}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1440px; min-height: 2000px; box-sizing: border-box; padding: 56px 64px; background: radial-gradient(900px 640px at 8% 0%, rgba(14,116,102,0.24), transparent 62%), radial-gradient(820px 620px at 96% 12%, rgba(63,79,184,0.18), transparent 60%), radial-gradient(1000px 720px at 55% 105%, rgba(214,150,80,0.20), transparent 62%), #ECEFEE; color: #1C1C1A; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 40px;">
+
+  <header style="display: flex; align-items: center; gap: 16px;">
+    <svg width="56" height="56" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#0E7466"></rect><path d="M28 72V46M39 72V32M50 72V26M61 72V36M72 72V48" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"></path><rect x="16" y="72" width="68" height="8" rx="4" fill="#FFFFFF"></rect></svg>
+    <div style="display: flex; flex-direction: column;">
+      <h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.02em;">Mirona design system</h1>
+      <span style="color: #5E5E58; font-size: 15px;">Glass surfaces over a soft three-color backdrop. Tokens match <span class="mono" style="font-size: 13px;">tokens.css</span> in the design kit.</span>
+    </div>
+  </header>
+
+  <!-- Logo -->
+  <section style="display: flex; flex-direction: column; gap: 16px;">
+    <span class="label">Logo · railing that listens</span>
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch;">
+      <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07); border-radius: 16px; padding: 24px; display: flex; gap: 24px; align-items: center;">
+        <svg width="160" height="160" viewBox="0 0 100 100" role="img" aria-label="Mirona app icon"><rect width="100" height="100" rx="24" fill="#0E7466"></rect><path d="M26 72V46M34 72V34M42 72V26M50 72V38M58 72V30M66 72V42M74 72V50" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"></path><path d="M20 58h60" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-opacity=".55"></path><rect x="16" y="72" width="68" height="7" rx="3.5" fill="#FFFFFF"></rect></svg>
+        <div style="display: flex; flex-direction: column; gap: 6px; max-width: 220px;">
+          <span style="font-weight: 600;">App icon · 64 px and up</span>
+          <span style="font-size: 13px; color: #5E5E58;">Seven bars, handrail and floor. Use for the dock, installer and website.</span>
+        </div>
+      </div>
+      <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+        <span style="font-weight: 600;">Small mark · under 64 px</span>
+        <div style="display: flex; gap: 14px; align-items: center;">
+          <sc-for list="{{sizes}}" as="z" hint-placeholder-count="3"><svg width="{{z.s}}" height="{{z.s}}" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#0E7466"></rect><path d="M28 72V46M39 72V32M50 72V26M61 72V36M72 72V48" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"></path><rect x="16" y="72" width="68" height="8" rx="4" fill="#FFFFFF"></rect></svg></sc-for>
+        </div>
+        <div style="display: flex; gap: 14px; align-items: center; background: #1C1C1A; border-radius: 10px; padding: 10px 12px;">
+          <sc-for list="{{sizes}}" as="z" hint-placeholder-count="3"><svg width="{{z.s}}" height="{{z.s}}" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#0E7466"></rect><path d="M28 72V46M39 72V32M50 72V26M61 72V36M72 72V48" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"></path><rect x="16" y="72" width="68" height="8" rx="4" fill="#FFFFFF"></rect></svg></sc-for>
+        </div>
+      </div>
+      <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 16px; justify-content: center;">
+        <span style="font-weight: 600;">Lockup</span>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#0E7466"></rect><path d="M28 72V46M39 72V32M50 72V26M61 72V36M72 72V48" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"></path><rect x="16" y="72" width="68" height="8" rx="4" fill="#FFFFFF"></rect></svg>
+          <span style="font-size: 18px; font-weight: 700; letter-spacing: -0.01em;">Mirona</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; background: #1C1C1A; border-radius: 10px; padding: 10px 14px;">
+          <svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#0E7466"></rect><path d="M28 72V46M39 72V32M50 72V26M61 72V36M72 72V48" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"></path><rect x="16" y="72" width="68" height="8" rx="4" fill="#FFFFFF"></rect></svg>
+          <span style="font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: #FFFFFF;">Mirona</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Colors -->
+  <section style="display: flex; flex-direction: column; gap: 16px;">
+    <span class="label">Color</span>
+    <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px;">
+      <sc-for list="{{colors}}" as="c" hint-placeholder-count="12">
+        <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px); backdrop-filter: blur(22px); border: 1px solid rgba(255,255,255,0.8); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column;">
+          <span style="{{c.swatch}}"></span>
+          <div style="padding: 10px 12px; display: flex; flex-direction: column; gap: 2px;">
+            <span style="font-weight: 600; font-size: 13px;">{{c.name}}</span>
+            <span class="mono" style="font-size: 12px; color: #3A3A36;">{{c.hex}}</span>
+            <span style="font-size: 12px; color: #5E5E58;">{{c.use}}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <!-- Semantic tags -->
+  <section style="display: flex; flex-direction: column; gap: 16px;">
+    <span class="label">Classification tags</span>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+      <span class="chip" style="background: #E3F1EE; color: #0B5C51;">Action · Inés · Fri</span>
+      <span class="chip" style="background: #E8EAFA; color: #2F3C99;">Decision</span>
+      <span class="chip" style="background: #FBF0DC; color: #7A4800;">Open question</span>
+      <span class="chip" style="background: #FFF4D6; color: #7A4800; border: 1px dashed #B7791F;">Needs review · 0.48</span>
+      <span class="chip" style="background: #EDEDE8; color: #55554F;">Small talk</span>
+      <span class="chip" style="background: #FBE9E7; color: #9B2C22;">Sensitive · redacted</span>
+      <span class="chip" style="background: #E3F1EE; color: #0B5C51;">Local only</span>
+      <span class="chip" style="background: #EDEDE8; color: #3A3A36;">Sample data</span>
+    </div>
+  </section>
+
+  <!-- Glass -->
+  <section style="display: flex; flex-direction: column; gap: 16px;">
+    <span class="label">Glass surfaces</span>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px;">
+      <div style="background: rgba(255,255,255,0.45); -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%); border: 1px solid rgba(255,255,255,0.75); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 6px; min-height: 130px;">
+        <span style="font-weight: 600;">Panel</span>
+        <span class="mono" style="font-size: 12px; color: #3A3A36;">white 45% · blur 28 · saturate 170%</span>
+        <span style="font-size: 13px; color: #5E5E58;">Sidebar and inspector. Edge line only, no shadow.</span>
+      </div>
+      <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07), inset 0 1px 0 rgba(255,255,255,0.9); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 6px; min-height: 130px;">
+        <span style="font-weight: 600;">Card</span>
+        <span class="mono" style="font-size: 12px; color: #3A3A36;">white 55% · blur 22 · shadow 0 10 30</span>
+        <span style="font-size: 13px; color: #5E5E58;">Notes, summary, lists, settings groups. Radius 16.</span>
+      </div>
+      <div style="background: rgba(240,248,246,0.82); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); border: 1px solid #0E7466; box-shadow: inset 3px 0 0 #0E7466, 0 10px 28px rgba(14,116,102,0.12); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 6px; min-height: 130px;">
+        <span style="font-weight: 600;">Selected row</span>
+        <span class="mono" style="font-size: 12px; color: #3A3A36;">teal tint 82% · 3 px inset bar · teal glow</span>
+        <span style="font-size: 13px; color: #5E5E58;">The transcript line being inspected.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Type -->
+  <section style="display: flex; flex-direction: column; gap: 16px;">
+    <span class="label">Typography · Inter and JetBrains Mono</span>
+    <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07); border-radius: 16px; padding: 8px 24px;">
+      <sc-for list="{{type}}" as="t" hint-placeholder-count="8">
+        <div style="display: flex; align-items: baseline; gap: 24px; padding: 12px 0; border-bottom: 1px solid #EDEDE8;">
+          <span class="mono" style="width: 200px; flex-shrink: 0; font-size: 12px; color: #5E5E58;">{{t.spec}}</span>
+          <span style="{{t.style}}">{{t.sample}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <!-- Components -->
+  <section style="display: flex; flex-direction: column; gap: 16px;">
+    <span class="label">Components</span>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+
+      <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07); border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 16px;">
+        <span style="font-weight: 600;">Buttons</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+          <button style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 10px; font-weight: 600; border: 1px solid #0E7466; background: #0E7466; color: #FFFFFF;">Start recording</button>
+          <button style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 10px; font-weight: 600; border: 1px solid #C2362B; background: #FFFFFF; color: #8E2219;">Stop recording</button>
+          <button style="background: rgba(255,255,255,0.6); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.9); box-shadow: 0 1px 3px rgba(20,40,36,0.08); border-radius: 10px; padding: 6px 12px; min-height: 36px; font-weight: 500; color: #1C1C1A;">Ghost button</button>
+          <button style="background: none; border: none; padding: 4px; font-size: 12px; font-weight: 500; color: #0E7466; text-decoration: underline;">Correct</button>
+        </div>
+        <span style="font-size: 12px; color: #5E5E58;">Primary 44 px tall for the main action; ghost 36 px; text link for inline corrections.</span>
+      </div>
+
+      <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07); border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 16px;">
+        <span style="font-weight: 600;">Tabs, filters and options</span>
+        <div style="display: flex; gap: 4px; border-bottom: 1px solid #E2E2DC;">
+          <button style="background: none; border: none; border-bottom: 2px solid #0E7466; padding: 10px 14px; margin-bottom: -1px; font-weight: 600; color: #0B5C51;">Transcript</button>
+          <button style="background: none; border: none; border-bottom: 2px solid transparent; padding: 10px 14px; margin-bottom: -1px; font-weight: 600; color: #5E5E58;">Notes</button>
+          <button style="background: none; border: none; border-bottom: 2px solid transparent; padding: 10px 14px; margin-bottom: -1px; font-weight: 600; color: #5E5E58;">Summary</button>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          <button style="border-radius: 999px; padding: 6px 14px; min-height: 36px; font-weight: 500; font-size: 13px; background: #1C1C1A; color: #FFFFFF; border: 1px solid #1C1C1A;">All</button>
+          <button style="border-radius: 999px; padding: 6px 14px; min-height: 36px; font-weight: 500; font-size: 13px; background: rgba(255,255,255,0.6); color: #1C1C1A; border: 1px solid rgba(255,255,255,0.9);">Alder Restoration</button>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          <button style="border-radius: 8px; padding: 6px 12px; min-height: 36px; font-weight: 500; font-size: 13px; background: #0E7466; color: #FFFFFF; border: 1px solid #0E7466;">Kev-0.8B <span style="font-size: 11px; opacity: .85;">Local</span></button>
+          <button style="border-radius: 8px; padding: 6px 12px; min-height: 36px; font-weight: 500; font-size: 13px; background: rgba(255,255,255,0.6); color: #1C1C1A; border: 1px solid rgba(255,255,255,0.9);">Kev-4B <span style="font-size: 11px; opacity: .85;">Local</span></button>
+          <button disabled style="border-radius: 8px; padding: 6px 12px; min-height: 36px; font-weight: 500; font-size: 13px; background: #F6F6F3; color: #77776F; border: 1px dashed #CFCFC7; cursor: not-allowed;">Jev (hosted) <span style="font-size: 11px; opacity: .85;">Cloud</span></button>
+        </div>
+        <span style="font-size: 12px; color: #5E5E58;">Provider options: selected, available, and blocked by privacy mode (dashed).</span>
+      </div>
+
+      <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07); border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 14px;">
+        <span style="font-weight: 600;">Transcript segment</span>
+        <div style="display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.8); background: rgba(255,255,255,0.52); box-shadow: 0 4px 18px rgba(20,40,36,0.05);">
+          <span style="background: #D5EBE6; color: #0B5C51; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; flex-shrink: 0;">A</span>
+          <div style="display: flex; flex-direction: column; gap: 6px; flex-grow: 1;">
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+              <span style="font-weight: 600;">Aryan</span>
+              <span class="mono" style="font-size: 12px; color: #5E5E58;">04:45</span>
+              <span class="chip" style="background: #E3F1EE; color: #0B5C51;">Action · Aryan · Thu</span>
+            </div>
+            <span>I’ll add the overdue filter and send a preview build by Thursday.</span>
+          </div>
+        </div>
+        <span style="font-size: 12px; color: #5E5E58;">Avatars: teal, indigo, amber tints per speaker. Selected state uses the Selected row surface.</span>
+      </div>
+
+      <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07); border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 14px;">
+        <span style="font-weight: 600;">Probability bar, switch and nav</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 13px; flex-grow: 1;">Is this an action item?</span>
+          <span class="chip" style="background: #E3F1EE; color: #0B5C51;">Yes</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="flex-grow: 1; height: 6px; border-radius: 3px; background: #EDEDE8; position: relative;"><span style="position: absolute; left: 0; top: 0; bottom: 0; width: 95%; border-radius: 3px; background: #0E7466;"></span><span style="position: absolute; left: 60%; top: -3px; bottom: -3px; width: 2px; background: #3A3A36;"></span></span>
+          <span class="mono" style="font-size: 12px;">0.95</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap;">
+          <span style="display: flex; align-items: center; gap: 8px; font-size: 13px;"><span style="width: 40px; height: 24px; border-radius: 12px; background: #0E7466; padding: 2px; box-sizing: border-box; display: flex; justify-content: flex-end;"><span style="width: 20px; height: 20px; border-radius: 50%; background: #FFFFFF;"></span></span>Privacy mode on</span>
+          <span style="display: flex; align-items: center; gap: 10px; border-radius: 8px; padding: 9px 10px; font-weight: 500; background: rgba(255,255,255,0.72); color: #0B5C51; box-shadow: 0 0 0 1px rgba(255,255,255,0.9), 0 4px 14px rgba(20,40,36,0.08);">Meetings · active nav</span>
+          <span style="display: flex; align-items: center; gap: 10px; border-radius: 8px; padding: 9px 10px; font-weight: 500; color: #2C2C29;">Action items</span>
+        </div>
+        <span style="font-size: 12px; color: #5E5E58;">Threshold marker at 0.60; amber bar when unsure (0.40–0.60), indigo when corrected by you.</span>
+      </div>
+
+    </div>
+  </section>
+</div>
+</template>
+<script type="text/plain" id="logic">
+class Component extends DCLogic {
+  renderVals() {
+    const sw = (hex, border) => 'display:block;height:64px;background:' + hex + (border ? ';border-bottom:1px solid #E2E2DC' : '');
+    const colors = [
+      ['Accent', '#0E7466', 'Primary actions, selection'],
+      ['Accent strong', '#0B5C51', 'Text on accent tint'],
+      ['Accent tint', '#E3F1EE', 'Action tags, local badges', 1],
+      ['Ink', '#1C1C1A', 'Primary text'],
+      ['Muted', '#5E5E58', 'Secondary text (4.5:1+)'],
+      ['Line', '#E2E2DC', 'Dividers, tabs', 1],
+      ['Indigo', '#2F3C99', 'Decisions, corrections'],
+      ['Amber', '#7A4800', 'Questions, needs review'],
+      ['Amber edge', '#B7791F', 'Review dashed border'],
+      ['Record red', '#C2362B', 'Recording state'],
+      ['Sensitive', '#9B2C22', 'Redacted content'],
+      ['Backdrop', '#ECEFEE', 'Under the glow layers', 1]
+    ].map(([name, hex, use, b]) => ({ name, hex, use, swatch: sw(hex, b) }));
+    const type = [
+      ['Display · 32/700 · -0.02em', 'font-size:32px;font-weight:700;letter-spacing:-0.02em', 'Mirona design system'],
+      ['H1 · 26/700 · -0.015em', 'font-size:26px;font-weight:700;letter-spacing:-0.015em', 'Claims Desk weekly sync'],
+      ['Title · 18/700', 'font-size:18px;font-weight:700', 'Mirona'],
+      ['Body strong · 14/600', 'font-size:14px;font-weight:600', 'Decisions'],
+      ['Body · 14/400 · 1.45', 'font-size:14px', 'Ship insurer grouping to the field team on Monday.'],
+      ['Small · 13/400', 'font-size:13px;color:#5E5E58', 'Thu 5 Nov 2026 · 09:30 · 8 min · 3 speakers'],
+      ['Label · 12/600 · caps', 'font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#5E5E58', 'Selected segment'],
+      ['Mono · 12/500', "font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500", 'search_meetings(\"insurer grouping\") · 03:20']
+    ].map(([spec, style, sample]) => ({ spec, style, sample }));
+    return { sizes: [{ s: '48' }, { s: '32' }, { s: '20' }], colors, type };
+  }
+}
+</script>
+<script>
+  mountDC(document.getElementById('dc'), document.getElementById('logic').textContent, document.getElementById('app'));
+</script>
+</body>
+</html>

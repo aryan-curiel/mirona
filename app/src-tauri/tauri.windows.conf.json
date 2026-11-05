@@ -1,0 +1,18 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Mirona",
+        "theme": "Light",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 1100,
+        "minHeight": 680,
+        "decorations": false,
+        "transparent": true,
+        "windowEffects": { "effects": ["mica"] }
+      }
+    ]
+  }
+}

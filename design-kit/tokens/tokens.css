@@ -1,0 +1,174 @@
+/* Mirona design tokens · v0.1 (light theme; dark theme under [data-theme="dark"])
+ * Import once at the app root. Fonts: Inter (400/500/600/700) and JetBrains Mono (400/500).
+ */
+:root {
+  /* Brand and accent */
+  --mi-accent: #0E7466;
+  --mi-accent-strong: #0B5C51;
+  --mi-accent-tint: #E3F1EE;
+  --mi-accent-avatar: #D5EBE6;
+
+  /* Text */
+  --mi-ink: #1C1C1A;
+  --mi-ink-2: #2C2C29;
+  --mi-ink-3: #3A3A36;
+  --mi-muted: #5E5E58;      /* min. secondary text; passes 4.5:1 on glass */
+  --mi-disabled: #77776F;
+
+  /* Lines and neutrals */
+  --mi-line: #E2E2DC;
+  --mi-line-soft: #EDEDE8;
+  --mi-control-line: #D9D9D2;
+  --mi-neutral-tint: #EDEDE8;
+  --mi-neutral-text: #55554F;
+
+  /* Semantic: classification tags */
+  --mi-decision: #2F3C99;     --mi-decision-tint: #E8EAFA;  --mi-avatar-indigo: #E1E4F8;
+  --mi-question: #7A4800;     --mi-question-tint: #FBF0DC;  --mi-avatar-amber: #F8E7C7;
+  --mi-review-edge: #B7791F;  --mi-review-tint: #FFF4D6;
+  --mi-sensitive: #9B2C22;    --mi-sensitive-tint: #FBE9E7;
+  --mi-record: #C2362B;       --mi-record-text: #8E2219;    --mi-record-tint: rgba(253, 236, 232, 0.7);
+
+  /* Backdrop: three soft glows behind the glass */
+  --mi-backdrop-base: #ECEFEE;
+  --mi-backdrop:
+    radial-gradient(900px 640px at 8% 0%, rgba(14, 116, 102, 0.24), transparent 62%),
+    radial-gradient(820px 620px at 96% 12%, rgba(63, 79, 184, 0.18), transparent 60%),
+    radial-gradient(1000px 720px at 55% 105%, rgba(214, 150, 80, 0.20), transparent 62%),
+    var(--mi-backdrop-base);
+
+  /* Glass surfaces */
+  --mi-glass-panel-bg: rgba(255, 255, 255, 0.45);
+  --mi-glass-panel-filter: blur(28px) saturate(170%);
+  --mi-glass-panel-edge: rgba(255, 255, 255, 0.75);
+
+  --mi-glass-card-bg: rgba(255, 255, 255, 0.55);
+  --mi-glass-card-filter: blur(22px) saturate(160%);
+  --mi-glass-card-edge: rgba(255, 255, 255, 0.8);
+  --mi-glass-card-shadow: 0 10px 30px rgba(20, 40, 36, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+
+  --mi-glass-row-bg: rgba(255, 255, 255, 0.52);
+  --mi-glass-row-filter: blur(16px);
+  --mi-glass-row-shadow: 0 4px 18px rgba(20, 40, 36, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --mi-glass-row-selected-bg: rgba(240, 248, 246, 0.82);
+  --mi-glass-row-selected-shadow: inset 3px 0 0 var(--mi-accent), 0 10px 28px rgba(14, 116, 102, 0.12);
+
+  --mi-glass-control-bg: rgba(255, 255, 255, 0.6);
+  --mi-glass-control-bg-hover: rgba(255, 255, 255, 0.88);
+  --mi-glass-control-filter: blur(12px);
+  --mi-glass-control-edge: rgba(255, 255, 255, 0.9);
+  --mi-glass-control-shadow: 0 1px 3px rgba(20, 40, 36, 0.08);
+
+  --mi-nav-active-bg: rgba(255, 255, 255, 0.72);
+  --mi-nav-active-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9), 0 4px 14px rgba(20, 40, 36, 0.08);
+
+  /* Type */
+  --mi-font-sans: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mi-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --mi-text-display: 700 32px/1.2 var(--mi-font-sans);   /* letter-spacing -0.02em */
+  --mi-text-h1: 700 26px/1.25 var(--mi-font-sans);       /* letter-spacing -0.015em */
+  --mi-text-title: 700 18px/1.3 var(--mi-font-sans);
+  --mi-text-body-strong: 600 14px/1.45 var(--mi-font-sans);
+  --mi-text-body: 400 14px/1.45 var(--mi-font-sans);
+  --mi-text-small: 400 13px/1.45 var(--mi-font-sans);
+  --mi-text-caption: 500 12px/1.5 var(--mi-font-sans);
+  --mi-text-label: 600 12px/1.5 var(--mi-font-sans);     /* uppercase, letter-spacing 0.04em */
+  --mi-text-mono: 500 12px/1.5 var(--mi-font-mono);
+
+  /* Radius */
+  --mi-radius-xs: 3px;    /* bars */
+  --mi-radius-sm: 8px;    /* options, nav items */
+  --mi-radius-md: 10px;   /* buttons */
+  --mi-radius-lg: 12px;   /* transcript rows */
+  --mi-radius-xl: 16px;   /* cards */
+  --mi-radius-pill: 999px;
+  --mi-radius-icon: 24%;  /* app icon tile */
+
+  /* Spacing (4 px base) */
+  --mi-space-1: 4px;  --mi-space-2: 8px;  --mi-space-3: 12px; --mi-space-4: 16px;
+  --mi-space-5: 20px; --mi-space-6: 24px; --mi-space-7: 28px; --mi-space-8: 32px;
+
+  /* Sizes */
+  --mi-control-h: 36px;
+  --mi-control-h-lg: 44px;
+  --mi-avatar: 36px;
+  --mi-sidebar-w: 248px;
+  --mi-inspector-w: 340px;
+
+  /* Classification */
+  --mi-threshold: 0.6;    /* default; per-question thresholds come from config */
+}
+
+/* Dark theme: defined, not yet shipped. Opt in with <html data-theme="dark">.
+ * Same names as light; only colors and glass change. Contrast checked by design-kit/tokens/check-contrast.py. */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --mi-accent: #3FB8A5;
+  --mi-accent-strong: #6FD3C2;
+  --mi-accent-tint: #173A35;
+  --mi-accent-avatar: #1E4741;
+
+  --mi-ink: #F2F2EE;
+  --mi-ink-2: #E2E2DC;
+  --mi-ink-3: #CFCFC8;
+  --mi-muted: #A3A39B;      /* min. secondary text; passes 4.5:1 on dark glass */
+  --mi-disabled: #7E7E77;
+
+  --mi-line: #3A3A36;
+  --mi-line-soft: #2F2F2C;
+  --mi-control-line: #45453F;
+  --mi-neutral-tint: #2F2F2C;
+  --mi-neutral-text: #BDBDB5;
+
+  --mi-decision: #A9B3F5;     --mi-decision-tint: #252A4D;  --mi-avatar-indigo: #2A2F55;
+  --mi-question: #F2C27A;     --mi-question-tint: #3D2E14;  --mi-avatar-amber: #45351A;
+  --mi-review-edge: #D69E3A;  --mi-review-tint: #3A2F17;
+  --mi-sensitive: #F4A49A;    --mi-sensitive-tint: #43201C;
+  --mi-record: #E5584B;       --mi-record-text: #F4A49A;    --mi-record-tint: rgba(120, 30, 24, 0.45);
+
+  --mi-backdrop-base: #121514;
+  --mi-backdrop:
+    radial-gradient(900px 640px at 8% 0%, rgba(14, 116, 102, 0.30), transparent 62%),
+    radial-gradient(820px 620px at 96% 12%, rgba(63, 79, 184, 0.20), transparent 60%),
+    radial-gradient(1000px 720px at 55% 105%, rgba(214, 150, 80, 0.14), transparent 62%),
+    var(--mi-backdrop-base);
+
+  --mi-glass-panel-bg: rgba(28, 32, 31, 0.55);
+  --mi-glass-panel-edge: rgba(255, 255, 255, 0.08);
+
+  --mi-glass-card-bg: rgba(34, 38, 37, 0.62);
+  --mi-glass-card-edge: rgba(255, 255, 255, 0.10);
+  --mi-glass-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  --mi-glass-row-bg: rgba(34, 38, 37, 0.58);
+  --mi-glass-row-shadow: 0 4px 18px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --mi-glass-row-selected-bg: rgba(20, 60, 54, 0.72);
+  --mi-glass-row-selected-shadow: inset 3px 0 0 var(--mi-accent), 0 10px 28px rgba(0, 0, 0, 0.3);
+
+  --mi-glass-control-bg: rgba(255, 255, 255, 0.06);
+  --mi-glass-control-bg-hover: rgba(255, 255, 255, 0.12);
+  --mi-glass-control-edge: rgba(255, 255, 255, 0.12);
+  --mi-glass-control-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+
+  --mi-nav-active-bg: rgba(255, 255, 255, 0.10);
+  --mi-nav-active-shadow: 0 0 0 1px rgba(255, 255, 255, 0.10), 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+/* Ready-made surface classes */
+.mi-backdrop { background: var(--mi-backdrop); }
+.mi-panel { background: var(--mi-glass-panel-bg); -webkit-backdrop-filter: var(--mi-glass-panel-filter); backdrop-filter: var(--mi-glass-panel-filter); }
+.mi-card { background: var(--mi-glass-card-bg); -webkit-backdrop-filter: var(--mi-glass-card-filter); backdrop-filter: var(--mi-glass-card-filter); border: 1px solid var(--mi-glass-card-edge); box-shadow: var(--mi-glass-card-shadow); border-radius: var(--mi-radius-xl); }
+.mi-row { background: var(--mi-glass-row-bg); -webkit-backdrop-filter: var(--mi-glass-row-filter); backdrop-filter: var(--mi-glass-row-filter); border: 1px solid var(--mi-glass-card-edge); box-shadow: var(--mi-glass-row-shadow); border-radius: var(--mi-radius-lg); }
+.mi-row[aria-selected="true"], .mi-row[aria-current="true"] { background: var(--mi-glass-row-selected-bg); border-color: var(--mi-accent); box-shadow: var(--mi-glass-row-selected-shadow); }
+.mi-ghost { background: var(--mi-glass-control-bg); -webkit-backdrop-filter: var(--mi-glass-control-filter); backdrop-filter: var(--mi-glass-control-filter); border: 1px solid var(--mi-glass-control-edge); box-shadow: var(--mi-glass-control-shadow); border-radius: var(--mi-radius-md); min-height: var(--mi-control-h); padding: 6px 12px; font-weight: 500; }
+.mi-ghost:hover { background: var(--mi-glass-control-bg-hover); }
+.mi-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--mi-radius-pill); font: var(--mi-text-caption); white-space: nowrap; }
+.mi-chip--action    { background: var(--mi-accent-tint);    color: var(--mi-accent-strong); }
+.mi-chip--decision  { background: var(--mi-decision-tint);  color: var(--mi-decision); }
+.mi-chip--question  { background: var(--mi-question-tint);  color: var(--mi-question); }
+.mi-chip--review    { background: var(--mi-review-tint);    color: var(--mi-question); border: 1px dashed var(--mi-review-edge); }
+.mi-chip--neutral   { background: var(--mi-neutral-tint);   color: var(--mi-neutral-text); }
+.mi-chip--sensitive { background: var(--mi-sensitive-tint); color: var(--mi-sensitive); }
+.mi-label { font: var(--mi-text-label); text-transform: uppercase; letter-spacing: 0.04em; color: var(--mi-muted); }
+:focus-visible { outline: 2px solid var(--mi-accent); outline-offset: 2px; }

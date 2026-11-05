@@ -1,0 +1,13 @@
+[package]
+name = "mirona-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mirona-core.workspace = true
+mirona-providers.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

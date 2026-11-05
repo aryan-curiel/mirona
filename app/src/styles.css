@@ -1,0 +1,106 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@theme inline {
+  --color-accent: var(--mi-accent);
+  --color-accent-strong: var(--mi-accent-strong);
+  --color-accent-tint: var(--mi-accent-tint);
+  --color-ink: var(--mi-ink);
+  --color-ink-2: var(--mi-ink-2);
+  --color-ink-3: var(--mi-ink-3);
+  --color-muted: var(--mi-muted);
+  --color-disabled: var(--mi-disabled);
+  --color-line: var(--mi-line);
+  --color-line-soft: var(--mi-line-soft);
+  --color-neutral-tint: var(--mi-neutral-tint);
+  --color-decision: var(--mi-decision);
+  --color-question: var(--mi-question);
+  --color-sensitive: var(--mi-sensitive);
+  --color-record: var(--mi-record);
+  --color-record-text: var(--mi-record-text);
+  --font-sans: var(--mi-font-sans);
+  --font-mono: var(--mi-font-mono);
+  --radius-sm: var(--mi-radius-sm);
+  --radius-md: var(--mi-radius-md);
+  --radius-lg: var(--mi-radius-lg);
+  --radius-xl: var(--mi-radius-xl);
+}
+
+html, body, #root { height: 100%; margin: 0; }
+body {
+  font: var(--mi-text-body);
+  color: var(--mi-ink);
+  background: var(--mi-backdrop);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+}
+input, textarea, button, select { font: inherit; color: inherit; }
+button { cursor: default; }
+input[type="checkbox"] { accent-color: var(--mi-accent); width: 15px; height: 15px; }
+.selectable { user-select: text; }
+
+/* Shared bits not in tokens.css */
+.mi-btn-primary { background: var(--mi-accent); color: #fff; border-radius: var(--mi-radius-md); font-weight: 600; box-shadow: 0 6px 18px rgba(14, 116, 102, 0.25); }
+.mi-btn-primary:hover { background: var(--mi-accent-strong); }
+.mi-option { border-radius: var(--mi-radius-sm); border: 1px solid var(--mi-glass-control-edge); background: var(--mi-glass-control-bg); padding: 7px 14px; font-weight: 500; box-shadow: var(--mi-glass-control-shadow); }
+.mi-option:hover { background: var(--mi-glass-control-bg-hover); }
+.mi-option[aria-pressed="true"] { background: var(--mi-accent); color: #fff; border-color: var(--mi-accent); }
+.mi-option:disabled { background: transparent; color: var(--mi-disabled); border: 1px dashed var(--mi-control-line); box-shadow: none; }
+.mi-nav { border-radius: var(--mi-radius-sm); }
+.mi-nav[aria-current="page"] { background: var(--mi-nav-active-bg); box-shadow: var(--mi-nav-active-shadow); color: var(--mi-accent-strong); }
+.mi-nav:not([aria-current="page"]):hover { background: rgba(255, 255, 255, 0.4); }
+.mi-tab[aria-selected="true"] { color: var(--mi-accent-strong); box-shadow: inset 0 -2px 0 var(--mi-accent); }
+.mi-live { border: 1px dashed rgba(194, 54, 43, 0.45); background: rgba(255, 255, 255, 0.4); border-radius: var(--mi-radius-lg); }
+.mi-bar { height: 6px; border-radius: var(--mi-radius-xs); background: var(--mi-line-soft); position: relative; }
+.mi-bar > i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--mi-accent); transition: width 0.3s; }
+
+@keyframes mi-in { from { opacity: 0; transform: translateY(6px); } }
+.mi-enter { animation: mi-in 0.35s ease-out both; }
+@keyframes mi-pulse { 50% { opacity: 0.35; } }
+.mi-pulse { animation: mi-pulse 1.2s ease-in-out infinite; }
+
+/* ---------- Toggle (platform skins below) ---------- */
+.mi-toggle { position: relative; flex: none; border-radius: 999px; transition: background 0.2s, border-color 0.2s; }
+.mi-toggle > i { position: absolute; top: 50%; border-radius: 999px; background: #fff; transition: transform 0.2s, width 0.2s, background 0.2s; transform: translateY(-50%); }
+
+/* ---------- macOS ---------- */
+/* Window has sidebar vibrancy; only the sidebar stays see-through. */
+[data-platform="macos"] body { background: transparent; }
+[data-platform="macos"] .mi-main { background: var(--mi-backdrop); }
+[data-platform="macos"] .mi-sidebar { background: linear-gradient(180deg, rgba(227, 241, 238, 0.72), rgba(246, 248, 247, 0.6)); }
+[data-platform="macos"] .mi-toggle { width: 38px; height: 22px; background: rgba(0, 0, 0, 0.12); }
+[data-platform="macos"] .mi-toggle > i { left: 2px; width: 18px; height: 18px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
+[data-platform="macos"] .mi-toggle[aria-checked="true"] { background: var(--mi-accent); }
+[data-platform="macos"] .mi-toggle[aria-checked="true"] > i { transform: translate(16px, -50%); }
+
+/* ---------- Windows 11 (Fluent) ---------- */
+[data-platform="windows"] {
+  --mi-font-sans: "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
+  --mi-radius-md: 4px;
+  --mi-radius-lg: 8px;
+  --mi-radius-xl: 8px;
+  --mi-radius-sm: 4px;
+}
+[data-platform="windows"] body { background: transparent; }
+[data-platform="windows"] .mi-main { background: var(--mi-backdrop); border-top-left-radius: 8px; border-top: 1px solid rgba(0, 0, 0, 0.06); border-left: 1px solid rgba(0, 0, 0, 0.06); }
+[data-platform="windows"] .mi-sidebar { background: rgba(243, 243, 243, 0.55); }
+[data-platform="windows"] .mi-nav { position: relative; }
+[data-platform="windows"] .mi-nav[aria-current="page"] { background: rgba(0, 0, 0, 0.05); box-shadow: none; color: var(--mi-ink); }
+[data-platform="windows"] .mi-nav[aria-current="page"]::before { content: ""; position: absolute; left: 0; top: 50%; translate: 0 -50%; width: 3px; height: 16px; border-radius: 2px; background: var(--mi-accent); }
+[data-platform="windows"] .mi-nav:not([aria-current="page"]):hover { background: rgba(0, 0, 0, 0.035); }
+[data-platform="windows"] .mi-btn-primary { box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.25); }
+[data-platform="windows"] .mi-toggle { width: 40px; height: 20px; border: 1px solid #8a8a8a; background: rgba(255, 255, 255, 0.6); }
+[data-platform="windows"] .mi-toggle > i { left: 3px; width: 12px; height: 12px; background: #5d5d5d; }
+[data-platform="windows"] .mi-toggle[aria-checked="true"] { background: var(--mi-accent); border-color: var(--mi-accent); }
+[data-platform="windows"] .mi-toggle[aria-checked="true"] > i { background: #fff; transform: translate(20px, -50%); }
+[data-platform="windows"] ::-webkit-scrollbar { width: 6px; }
+[data-platform="windows"] ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.3); border-radius: 3px; }
+.mi-caption { width: 46px; height: 32px; display: grid; place-items: center; color: var(--mi-ink); }
+.mi-caption:hover { background: rgba(0, 0, 0, 0.06); }
+.mi-caption--close:hover { background: #c42b1c; color: #fff; }
+
+@media (prefers-reduced-transparency: reduce) {
+  .mi-panel, .mi-card, .mi-row, .mi-ghost { backdrop-filter: none; -webkit-backdrop-filter: none; background: #f7f8f7; }
+}

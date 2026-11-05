@@ -1,0 +1,9 @@
+target/
+node_modules/
+app/dist/
+app/src-tauri/gen/
+.DS_Store
+.env
+spikes/**/models/
+spikes/**/audio/
+spikes/**/target/
