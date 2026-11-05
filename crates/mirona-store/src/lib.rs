@@ -43,6 +43,19 @@ impl Store {
         let meta = root.join(".mirona");
         std::fs::create_dir_all(&meta).map_err(|e| format!("{}: {e}", meta.display()))?;
         let db = index::open(&meta.join("index.sqlite"))?;
+        Self::with_index(root, db)
+    }
+
+    /// Like `open`, but indexes into a private in-memory database and leaves
+    /// `.mirona/index.sqlite` alone: for readers (MCP server, CLI) running next to the app, so
+    /// they never race its index. Writes still go to the meeting files.
+    pub fn open_snapshot(root: impl AsRef<Path>) -> Result<Self> {
+        let root = root.as_ref().to_path_buf();
+        std::fs::create_dir_all(&root).map_err(|e| format!("{}: {e}", root.display()))?;
+        Self::with_index(root, index::open(Path::new(":memory:"))?)
+    }
+
+    fn with_index(root: PathBuf, db: Connection) -> Result<Self> {
         let mut s = Self {
             root,
             db,
@@ -245,6 +258,7 @@ impl Store {
             answers: None,
             notes: Note {
                 raw: vec![],
+                raw_at_ms: vec![],
                 enhanced: vec![],
                 enhanced_by: String::new(),
             },
@@ -338,8 +352,25 @@ impl Store {
     }
 
     pub fn set_notes(&mut self, meeting_id: &str, raw: Vec<String>) -> Result<()> {
+        self.set_notes_at(meeting_id, raw, vec![])
+    }
+
+    /// Notes plus the meeting time each line was written (NGR-144), index for index.
+    pub fn set_notes_at(
+        &mut self,
+        meeting_id: &str,
+        raw: Vec<String>,
+        mut at_ms: Vec<Option<u32>>,
+    ) -> Result<()> {
         let i = self.idx(meeting_id)?;
-        self.entries[i].meeting.notes.raw = raw;
+        // Same shape as a reload gives back: empty when no line has a time, else one per line.
+        at_ms.resize(raw.len(), None);
+        if at_ms.iter().all(Option::is_none) {
+            at_ms.clear();
+        }
+        let n = &mut self.entries[i].meeting.notes;
+        n.raw = raw;
+        n.raw_at_ms = at_ms;
         self.save(i, false)
     }
 

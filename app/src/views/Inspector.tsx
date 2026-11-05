@@ -47,8 +47,7 @@ export function Inspector() {
   const a = m.answers;
   const seg = m.segments.find((x) => x.id === s.segmentId);
   const sp = seg && m.speakers.find((p) => p.id === seg.speakerId);
-  const cls = s.stages.find((x) => x.id === "classification");
-  const classifier = cls?.options.find((o) => o.id === cls.selected)?.name ?? "Classifier";
+  const classifier = "Classifier";
 
   return (
     <aside className="mi-panel h-full w-[var(--mi-inspector-w)] shrink-0 overflow-y-auto border-l border-white/60 px-6 pt-6 pb-8">
@@ -151,20 +150,12 @@ export function Inspector() {
 
       <hr className="my-6 border-line" />
       <div className="flex items-center gap-2">
-        <Label>Agent activity · MCP</Label>
-        <span className={`mi-chip ${s.mcp?.running ? "mi-chip--action" : "mi-chip--neutral"}`}>{s.mcp?.running ? "Running" : "Stopped"}</span>
+        <Label>Agents · MCP</Label>
+        <span className={`mi-chip ${s.settings?.mcpEnabled ? "mi-chip--action" : "mi-chip--neutral"}`}>{s.settings?.mcpEnabled ? "On" : "Off"}</span>
       </div>
-      <div className="mt-3 flex flex-col gap-2.5">
-        {s.mcp?.log.map((l) => (
-          <div key={`${l.client}-${l.ago}-${l.call}`} className="mi-card rounded-lg! p-3 text-[13px]">
-            <p>
-              <span className="font-semibold">{l.client}</span> <span className="text-muted">· {l.ago}</span>
-            </p>
-            <p className="mt-0.5 font-mono text-[12px] break-words text-accent-strong">{l.call}</p>
-            <p className="mt-1 text-ink-3">{l.result}</p>
-          </div>
-        ))}
-      </div>
+      <p className="mt-2 text-[13px] text-muted">
+        {s.settings?.mcpEnabled ? "Claude and other MCP clients can read this meeting through the mirona CLI." : "MCP clients can't read meetings. Turn it on in Models and MCP."}
+      </p>
     </aside>
   );
 }

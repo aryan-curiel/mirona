@@ -1,8 +1,12 @@
 [package]
 name = "mirona-mcp"
+description = "Mirona's MCP server (stdio): read-only tools over the meeting store"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
+[lib]
+path = "src/lib.rs"
 
 [[bin]]
 name = "mirona-mcp"
@@ -11,7 +15,15 @@ path = "src/main.rs"
 [dependencies]
 mirona-core.workspace = true
 mirona-store.workspace = true
+mirona-engine.workspace = true
+mirona-providers.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+rmcp = { version = "3.9", features = ["server", "macros", "transport-io"] }
+tokio = { version = "1", features = ["rt", "io-std", "macros"] }
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true

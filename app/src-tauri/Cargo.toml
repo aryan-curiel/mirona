@@ -18,8 +18,20 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png", "protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
 mirona-core.workspace = true
-mirona-providers.workspace = true
+mirona-providers = { workspace = true, features = ["openai", "keychain"] }
 mirona-store.workspace = true
+mirona-engine.workspace = true
+mirona-capture.workspace = true
+mirona-summary.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

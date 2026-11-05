@@ -5,10 +5,12 @@ import { RecordingBar, Sidebar, WindowsTitleBar } from "./components/Shell";
 import { MeetingView } from "./views/Meeting";
 import { Inspector } from "./views/Inspector";
 import { ActionItemsView, ModelsView, PeopleView } from "./views/Pages";
+import { SetupView } from "./views/Setup";
 
 export default function App() {
   const view = useStore((s) => s.view);
   const toast = useStore((s) => s.toast);
+  const hasMeeting = useStore((s) => !!s.meeting);
   const init = useStore((s) => s.init);
   const [platform, setPlatform] = useState<Platform>(detected);
   useEffect(() => void init(), [init]);
@@ -31,20 +33,21 @@ export default function App() {
         <div className="mi-main flex min-w-0 flex-1 flex-col">
           <RecordingBar />
           <div className="flex min-h-0 flex-1">
-            <main className="min-w-0 flex-1 overflow-y-auto">
+            <main id="main-scroll" className="min-w-0 flex-1 overflow-y-auto">
               {mac && <div data-tauri-drag-region className="sticky top-0 z-10 -mb-6 h-6" />}
               {view === "meetings" && <MeetingView />}
               {view === "actions" && <ActionItemsView />}
               {view === "people" && <PeopleView />}
               {view === "models" && <ModelsView />}
+              {view === "setup" && <SetupView />}
             </main>
-            {view === "meetings" && <Inspector />}
+            {view === "meetings" && hasMeeting && <Inspector />}
           </div>
         </div>
       </div>
       {toast && (
-        <div role="status" className="mi-card mi-enter fixed bottom-5 left-1/2 -translate-x-1/2 rounded-lg! px-4 py-2.5 text-[14px] font-medium">
-          {toast}
+        <div role={toast.error ? "alert" : "status"} className={`mi-card mi-enter fixed bottom-5 left-1/2 max-w-[640px] -translate-x-1/2 rounded-lg! px-4 py-2.5 text-[14px] font-medium ${toast.error ? "text-record-text" : ""}`}>
+          {toast.msg}
         </div>
       )}
     </div>

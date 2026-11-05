@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useStore, type View } from "../store";
+import { needsSetup, useStore, type View } from "../store";
 import { fmt } from "../lib/api";
 import { Icon, Logo, Toggle } from "./ui";
 
@@ -30,6 +30,42 @@ export function WindowsTitleBar() {
   );
 }
 
+/** "Parakeet on this device · qwen3:4b (Ollama)": the models a recording runs through. */
+export function useModelNames() {
+  const st = useStore((s) => s.settings);
+  if (!st) return { stt: "", llm: "" };
+  const stt = st.stt === "whisper" ? "Whisper" : "Parakeet";
+  const llm =
+    st.llm === "ollama"
+      ? `${st.llmModel || "qwen3:4b"} (Ollama)`
+      : st.llm === "anthropic"
+        ? `${st.llmModel || "claude-opus-5-5"} (Anthropic)`
+        : `${st.llmModel || "gpt-4.1-mini"} (OpenAI-compatible)`;
+  return { stt, llm };
+}
+
+const mac = navigator.userAgent.includes("Mac");
+/** "CmdOrCtrl+Alt+Shift+R" → "⌘⌥⇧R" on macOS, "Ctrl+Alt+Shift+R" elsewhere. */
+export const shortcutLabel = (s: string) =>
+  mac ? s.replace("CmdOrCtrl", "⌘").replace("Alt", "⌥").replace("Shift", "⇧").split("+").join("") : s.replace("CmdOrCtrl", "Ctrl");
+
+export function RecordButton() {
+  const rec = useStore((s) => s.recording);
+  const start = useStore((s) => s.startRecording);
+  const stop = useStore((s) => s.stopRecording);
+  const shortcut = useStore((s) => s.status?.shortcut ?? "");
+  const hint = shortcutLabel(shortcut);
+  return rec ? (
+    <button type="button" onClick={stop} title={hint} className="flex h-11 items-center justify-center gap-2 rounded-md border border-record bg-white/70 font-semibold text-record-text">
+      <Icon name="mic" /> Stop recording
+    </button>
+  ) : (
+    <button type="button" onClick={start} title={hint} className="mi-btn-primary flex h-11 items-center justify-center gap-2">
+      <Icon name="mic" /> Start recording <span className="text-[12px] font-medium opacity-80">{hint}</span>
+    </button>
+  );
+}
+
 export function Sidebar({ mac }: { mac: boolean }) {
   const s = useStore();
   const open = s.actionItems.filter((a) => !a.done).length;
@@ -41,23 +77,10 @@ export function Sidebar({ mac }: { mac: boolean }) {
       <div className="mb-4 flex items-center gap-2.5 px-1.5">
         <Logo size={28} />
         <span className="text-[18px] font-bold tracking-[-0.01em]">Mirona</span>
-        {s.privacy && <span className="mi-chip mi-chip--action ml-auto">Local only</span>}
+        {s.settings?.privacy && <span className="mi-chip mi-chip--action ml-auto">Local only</span>}
       </div>
 
-      {rec ? (
-        <button type="button"
-          onClick={s.stopRecording}
-          disabled={rec.processing}
-          className="flex h-11 items-center justify-center gap-2 rounded-md border border-record bg-white/70 font-semibold text-record-text disabled:opacity-60"
-        >
-          <Icon name="mic" />
-          {rec.processing ? "Processing…" : "Stop recording"}
-        </button>
-      ) : (
-        <button type="button" onClick={s.startRecording} className="mi-btn-primary flex h-11 items-center justify-center gap-2">
-          <Icon name="mic" /> Start recording
-        </button>
-      )}
+      <RecordButton />
 
       <nav className="mt-4 flex flex-col gap-0.5">
         {nav.map((n) => (
@@ -74,13 +97,25 @@ export function Sidebar({ mac }: { mac: boolean }) {
             )}
           </button>
         ))}
+        {needsSetup(s.status) && (
+          <button type="button" aria-current={s.view === "setup" ? "page" : undefined} onClick={() => s.go("setup")} className="mi-nav flex h-10 items-center gap-3 px-3 text-left text-[14px] font-medium text-record-text">
+            <Icon name="shield" />
+            <span className="flex-1">Finish setup</span>
+          </button>
+        )}
       </nav>
 
-      <div className="mi-label mt-6 mb-1.5 px-2">Recent</div>
+      <div className="mt-6 mb-1.5 flex items-center px-2">
+        <span className="mi-label flex-1">Recent</span>
+        <button type="button" className="rounded px-1.5 text-[12px] font-medium text-accent-strong hover:underline" onClick={s.importAudio}>
+          Import audio…
+        </button>
+      </div>
       <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1">
         {s.meetings.map((m) => {
           const active = s.view === "meetings" && s.meeting?.id === m.id;
           const live = rec?.meetingId === m.id;
+          const busy = s.processing.includes(m.id);
           return (
             <button type="button"
               key={m.id}
@@ -93,22 +128,23 @@ export function Sidebar({ mac }: { mac: boolean }) {
                 <span className="truncate">{m.title}</span>
               </div>
               <div className="truncate text-[12px] text-muted">
-                {m.client} · {m.when}
+                {busy ? "Writing the summary…" : `${m.client} · ${m.when}`}
               </div>
             </button>
           );
         })}
+        {!s.meetings.length && <p className="px-2 py-2 text-[12px] leading-snug text-muted">No meetings yet. Start a recording or import an audio file.</p>}
       </div>
 
       <div className="mi-card mt-3 p-3.5">
         <div className="flex items-center gap-2">
           <Icon name="shield" className="text-accent" />
           <span className="flex-1 text-[14px] font-semibold">Privacy mode</span>
-          <Toggle on={s.privacy} onChange={s.setPrivacy} label="Privacy mode" />
+          <Toggle on={!!s.settings?.privacy} onChange={s.setPrivacy} label="Privacy mode" />
         </div>
         <p className="mt-2 text-[12px] leading-snug text-muted">
-          {s.privacy
-            ? "On. No network calls: audio, transcripts and voiceprints stay on this device. Cloud providers are blocked."
+          {s.settings?.privacy
+            ? "On. Cloud providers are blocked: audio, transcripts and summaries stay on this device."
             : "Off. Cloud providers can be picked in Models and MCP. Audio and voiceprints still stay on this device."}
         </p>
       </div>
@@ -116,29 +152,39 @@ export function Sidebar({ mac }: { mac: boolean }) {
   );
 }
 
+/** One level meter: the engine sends [mic, system] as 0..1 RMS. */
+function Meter({ label, level }: { label: string; level: number }) {
+  // RMS of speech is small; a square root makes normal talking fill most of the bar.
+  const pct = Math.min(100, Math.sqrt(Math.max(0, level)) * 140);
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="text-[12px] text-ink-3">{label}</span>
+      {/* biome-ignore lint/a11y/useSemanticElements: a styled live level bar; <meter> can't take the record color reliably */}
+      <span className="relative h-1.5 w-16 overflow-hidden rounded-full bg-[rgba(194,54,43,0.15)]" role="meter" aria-label={`${label} level`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+        <i className="absolute inset-y-0 left-0 rounded-full bg-record transition-[width] duration-100" style={{ width: `${pct}%` }} />
+      </span>
+    </span>
+  );
+}
+
 export function RecordingBar() {
   const rec = useStore((s) => s.recording);
   const stop = useStore((s) => s.stopRecording);
-  const stt = useStore((s) => s.stages.find((x) => x.id === "stt"));
+  const { stt, llm } = useModelNames();
   if (!rec) return null;
-  const sttName = stt?.options.find((o) => o.id === stt.selected)?.name ?? "";
-  const levels = rec.levels.length ? rec.levels : Array(9).fill(0.15);
+  const [mic = 0, system = 0] = rec.levels;
   return (
     <div data-tauri-drag-region className="flex h-14 shrink-0 items-center gap-4 border-b border-[rgba(194,54,43,0.15)] bg-[var(--mi-record-tint)] px-6 text-[13px]">
       <span className="mi-pulse size-2.5 rounded-full bg-record" />
-      <span className="font-semibold text-record-text">{rec.processing ? "Processing" : "Recording"}</span>
-      <span className="font-mono text-record-text">{fmt(rec.elapsedMs)}</span>
-      <span className="flex h-5 items-end gap-[3px]" aria-hidden>
-        {levels.map((l, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: fixed bars, position is the identity
-          <i key={i} className="w-[3px] rounded-sm bg-record transition-[height] duration-100" style={{ height: `${rec.processing ? 15 : l * 100}%` }} />
-        ))}
-      </span>
+      <span className="font-semibold text-record-text">Recording</span>
+      <span className="font-mono text-record-text" role="timer">{fmt(rec.elapsedMs)}</span>
+      <Meter label="You" level={mic} />
+      <Meter label="Call" level={system} />
       <span className="flex-1 truncate text-ink-3">
-        {rec.processing ? "Diarizing, classifying and writing the summary on this device…" : `Mic + system audio · ${sttName} on this device · segments are tagged as they arrive`}
+        {stt} transcribes on this device · {llm} writes the summary
       </span>
-      <button type="button" className="mi-ghost" onClick={stop} disabled={rec.processing}>
-        Stop and process
+      <button type="button" className="mi-ghost min-h-11! px-4" onClick={stop}>
+        Stop and summarize
       </button>
     </div>
   );

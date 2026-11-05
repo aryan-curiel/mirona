@@ -368,3 +368,30 @@ fn summary_and_demo_finish() {
     s.set_summary("m", summary, items).unwrap();
     assert!(Store::open(d.path()).unwrap().action_items()[0].done);
 }
+
+#[test]
+fn note_times_round_trip_and_survive_outside_edits() {
+    let (_d, mut s) = seeded();
+    let lines = vec!["- first".into(), "**bold** line".into(), "- first".into()];
+    s.set_notes_at("corvo-review", lines, vec![Some(1000), None, Some(3000)])
+        .unwrap();
+    let reopened = Store::open(s.root()).unwrap();
+    let n = reopened.meeting("corvo-review").unwrap().notes;
+    assert_eq!(n.raw, ["- first", "**bold** line", "- first"]);
+    assert_eq!(n.raw_at_ms, [Some(1000), None, Some(3000)]);
+
+    // Another editor rewrites one line and inserts one: only those lose their time.
+    let path = md(&reopened, "corvo-review");
+    let text = fs::read_to_string(&path)
+        .unwrap()
+        .replace("**bold** line", "edited")
+        .replacen("- first\n", "new top\n- first\n", 1);
+    fs::write(&path, text).unwrap();
+    let n = Store::open(s.root())
+        .unwrap()
+        .meeting("corvo-review")
+        .unwrap()
+        .notes;
+    assert_eq!(n.raw, ["new top", "- first", "edited", "- first"]);
+    assert_eq!(n.raw_at_ms, [None, Some(1000), None, Some(3000)]);
+}

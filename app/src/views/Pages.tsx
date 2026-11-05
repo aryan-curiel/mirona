@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useStore } from "../store";
-import { fmt } from "../lib/api";
-import { Avatar, Icon, PageHeader } from "../components/ui";
+import { api, fmt, LLM_LOCAL } from "../lib/api";
+import { CopyLine } from "./Setup";
+import { Avatar, Icon, PageHeader, Toggle } from "../components/ui";
 
 const clientChip: Record<string, string> = {
   "Alder Restoration": "mi-chip--action",
@@ -89,64 +90,213 @@ export function PeopleView() {
   );
 }
 
+function Row({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[240px_1fr] items-start gap-6 border-t border-line-soft px-6 py-4 first:border-t-0">
+      <div>
+        <p className="text-[15px] font-semibold">{title}</p>
+        <p className="text-[13px] text-muted">{sub}</p>
+      </div>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function Options<T extends string>({ value, options, onPick }: { value: T; options: { id: T; name: string; cloud?: boolean; off?: boolean }[]; onPick: (id: T) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((o) => (
+        <button
+          type="button"
+          key={o.id}
+          className="mi-option text-[14px]"
+          aria-pressed={value === o.id}
+          disabled={o.off}
+          title={o.off ? "Turn privacy mode off to use cloud providers" : undefined}
+          onClick={() => onPick(o.id)}
+        >
+          {o.name} <span className="text-[11px] opacity-80">{o.cloud ? "Cloud" : "Local"}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** A text setting saved on blur or Enter. */
+function Field({ label, value, placeholder, onSave, type = "text" }: { label: string; value: string; placeholder?: string; onSave: (v: string) => void; type?: string }) {
+  const [v, setV] = useState(value);
+  useEffect(() => setV(value), [value]);
+  return (
+    <label className="flex flex-col gap-1 text-[13px] text-muted">
+      {label}
+      <input
+        type={type}
+        className="mi-field w-full text-[14px] text-ink"
+        value={v}
+        placeholder={placeholder}
+        onChange={(e) => setV(e.target.value)}
+        onBlur={() => v !== value && onSave(v)}
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+      />
+    </label>
+  );
+}
+
+function ApiKey({ provider, saved }: { provider: string; saved: boolean }) {
+  const refresh = useStore((s) => s.refreshStatus);
+  const flash = useStore((s) => s.flash);
+  const [key, setKey] = useState("");
+  const save = async (k: string) => {
+    try {
+      await api.setApiKey(provider, k);
+      setKey("");
+      flash(k ? "API key saved in the system keychain." : "API key removed.");
+      await refresh(true);
+    } catch (e) {
+      flash(String(e), true);
+    }
+  };
+  return (
+    <div className="flex items-end gap-2">
+      <label className="flex flex-1 flex-col gap-1 text-[13px] text-muted">
+        API key {saved ? "· saved in the keychain" : "· not set"}
+        <input type="password" className="mi-field text-[14px] text-ink" value={key} placeholder={saved ? "••••••••  (enter a new key to replace it)" : "Paste your key"} onChange={(e) => setKey(e.target.value)} autoComplete="off" />
+      </label>
+      <button type="button" className="mi-ghost" disabled={!key.trim()} onClick={() => save(key)}>
+        Save key
+      </button>
+      {saved && (
+        <button type="button" className="mi-ghost" onClick={() => save("")}>
+          Remove
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Folder({ label, path, onPick }: { label: string; path: string; onPick: (p: string) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <code className="selectable min-w-0 flex-1 truncate rounded-md bg-[var(--mi-neutral-tint)] px-3 py-2 font-mono text-[13px]" title={path}>{path}</code>
+      <button type="button" className="mi-ghost shrink-0" aria-label={`Choose ${label}`} onClick={async () => {
+        const p = await api.pickFolder();
+        if (p) onPick(p);
+      }}>
+        Choose…
+      </button>
+    </div>
+  );
+}
+
+const llmDefaults = {
+  ollama: { model: "qwen3:4b", url: "http://localhost:11434/api/chat" },
+  openai: { model: "gpt-4.1-mini", url: "https://api.openai.com/v1" },
+  anthropic: { model: "claude-opus-5-5", url: "" },
+};
+
 export function ModelsView() {
   const s = useStore();
-  const mcp = s.mcp;
+  const st = s.settings;
+  const status = s.status;
+  if (!st || !status) return null;
+  const save = s.saveSettings;
+  const privacy = st.privacy;
+  const d = llmDefaults[st.llm];
+  const desktop = JSON.stringify({ mcpServers: { mirona: { command: status.cli, args: ["mcp"] } } }, null, 2);
   return (
     <div className="mx-auto max-w-[1100px] px-10 pt-8 pb-16">
       <PageHeader title="Models and MCP">
         Every stage is a provider you can swap. Local runs by default; cloud options unlock only when privacy mode is off.
       </PageHeader>
-      <div className="mi-card overflow-hidden">
-        {s.stages.map((st, i) => (
-          <div key={st.id} className={`grid grid-cols-[260px_1fr] items-center gap-6 px-6 py-4 ${i ? "border-t border-line-soft" : ""}`}>
-            <div>
-              <p className="text-[15px] font-semibold">{st.name}</p>
-              <p className="text-[13px] text-muted">{st.subtitle}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {st.options.map((o) => (
-                <button type="button"
-                  key={o.id}
-                  className="mi-option text-[14px]"
-                  aria-pressed={st.selected === o.id}
-                  disabled={s.privacy && o.locality === "cloud"}
-                  title={s.privacy && o.locality === "cloud" ? "Turn privacy mode off to use cloud providers" : undefined}
-                  onClick={() => s.selectProvider(st.id, o.id)}
-                >
-                  {o.name} <span className="text-[11px] opacity-80">{o.locality === "local" ? "Local" : "Cloud"}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      <p className="mt-3 text-[13px] text-muted">
-        {s.privacy ? "Cloud options are off while privacy mode is on." : "Privacy mode is off: cloud providers can be picked. Turning it back on resets them to local."}
-      </p>
 
-      {mcp && (
-        <section className="mi-card mt-5 p-6">
+      <section className="mi-card overflow-hidden">
+        <Row title="Privacy mode" sub="Blocks every cloud provider">
           <div className="flex items-center gap-3">
-            <Icon name="plug" className="text-accent" />
-            <span className="text-[16px] font-semibold">MCP server</span>
-            <span className={`mi-chip ${mcp.running ? "mi-chip--action" : "mi-chip--neutral"}`}>{mcp.running ? "Running" : "Stopped"}</span>
-            <button type="button" className="mi-ghost ml-auto" onClick={() => s.setMcpRunning(!mcp.running)}>
-              {mcp.running ? "Stop server" : "Start server"}
-            </button>
+            <Toggle on={privacy} onChange={s.setPrivacy} label="Privacy mode" />
+            <span className="text-[14px] text-ink-3">
+              {privacy ? "On: cloud options are off. Turning it on moves the summary back to Ollama." : "Off: cloud providers can be picked below."}
+            </span>
           </div>
-          <p className="mt-4 font-mono text-[13px] text-ink-3">{mcp.transport}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {mcp.tools.map((t) => (
-              <span key={t} className="rounded-md bg-[var(--mi-neutral-tint)] px-2.5 py-1 font-mono text-[13px]">{t}</span>
+        </Row>
+        <Row title="Speech to text" sub="Live transcription, on this device">
+          <Options value={st.stt} options={[{ id: "parakeet", name: "Parakeet TDT 0.6B" }, { id: "whisper", name: "Whisper" }]} onPick={(stt) => save({ stt })} />
+        </Row>
+        <Row title="Summaries and notes" sub="Writes the summary, action items and enhanced notes">
+          <Options
+            value={st.llm}
+            options={[
+              { id: "ollama", name: "Ollama" },
+              { id: "openai", name: "OpenAI-compatible", cloud: !LLM_LOCAL({ ...st, llm: "openai" }), off: privacy && !LLM_LOCAL({ ...st, llm: "openai" }) },
+              { id: "anthropic", name: "Anthropic", cloud: true, off: privacy },
+            ]}
+            onPick={(llm) => save({ llm, llmModel: "", llmBaseUrl: "" })}
+          />
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <Field label="Model" value={st.llmModel} placeholder={d.model} onSave={(llmModel) => save({ llmModel })} />
+            {st.llm !== "anthropic" && (
+              <Field
+                label={st.llm === "openai" ? "Base URL (LM Studio, vLLM… on localhost count as local)" : "Ollama chat URL"}
+                value={st.llmBaseUrl}
+                placeholder={d.url}
+                onSave={(llmBaseUrl) => save({ llmBaseUrl })}
+              />
+            )}
+          </div>
+          {st.llm !== "ollama" && (
+            <div className="mt-3">
+              <ApiKey provider={st.llm} saved={status.keys.includes(st.llm)} />
+            </div>
+          )}
+          {privacy && <p className="mt-2 text-[12px] text-muted">Cloud options are off while privacy mode is on.</p>}
+        </Row>
+        <Row title="Default summary template" sub="Used after each recording; any meeting can be rewritten with another">
+          <select className="mi-field text-[14px]" value={st.template} onChange={(e) => save({ template: e.target.value })} aria-label="Default summary template">
+            {s.templates.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
             ))}
-          </div>
-          <p className="mt-4 text-[14px]">
-            <b>Connected:</b> {mcp.running ? mcp.clients.join(", ") : "none"}
-            <span className="ml-8"><b>Also ships:</b> a Claude Code skill and the <code className="font-mono">mirona</code> CLI</span>
-          </p>
-        </section>
-      )}
+          </select>
+        </Row>
+        <Row title="Classification" sub="Tags segments: action, decision, open question…">
+          <span className="mi-chip mi-chip--neutral">Coming in M2</span>
+        </Row>
+        <Row title="Speaker diarization" sub="Splits “them” into each person">
+          <span className="mi-chip mi-chip--neutral">Coming in M2</span>
+        </Row>
+      </section>
+
+      <section className="mi-card mt-5 overflow-hidden">
+        <Row title="Meetings folder" sub="One Markdown folder per meeting">
+          <Folder label="meetings folder" path={st.meetingsDir} onPick={(meetingsDir) => save({ meetingsDir })} />
+        </Row>
+        <Row title="Models folder" sub="Speech and voice-activity models">
+          <Folder label="models folder" path={st.modelsDir} onPick={(modelsDir) => save({ modelsDir })} />
+          {status.missingModels.length ? (
+            <div className="mt-2 text-[13px] text-record-text">
+              Missing: <span className="font-mono">{status.missingModels.join(", ")}</span>. From the Mirona source folder, run:
+              <CopyLine text={status.fetchCommand} />
+            </div>
+          ) : (
+            <p className="mt-2 text-[13px] text-accent-strong">All models for {st.stt === "whisper" ? "Whisper" : "Parakeet"} are installed.</p>
+          )}
+        </Row>
+      </section>
+
+      <section className="mi-card mt-5 p-6">
+        <div className="flex items-center gap-3">
+          <Icon name="plug" className="text-accent" />
+          <span className="flex-1 text-[16px] font-semibold">MCP server</span>
+          <span className="text-[14px] text-ink-3">{st.mcpEnabled ? "Agents can read your meetings" : "Off: mirona mcp refuses to serve"}</span>
+          <Toggle on={st.mcpEnabled} onChange={(mcpEnabled) => save({ mcpEnabled })} label="Let MCP clients read meetings" />
+        </div>
+        <p className="mt-4 text-[14px] text-ink-3">Claude Code:</p>
+        <CopyLine text={`claude mcp add mirona -- ${status.cli.includes(" ") ? `"${status.cli}"` : status.cli} mcp`} />
+        <p className="mt-4 text-[14px] text-ink-3">Claude Desktop (claude_desktop_config.json):</p>
+        <CopyLine text={desktop} />
+      </section>
+
+      <p className="mt-5 text-[13px] text-muted">
+        Every setting lives in <span className="selectable font-mono">{status.configPath}</span> and can be edited there too; Mirona reads it on start. API keys stay in the system keychain, never in that file.
+      </p>
     </div>
   );
 }

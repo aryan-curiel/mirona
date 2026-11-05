@@ -160,7 +160,12 @@ pub struct EnhancedNote {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Note {
+    /// The user's notes, one Markdown line each, verbatim.
     pub raw: Vec<String>,
+    /// Meeting time (ms) each `raw` line was first written, index for index; `None` for lines
+    /// typed outside a recording or in another editor (NGR-144). Shorter than `raw` is fine.
+    #[serde(default)]
+    pub raw_at_ms: Vec<Option<u32>>,
     pub enhanced: Vec<EnhancedNote>,
     pub enhanced_by: String,
 }

@@ -55,8 +55,12 @@ impl Paths {
 pub const APP_ID: &str = "com.nagare.mirona";
 
 /// The per-user app folder, the same one Tauri's `app_config_dir` uses, so the app, the CLI
-/// and the MCP server share `config.toml`, models and templates.
+/// and the MCP server share `config.toml`, models and templates. `MIRONA_APP_DIR` overrides it
+/// (tests, a second profile).
 pub fn app_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("MIRONA_APP_DIR").filter(|d| !d.is_empty()) {
+        return PathBuf::from(dir);
+    }
     let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
     let base = if cfg!(target_os = "macos") {
         home().join("Library/Application Support")
@@ -73,6 +77,24 @@ pub fn documents_dir() -> PathBuf {
     let home =
         std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).unwrap_or_default();
     PathBuf::from(home).join("Documents")
+}
+
+/// Model files that recording and import need but `models` lacks, for the configured STT
+/// (`scripts/fetch-models.sh <models>` fetches them). Empty: ready to record.
+pub fn missing_models(cfg: &Config, models: &Path) -> Vec<String> {
+    use mirona_capture::{PARAKEET_DIR, VAD_MODEL, WHISPER_MODELS};
+    let mut out = vec![];
+    if !models.join(VAD_MODEL).is_file() {
+        out.push(VAD_MODEL.to_string());
+    }
+    if stage(cfg, "stt", "parakeet") == "whisper" {
+        if !WHISPER_MODELS.iter().any(|m| models.join(m).is_file()) {
+            out.push(WHISPER_MODELS[0].to_string());
+        }
+    } else if !models.join(PARAKEET_DIR).join("tokens.txt").is_file() {
+        out.push(format!("{PARAKEET_DIR}/"));
+    }
+    out
 }
 
 pub fn config_path(app_dir: &Path) -> PathBuf {

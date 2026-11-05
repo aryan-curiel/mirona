@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Mirona transcribes your side of the call on this Mac. Audio never leaves your computer unless you choose a cloud model.</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>Mirona records the other side of the call from your Mac's system audio and transcribes it on this Mac. Audio never leaves your computer unless you choose a cloud model.</string>
+</dict>
+</plist>

@@ -208,6 +208,7 @@ pub fn meetings() -> Vec<Meeting> {
         answers: Some(meeting_answers(("Client call", 0.93), ("Alder Restoration", 0.71), 3.6, (true, 0.86),
             "Hi Nadia,\n\nThanks for today. Confirming: the insurer grouping ships to the field team on Monday, Speaker 3 announces it by Friday, and I'll send a preview build with the overdue filter by Thursday.\n\nStill open: what we do with claims paid before the migration.\n\nAryan")),
         notes: Note {
+            raw_at_ms: vec![],
             raw: vec!["insurer grouping → monday?".into(), "overdue filter".into(), "paid claims before migration??".into()],
             enhanced: vec![
                 note(Dec, "Insurer grouping ships to the field team on Monday.", "03:02"),
@@ -245,7 +246,7 @@ pub fn meetings() -> Vec<Meeting> {
             seg("s5", "greta", "11:30", "Do we still need the size guide in this sprint?", [0.12, 0.05, 0.74, 0.01, 0.01], vec![tag(OpenQuestion, "Open question")], &[]),
         ],
         answers: Some(meeting_answers(("Planning", 0.88), ("Juniper Apparel", 0.95), 2.8, (false, 0.22), "")),
-        notes: Note { raw: vec!["tagging estimate".into(), "size guide?".into()], enhanced: vec![
+        notes: Note { raw_at_ms: vec![], raw: vec!["tagging estimate".into(), "size guide?".into()], enhanced: vec![
             note(Dec, "Sprint goal: product tagging for the spring catalogue.", "00:40"),
             note(Action, "Aryan shares the tagging estimate by Monday.", "05:10"),
             note(OpenQuestion, "Is the size guide still in this sprint?", "11:30"),
@@ -276,7 +277,7 @@ pub fn meetings() -> Vec<Meeting> {
             seg("t3", "aryan", "07:02", "I'll review the onboarding copy and send suggestions Wednesday.", [0.90, 0.06, 0.01, 0.02, 0.01], vec![tag(Action, "Action · Aryan · Wed")], &[("Aryan", 0.93), ("Andrés", 0.07)]),
         ],
         answers: Some(meeting_answers(("Review", 0.81), ("Corvo", 0.97), 2.1, (true, 0.64), "Hi Andrés,\n\nThanks for the review. I'll send onboarding copy suggestions on Wednesday.\n\nAryan")),
-        notes: Note { raw: vec!["onboarding copy".into()], enhanced: vec![note(Action, "Aryan reviews the mobile onboarding copy by Wednesday.", "07:02")], enhanced_by: "Ollama (local)".into() },
+        notes: Note { raw_at_ms: vec![], raw: vec!["onboarding copy".into()], enhanced: vec![note(Action, "Aryan reviews the mobile onboarding copy by Wednesday.", "07:02")], enhanced_by: "Ollama (local)".into() },
         summary: Some(Summary {
             template: "Review".into(),
             overview: "Product review of Corvo Live. Scoring view is faster; mobile onboarding copy needs a pass.".into(),
@@ -325,6 +326,7 @@ pub fn meetings() -> Vec<Meeting> {
             "",
         )),
         notes: Note {
+            raw_at_ms: vec![],
             raw: vec![],
             enhanced: vec![note(Dec, "Agent console moves to Q1.", "00:30")],
             enhanced_by: "Ollama (local)".into(),

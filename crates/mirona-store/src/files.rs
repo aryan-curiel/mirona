@@ -57,12 +57,23 @@ struct Front {
     enhanced_notes: Vec<EnhancedNote>,
     #[serde(default)]
     action_items: Vec<ActionItem>,
+    /// When each note line was written (NGR-144). Keyed by the line's text, so editing notes
+    /// in another app only loses the times of the lines that changed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    note_times: Vec<NoteTime>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct NoteTime {
+    line: String,
+    at_ms: u32,
 }
 
 /// Reads a meeting folder. Bad transcript lines are skipped and returned as errors.
 pub fn read(dir: &Path) -> Result<(Entry, Vec<String>)> {
     let text = std::fs::read_to_string(dir.join(MEETING)).map_err(|e| e.to_string())?;
     let (f, raw) = parse(&text)?;
+    let raw_at_ms = match_times(&raw, f.note_times);
     let (segments, errors) = read_transcript(&dir.join(TRANSCRIPT));
     let mut e = Entry {
         meeting: Meeting {
@@ -79,6 +90,7 @@ pub fn read(dir: &Path) -> Result<(Entry, Vec<String>)> {
             answers: f.answers,
             notes: Note {
                 raw,
+                raw_at_ms,
                 enhanced: f.enhanced_notes,
                 enhanced_by: f.enhanced_by,
             },
@@ -113,6 +125,19 @@ fn parse(text: &str) -> Result<(Front, Vec<String>)> {
         .ok_or("frontmatter has no closing ---")?;
     let front: Front = serde_yaml_ng::from_str(yaml).map_err(|e| format!("frontmatter: {e}"))?;
     Ok((front, notes(body)))
+}
+
+/// Give each note line the time saved for the same text (first unused match, in order).
+fn match_times(raw: &[String], mut times: Vec<NoteTime>) -> Vec<Option<u32>> {
+    if times.is_empty() {
+        return vec![];
+    }
+    raw.iter()
+        .map(|l| {
+            let i = times.iter().position(|t| t.line == *l)?;
+            Some(times.remove(i).at_ms)
+        })
+        .collect()
 }
 
 /// The lines under `## Notes`, up to the generated part. Blank lines at either end are dropped.
@@ -168,6 +193,18 @@ pub fn render(e: &Entry) -> Result<String> {
         enhanced_by: m.notes.enhanced_by.clone(),
         enhanced_notes: m.notes.enhanced.clone(),
         action_items: e.items.clone(),
+        note_times: m
+            .notes
+            .raw
+            .iter()
+            .zip(&m.notes.raw_at_ms)
+            .filter_map(|(l, t)| {
+                t.map(|at_ms| NoteTime {
+                    line: l.clone(),
+                    at_ms,
+                })
+            })
+            .collect(),
     };
     let yaml = serde_yaml_ng::to_string(&front).map_err(|e| e.to_string())?;
     let mut s = format!("---\n{yaml}---\n\n# {}\n\n## Notes\n\n", m.title);

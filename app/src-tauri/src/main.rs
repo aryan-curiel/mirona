@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    mirona_app_lib::run()
+    mirona_app_lib::run();
 }

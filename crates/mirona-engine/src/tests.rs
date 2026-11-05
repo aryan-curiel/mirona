@@ -252,3 +252,35 @@ fn open_reads_config_and_creates_the_meetings_dir() {
     assert_eq!(e.paths.meetings, dir.path().join("elsewhere"));
     assert!(e.paths.meetings.is_dir());
 }
+
+#[test]
+fn missing_models_follow_the_configured_stt() {
+    let dir = tempfile::tempdir().unwrap();
+    let m = dir.path();
+    let mut cfg = Config::default();
+    assert_eq!(
+        missing_models(&cfg, m),
+        [
+            "silero_vad.onnx".to_string(),
+            format!("{}/", mirona_capture::PARAKEET_DIR)
+        ]
+    );
+    std::fs::write(m.join(mirona_capture::VAD_MODEL), "").unwrap();
+    let p = m.join(mirona_capture::PARAKEET_DIR);
+    std::fs::create_dir(&p).unwrap();
+    std::fs::write(p.join("tokens.txt"), "").unwrap();
+    assert_eq!(missing_models(&cfg, m), Vec::<String>::new());
+    cfg.providers.insert("stt".into(), "whisper".into());
+    assert_eq!(missing_models(&cfg, m), ["ggml-small.en.bin"]);
+    std::fs::write(m.join("ggml-base.en.bin"), "").unwrap();
+    assert_eq!(missing_models(&cfg, m), Vec::<String>::new());
+}
+
+#[test]
+fn app_dir_can_be_overridden() {
+    // Only this test touches MIRONA_APP_DIR.
+    unsafe { std::env::set_var("MIRONA_APP_DIR", "/tmp/mirona-x") };
+    assert_eq!(app_dir(), PathBuf::from("/tmp/mirona-x"));
+    unsafe { std::env::remove_var("MIRONA_APP_DIR") };
+    assert!(app_dir().ends_with(APP_ID));
+}

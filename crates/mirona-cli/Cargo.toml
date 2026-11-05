@@ -1,5 +1,6 @@
 [package]
 name = "mirona-cli"
+description = "Mirona from the terminal: record, import, search and the MCP server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,7 +12,15 @@ path = "src/main.rs"
 [dependencies]
 mirona-core.workspace = true
 mirona-store.workspace = true
-serde_json.workspace = true
+mirona-engine.workspace = true
+mirona-capture.workspace = true
+mirona-mcp = { path = "../mirona-mcp" }
+clap = { version = "4.6", features = ["derive"] }
+ctrlc = "3.5"
+
+[dev-dependencies]
+mirona-providers.workspace = true
+tempfile = "3"
 
 [lints]
 workspace = true
