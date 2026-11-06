@@ -19,9 +19,14 @@ Tick items as you go (`- [x]`). Anything that fails: note what you saw under **F
 - [ ] **Clean slate (optional):** delete the 4 demo meetings in `~/Documents/Mirona`, and remove
   "Mirona Probe" from System Settings → Privacy & Security → Microphone and → Screen & System
   Audio Recording.
-- [ ] **Open Mirona from /Applications.** The setup screen asks for the microphone and system
-  audio, and shows any missing models.
-  Expected: both permissions show as granted and no models are missing.
+- [ ] **Open Mirona from /Applications.** On first run the onboarding window opens and the main
+  window stays hidden. Step 2 asks for the microphone and system audio and shows any missing
+  models; each check pops when it's granted. Step 3's choices save as you go.
+  Expected: both permissions show as granted, no models are missing, and the main window appears
+  when the onboarding closes (finish, Skip or the red button). Reopening the app goes straight to
+  the main window (the marker is `onboarded` in the app dir; delete it to see the tour again).
+- [ ] **Replay the tour.** Settings › About › Show the welcome tour.
+  Expected: it opens centred on the Settings window, on top of it, at the welcome step.
 
 ## 1. Recording (the core loop)
 

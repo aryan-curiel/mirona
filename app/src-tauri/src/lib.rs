@@ -1361,8 +1361,8 @@ fn changed<T>(app: &AppHandle, res: Res<T>) -> Res<T> {
     res
 }
 
-const SETTINGS_TABS: [&str; 6] = [
-    "general", "privacy", "models", "clients", "agents", "advanced",
+const SETTINGS_TABS: [&str; 7] = [
+    "general", "privacy", "models", "clients", "agents", "advanced", "about",
 ];
 
 /// Settings live in their own window. Opening it again focuses it on `tab`.
@@ -1370,6 +1370,77 @@ const SETTINGS_TABS: [&str; 6] = [
 #[tauri::command]
 async fn open_settings(app: AppHandle, tab: Option<String>) -> Res<()> {
     show_settings(&app, tab.as_deref())
+}
+
+/// Written to the app dir once the first onboarding closes; until then the main window stays hidden.
+const ONBOARDED: &str = "onboarded";
+
+/// Settings › About and "Finish setup": the onboarding on top of the window that asked.
+/// Async: on Windows a window built from a sync command deadlocks.
+#[tauri::command]
+async fn show_onboarding(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    step: Option<u8>,
+) -> Res<()> {
+    open_onboarding(&app, step.unwrap_or(0), Some(&window))
+}
+
+fn open_onboarding(app: &AppHandle, step: u8, over: Option<&tauri::WebviewWindow>) -> Res<()> {
+    const W: f64 = 980.0;
+    const H: f64 = 660.0;
+    if let Some(w) = app.get_webview_window("onboarding") {
+        app.emit_to("onboarding", "onboarding-step", step).ok();
+        w.show().ok();
+        return w.set_focus().map_err(|e| e.to_string());
+    }
+    let url = tauri::WebviewUrl::App("index.html".into());
+    let mut b = tauri::WebviewWindowBuilder::new(app, "onboarding", url)
+        .title("Welcome to Mirona")
+        .theme(Some(tauri::Theme::Light))
+        .inner_size(W, H)
+        .resizable(false)
+        .maximizable(false)
+        .initialization_script(format!("window.miOnboardingStep = {step};"));
+    // Over the window that asked (it may be on another display); centred on screen otherwise.
+    let at = over.and_then(|p| {
+        let scale = p.scale_factor().ok()?;
+        let pos = p.outer_position().ok()?.to_logical::<f64>(scale);
+        let size = p.outer_size().ok()?.to_logical::<f64>(scale);
+        Some((
+            pos.x + (size.width - W) / 2.0,
+            pos.y + (size.height - H) / 2.0,
+        ))
+    });
+    b = match at {
+        Some((x, y)) => b.position(x, y),
+        None => b.center(),
+    };
+    if let Some(parent) = over {
+        b = b.parent(parent).map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    let b = b
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(18.0, 22.0));
+    b.build().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// The onboarding closed (finished, skipped or the close button): the first time, remember
+/// it and show the main window.
+fn onboarding_closed(app: &AppHandle) {
+    let marker = app.state::<AppState>().app_dir.join(ONBOARDED);
+    if marker.exists() {
+        return;
+    }
+    if let Err(e) = std::fs::write(&marker, "") {
+        eprintln!("mirona: onboarding: {e}");
+    }
+    if let Some(w) = app.get_webview_window("main") {
+        w.show().ok();
+        w.set_focus().ok();
+    }
 }
 
 fn show_settings(app: &AppHandle, tab: Option<&str>) -> Res<()> {
@@ -1564,6 +1635,15 @@ pub fn run() {
             });
             watch_calls(app.handle().clone());
             let st = app.state::<AppState>();
+            // First run: the onboarding comes before the main window (hidden in tauri.conf.json).
+            if st.app_dir.join(ONBOARDED).exists() {
+                if let Some(w) = app.get_webview_window("main") {
+                    w.show().ok();
+                }
+            } else if let Err(e) = open_onboarding(app.handle(), 0, None) {
+                eprintln!("mirona: onboarding: {e}");
+                onboarding_closed(app.handle());
+            }
             if let Err(e) = sync_mcp_http(&st, &st.engine().config()) {
                 eprintln!("mirona: {e}");
             }
@@ -1640,25 +1720,30 @@ pub fn run() {
             add_mcp_client,
             revoke_mcp_client,
             open_settings,
+            show_onboarding,
             voiceprint_shape,
         ])
         // Closing the main window keeps Mirona in the menu bar, so recording can still be
         // started from the tray or the shortcut. Quit from the tray menu. Settings just close.
-        .on_window_event(|w, e| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = e
-                && w.label() == "main"
-            {
+        .on_window_event(|w, e| match e {
+            tauri::WindowEvent::CloseRequested { api, .. } if w.label() == "main" => {
                 w.hide().ok();
                 api.prevent_close();
             }
+            tauri::WindowEvent::Destroyed if w.label() == "onboarding" => {
+                onboarding_closed(w.app_handle());
+            }
+            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("error while starting Mirona")
         .run(|app, e| {
-            // Clicking the Dock icon brings the hidden window back.
+            // Clicking the Dock icon brings the hidden window back (the onboarding while it's open).
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = e
-                && let Some(w) = app.get_webview_window("main")
+                && let Some(w) = app
+                    .get_webview_window("onboarding")
+                    .or_else(|| app.get_webview_window("main"))
             {
                 w.show().ok();
                 w.set_focus().ok();

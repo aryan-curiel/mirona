@@ -298,7 +298,7 @@ export function Sidebar({ mac }: { mac: boolean }) {
           </button>
         ))}
         {needsSetup(s.status) && (
-          <button type="button" aria-current={s.view === "setup" ? "page" : undefined} onClick={() => s.go("setup")} className="mi-nav flex h-10 items-center gap-3 px-3 text-left text-[14px] font-medium text-record-text">
+          <button type="button" onClick={() => s.openOnboarding(1)} className="mi-nav flex h-10 items-center gap-3 px-3 text-left text-[14px] font-medium text-record-text">
             <Icon name="shield" />
             <span className="flex-1">Finish setup</span>
           </button>

@@ -5,7 +5,6 @@ import { CallBanner, ConsentSheet, RecordingBar, Sidebar, Toast, WindowsTitleBar
 import { MeetingView } from "./views/Meeting";
 import { Inspector } from "./views/Inspector";
 import { ActionItemsView, AgentActivityView, AllMeetingsView, PeopleView } from "./views/Pages";
-import { SetupView } from "./views/Setup";
 
 export default function App() {
   const view = useStore((s) => s.view);
@@ -41,7 +40,6 @@ export default function App() {
               {view === "people" && <PeopleView />}
               {view === "activity" && <AgentActivityView />}
               {view === "all" && <AllMeetingsView />}
-              {view === "setup" && <SetupView />}
             </main>
             {view === "meetings" && hasMeeting && <Inspector />}
           </div>

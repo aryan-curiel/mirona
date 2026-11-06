@@ -15,6 +15,7 @@
       {
         "label": "main",
         "title": "Mirona",
+        "visible": false,
         "theme": "Light",
         "width": 1440,
         "height": 920,

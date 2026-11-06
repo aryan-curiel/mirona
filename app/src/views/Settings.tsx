@@ -1,9 +1,10 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { type SettingsTab, useStore } from "../store";
 import { api, LLM_LOCAL, type Settings } from "../lib/api";
 import { applyPlatform, detected } from "../lib/platform";
-import { CopyLine } from "./Setup";
-import { Icon, type IconName, Toggle } from "../components/ui";
+import { CopyLine, Folder } from "./Setup";
+import { Icon, type IconName, Logo, Toggle } from "../components/ui";
 import { shortcutLabel, Toast } from "../components/Shell";
 
 function Row({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
@@ -163,20 +164,6 @@ function ApiKey({ provider, label, saved }: { provider: string; label: string; s
           Remove
         </button>
       )}
-    </div>
-  );
-}
-
-function Folder({ label, path, onPick }: { label: string; path: string; onPick: (p: string) => void }) {
-  return (
-    <div className="flex items-center gap-2">
-      <code className="selectable min-w-0 flex-1 truncate rounded-md bg-[var(--mi-neutral-tint)] px-3 py-2 font-mono text-[13px]" title={path}>{path}</code>
-      <button type="button" className="mi-ghost shrink-0" aria-label={`Choose ${label}`} onClick={async () => {
-        const p = await api.pickFolder();
-        if (p) onPick(p);
-      }}>
-        Choose…
-      </button>
     </div>
   );
 }
@@ -549,7 +536,59 @@ const SETTINGS_TABS: [SettingsTab, string, IconName][] = [
   ["clients", "Clients", "people"],
   ["agents", "Agents (MCP)", "plug"],
   ["advanced", "Advanced", "list"],
+  ["about", "About", "info"],
 ];
+
+function About() {
+  const [version, setVersion] = useState("");
+  useEffect(() => void getVersion().then(setVersion).catch(() => {}), []);
+  const flash = useStore((s) => s.flash);
+  return (
+    <>
+      <section className="mi-card p-6">
+        <div className="flex items-center gap-4">
+          <Logo size={56} />
+          <div className="flex-1">
+            <h2 className="text-[20px] font-bold">Mirona</h2>
+            <p className="text-[14px] text-ink-3">Version <span className="selectable font-mono text-[13px]">{version || "…"}</span> · prototype</p>
+          </div>
+          <button type="button" className="mi-btn-primary h-11 px-5" onClick={() => api.showOnboarding(0).catch((e) => flash(String(e), true))}>
+            Show the welcome tour
+          </button>
+        </div>
+        <div className="mt-5 flex max-w-[640px] flex-col gap-3 text-[14px] leading-relaxed text-ink-3">
+          <p>
+            Mirona is meeting memory that stays on your Mac. It records your calls, transcribes them on this device, works out who said what, and
+            tags the lines that matter: action items, decisions and questions nobody answered.
+          </p>
+          <p>
+            Most meeting tools send your audio to someone else's servers and keep the record there. Mirona keeps every meeting as plain files you
+            own (Markdown and a transcript per meeting), runs local models by default, and blocks every cloud service in one place when privacy
+            mode is on.
+          </p>
+          <p>Your AI agents can search and ask about your meetings over MCP, only when you let them.</p>
+        </div>
+      </section>
+      <section className="mi-card mt-5 p-6" aria-labelledby="credits">
+        <h2 id="credits" className="text-[16px] font-semibold">
+          Models and credits
+        </h2>
+        <p className="mt-1 text-[14px] text-ink-3">Mirona runs these open models on your Mac. Full notices are in the NOTICE file that ships with the app.</p>
+        <ul className="mt-3 flex flex-col gap-2 text-[14px]">
+          {CREDITS.map(([name, by, license]) => (
+            <li key={name} className="flex flex-wrap gap-x-2">
+              <span className="font-medium">{name}</span>
+              <span className="text-ink-3">{by}</span>
+              <span className="mi-chip mi-chip--neutral">{license}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <p className="mt-5 text-[13px] text-muted">Open source under the Apache License 2.0.</p>
+    </>
+  );
+}
 
 /** The settings window (its own Tauri window, label "settings"): sections on the left. */
 export function SettingsWindow() {
@@ -763,6 +802,7 @@ function SettingsView() {
         </>
       )}
 
+      {tab === "about" && <About />}
       {tab === "advanced" && (
         <>
       <section className="mi-card overflow-hidden">
@@ -775,22 +815,6 @@ function SettingsView() {
           </p>
         </Row>
       </section>
-      <section className="mi-card mt-5 p-6" aria-labelledby="credits">
-        <h2 id="credits" className="text-[16px] font-semibold">
-          Models and credits
-        </h2>
-        <p className="mt-1 text-[14px] text-ink-3">Mirona runs these open models on your Mac. Full notices are in the NOTICE file that ships with the app.</p>
-        <ul className="mt-3 flex flex-col gap-2 text-[14px]">
-          {CREDITS.map(([name, by, license]) => (
-            <li key={name} className="flex flex-wrap gap-x-2">
-              <span className="font-medium">{name}</span>
-              <span className="text-ink-3">{by}</span>
-              <span className="mi-chip mi-chip--neutral">{license}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
       <p className="mt-5 text-[13px] text-muted">
         Every setting lives in <span className="selectable font-mono">{status.configPath}</span> and can be edited there too; Mirona reads it on start. API keys stay in the system keychain, never in that file.
       </p>
