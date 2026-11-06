@@ -296,7 +296,23 @@ impl Engine {
         if let Some(why) = why {
             notice(why, false);
         }
-        match self.diarize(id, events) {
+        let diarized = self.diarize(id, events);
+        // Join sentences split by short pauses, now that each line has its real speaker and
+        // before tags, summary and search see the lines. `Diarized` makes the app reload them.
+        match self.store.lock().unwrap().merge_lines(id) {
+            Ok(0) => {}
+            Ok(_) => {
+                let speakers = *diarized.as_ref().unwrap_or(&0);
+                events
+                    .send(PipelineEvent::Diarized {
+                        meeting_id: id.into(),
+                        speakers,
+                    })
+                    .ok();
+            }
+            Err(e) => notice(format!("Lines not joined: {e}"), true),
+        }
+        match diarized {
             Err(e) => notice(format!("Speakers not separated: {e}"), true),
             // New voices: names from how they're addressed, and owners among the real
             // speakers (NGR-153/156). Without a classifier the text heuristic's names stay.

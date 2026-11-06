@@ -394,6 +394,18 @@ impl Store {
         self.save(i, true)
     }
 
+    /// Join a finished meeting's lines split mid-sentence (see [`merge_lines`]). Returns how
+    /// many lines were folded into the one before.
+    pub fn merge_lines(&mut self, meeting_id: &str) -> Result<usize> {
+        let i = self.idx(meeting_id)?;
+        let n = merge_lines(&mut self.entries[i].meeting.segments);
+        if n > 0 {
+            classify::fill_items(&mut self.entries[i]);
+            self.save(i, true)?;
+        }
+        Ok(n)
+    }
+
     /// Fix a word in the transcript (NGR-143).
     pub fn edit_segment_text(
         &mut self,
@@ -749,6 +761,60 @@ fn new_speaker(id: &str) -> Speaker {
         voiceprint: None,
         suggestion: None,
     }
+}
+
+/// The longest pause a sentence is joined across, and the longest line joining may make.
+const JOIN_GAP_MS: u32 = 1_200;
+const JOIN_MAX_MS: u32 = 30_000;
+
+/// Speech is cut at 0.25 s pauses for the recognizer (ADR 0001), so one sentence can land on
+/// several lines. A line joins the one before it when it's the same speaker, the pause is
+/// short and the line before doesn't end a sentence. Redacted lines, lines the user corrected
+/// and lines without an end time are left alone. Joined lines lose their answers so the
+/// after-call classification asks again; their tags stay until then. Returns how many lines
+/// were folded into the one before.
+// ponytail: punctuation + pause heuristic; Parakeet sometimes ends a mid-sentence chunk with
+// a period, which keeps that split. Lean on the pause alone if real meetings show it a lot.
+pub fn merge_lines(segs: &mut Vec<Segment>) -> usize {
+    let before = segs.len();
+    let mut out: Vec<Segment> = Vec::with_capacity(before);
+    for s in segs.drain(..) {
+        match out.last_mut() {
+            Some(prev) if joins(prev, &s) => {
+                prev.text = format!("{} {}", prev.text.trim_end(), s.text.trim_start());
+                prev.end_ms = s.end_ms;
+                for t in s.tags {
+                    if !prev
+                        .tags
+                        .iter()
+                        .any(|p| p.kind == t.kind && p.label == t.label)
+                    {
+                        prev.tags.push(t);
+                    }
+                }
+                prev.answers.clear();
+                if prev.owners.is_empty() {
+                    prev.owners = s.owners;
+                }
+                prev.due = prev.due.take().or(s.due);
+            }
+            _ => out.push(s),
+        }
+    }
+    *segs = out;
+    before - segs.len()
+}
+
+fn joins(prev: &Segment, next: &Segment) -> bool {
+    let fixed = |s: &Segment| {
+        s.redacted || s.end_ms == 0 || s.answers.iter().any(|a| a.source == AnswerSource::User)
+    };
+    prev.speaker_id == next.speaker_id
+        && !fixed(prev)
+        && !fixed(next)
+        && next.start_ms.saturating_sub(prev.end_ms) <= JOIN_GAP_MS
+        && next.end_ms.saturating_sub(prev.start_ms) <= JOIN_MAX_MS
+        && !prev.text.trim_end().ends_with(['.', '?', '!'])
 }
 
 /// Owner distribution for a live segment: the speaker owns their own "I'll…".

@@ -687,3 +687,34 @@ fn meeting_level_and_owner_corrections_become_labels() {
             .contains("send the proposal")
     );
 }
+
+#[test]
+fn split_sentences_are_joined() {
+    let line = |who: &str, at: u32, end: u32, text: &str| {
+        let mut s = live_seg(&format!("m-{at}"), who, at, text);
+        s.end_ms = end;
+        s
+    };
+    let mut segs = vec![
+        line("me", 0, 2_000, "So what I think we should"),
+        line("me", 2_500, 4_000, "do is ship on Friday."),
+        line("me", 4_300, 6_000, "Then we"),
+        line("them", 6_200, 7_000, "Sure"),
+        line("them", 9_000, 10_000, "and also"),
+        line("them", 10_100, 41_000, "a very long monologue"),
+    ];
+    assert_eq!(merge_lines(&mut segs), 1);
+    let texts: Vec<&str> = segs.iter().map(|s| s.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        [
+            "So what I think we should do is ship on Friday.", // same speaker, short pause
+            "Then we",                                         // ended a sentence before it
+            "Sure",                                            // another speaker
+            "and also",                                        // 2 s pause
+            "a very long monologue",                           // would pass 30 s
+        ]
+    );
+    assert_eq!((segs[0].id.as_str(), segs[0].end_ms), ("m-0", 4_000));
+    assert!(segs[0].answers.is_empty());
+}
