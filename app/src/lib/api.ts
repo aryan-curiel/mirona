@@ -79,6 +79,8 @@ export type Status = {
   configPath: string;
   cli: string;
   shortcut: string;
+  /** This build includes Whisper; otherwise Settings doesn't offer it. */
+  whisper: boolean;
   errors: string[];
 };
 

@@ -691,7 +691,7 @@ function SettingsView() {
         <>
       <section className="mi-card overflow-hidden">
         <Row title="Speech to text" sub="Live transcription, on this device">
-          <Options value={st.stt} options={[{ id: "parakeet", name: "Parakeet TDT 0.6B" }, { id: "whisper", name: "Whisper" }]} onPick={(stt) => save({ stt })} />
+          <Options value={st.stt} options={[{ id: "parakeet", name: "Parakeet TDT 0.6B" }, ...(status.whisper || st.stt === "whisper" ? [{ id: "whisper" as const, name: "Whisper" }] : [])]} onPick={(stt) => save({ stt })} />
         </Row>
         <Row title="Summaries and notes" sub="Writes the summary, action items and enhanced notes">
           <Options

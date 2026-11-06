@@ -35,6 +35,8 @@ pub const VAD_MODEL: &str = "silero_vad.onnx";
 pub const PARAKEET_DIR: &str = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
 /// Whisper models in order of preference; the first one present is used.
 pub const WHISPER_MODELS: [&str; 2] = ["ggml-small.en.bin", "ggml-base.en.bin"];
+/// Whether this build can run Whisper (the `whisper` feature); Settings only offers it then.
+pub const WHISPER_BUILT: bool = cfg!(feature = "whisper");
 
 /// Where audio came from. Until diarization (M2) it also says who spoke.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
