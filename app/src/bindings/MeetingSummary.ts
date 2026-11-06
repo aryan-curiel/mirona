@@ -3,4 +3,16 @@
 /**
  * Row in the sidebar's recent list.
  */
-export type MeetingSummary = { id: string, title: string, client: string, when: string, };
+export type MeetingSummary = { id: string, title: string, client: string, when: string, 
+/**
+ * RFC 3339 start time, for sorting and grouping by day.
+ */
+created: string, durationMin: number, 
+/**
+ * The classifier's meeting type ("" until classified).
+ */
+meetingType: string, openActions: number, 
+/**
+ * Answers below their threshold, waiting for the user (NGR-158).
+ */
+needsReview: number, hasAudio: boolean, hasSummary: boolean, sample: boolean, };

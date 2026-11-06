@@ -3,7 +3,7 @@
 
 use crate::crypt::{self, Key};
 use crate::{Result, Store, files, index};
-use mirona_core::Id;
+use mirona_core::{AnswerSource, Id, MeetingPart, TagKind};
 use std::path::{Path, PathBuf};
 
 impl Store {
@@ -91,6 +91,41 @@ impl Store {
         self.entries[i].audio = None;
         self.save(i, false)?;
         Ok(true)
+    }
+
+    /// Remove generated parts of a meeting, keeping its transcript and the user's notes.
+    pub fn clear_parts(&mut self, id: &str, parts: &[MeetingPart]) -> Result<()> {
+        if parts.contains(&MeetingPart::Audio) {
+            self.remove_audio(id)?;
+        }
+        let i = self.idx(id)?;
+        let e = &mut self.entries[i];
+        let mut transcript = false;
+        for p in parts {
+            match p {
+                MeetingPart::Audio => {}
+                MeetingPart::Summary => {
+                    e.meeting.summary = None;
+                    e.items.clear();
+                }
+                MeetingPart::Enhanced => {
+                    e.meeting.notes.enhanced.clear();
+                    e.meeting.notes.enhanced_by.clear();
+                }
+                MeetingPart::Classification => {
+                    e.meeting.answers = None;
+                    for s in &mut e.meeting.segments {
+                        // Sensitive tags stay: dropping them would show hidden lines.
+                        s.tags.retain(|t| t.kind == TagKind::Sensitive);
+                        s.answers.retain(|a| a.source == AnswerSource::User);
+                        s.owners.clear();
+                        s.due = None;
+                    }
+                    transcript = true;
+                }
+            }
+        }
+        self.save(i, transcript)
     }
 
     /// Whole days since the meeting started.

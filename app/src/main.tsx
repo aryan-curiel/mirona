@@ -7,10 +7,12 @@ import "@fontsource/inter/700.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "./styles.css";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App";
+import { SettingsWindow } from "./views/Settings";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    {getCurrentWindow().label === "settings" ? <SettingsWindow /> : <App />}
   </React.StrictMode>,
 );

@@ -121,7 +121,7 @@ export function SetupView() {
         </Step>
       </div>
       <p className="mt-5 text-[14px] text-muted">
-        Meetings are saved as Markdown in <span className="font-mono text-[13px]">{s.settings?.meetingsDir}</span> (change it in Models and MCP). Start
+        Meetings are saved as Markdown in <span className="font-mono text-[13px]">{s.settings?.meetingsDir}</span> (change it in Settings). Start
         and stop recording from the sidebar, the menu bar icon, or <span className="font-mono text-[13px]">{shortcutLabel(st.shortcut)}</span> from any app.
       </p>
       <div className="mt-6 flex gap-3">

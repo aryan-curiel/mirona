@@ -204,11 +204,24 @@ impl Store {
             .iter()
             .map(|e| {
                 let (when, _) = when_labels(&e.created);
+                let m = &e.meeting;
                 MeetingSummary {
-                    id: e.meeting.id.clone(),
-                    title: e.meeting.title.clone(),
-                    client: e.meeting.client.clone(),
+                    id: m.id.clone(),
+                    title: m.title.clone(),
+                    client: m.client.clone(),
                     when,
+                    created: e.created.clone(),
+                    duration_min: m.duration_min,
+                    meeting_type: m
+                        .answers
+                        .as_ref()
+                        .map(|a| a.meeting_type.value.clone())
+                        .unwrap_or_default(),
+                    open_actions: count(e.items.iter().filter(|a| !a.done)),
+                    needs_review: self.review(&m.id).map_or(0, |r| count(r.iter())),
+                    has_audio: e.audio.is_some(),
+                    has_summary: m.summary.is_some(),
+                    sample: m.sample,
                 }
             })
             .collect()
@@ -694,6 +707,10 @@ fn timestamp(created: &str) -> Option<jiff::Timestamp> {
 }
 
 /// ("today" | "yesterday" | "Tue" | "last week" | "5 Nov", "Thu 5 Nov 2026 · 09:30").
+fn count<T>(it: impl Iterator<Item = T>) -> u32 {
+    u32::try_from(it.count()).unwrap_or(u32::MAX)
+}
+
 fn when_labels(created: &str) -> (String, String) {
     let Some(t) = timestamp(created) else {
         return (created.into(), created.into());

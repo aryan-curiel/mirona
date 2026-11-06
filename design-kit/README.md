@@ -12,7 +12,7 @@ Everything needed to start implementing the Mirona desktop app UI: the interacti
 | `design-system/` | `index.html`: logo, colors, classification tags, glass surfaces, type scale and core components. |
 | `tokens/` | `tokens.css` (CSS variables + ready-made `.mi-*` surface classes) and `tokens.json` (same values, for Tailwind or TS). |
 | `brand/` | `app-icon.svg` (64 px and up), `mark-small.svg` (under 64 px), `mark-mono.svg` (uses `currentColor`), `tray-template.svg` (black, for the macOS menu bar), `png/icon-16…1024.png`. |
-| `screenshots/` | Retina screenshots of every screen and state, for reference while building. |
+| `screenshots/` | Retina screenshots of every screen and state, for reference while building. `09-settings-window.png` is taken from the app. |
 | `source/` | The original `.dc.html` design files the pages were built from. |
 
 ## Screens in the prototype
@@ -24,7 +24,7 @@ Everything needed to start implementing the Mirona desktop app UI: the interacti
 5. **Recording state**: recording bar with timer and levels; live placeholder in the transcript.
 6. **Action items**: across meetings, filter by client, tick done.
 7. **People and voices**: enrolled voiceprints, enroll a suggested speaker.
-8. **Models and MCP**: provider per stage (local/cloud), privacy-mode blocking, MCP server status, tools and connected clients.
+8. **Settings window**: its own window, opened from Mirona › Settings… (⌘,), the menu bar icon or the gear in the window chrome (right of the traffic lights on macOS, beside the caption buttons on Windows). Settings has no sidebar item, and the privacy card holds only privacy mode. Sections on the left (General, Privacy and storage, AI models, Clients, Agents (MCP), Advanced); the section title sits in a fixed title bar and only the content scrolls. The prototype shows AI models: provider per stage (local/cloud), privacy-mode blocking, MCP server status. The MCP activity log is not a setting: it lives in the main window as **Agent activity**. Reference: `screenshots/09-settings-window.png` (`07-models-and-mcp.png` is the old in-window page).
 
 All people, meetings and numbers are sample data.
 
@@ -59,7 +59,7 @@ Use `tray-template.svg` (exported to PNG at 22/44 px) as a macOS template image 
 ## Notes for implementation
 
 - The prototype uses a tiny offline renderer (`prototype/dc-lite.js`). It's reference only; rebuild the screens as React components.
-- Component map: Sidebar · RecordButton · NavItem · MeetingListItem · PrivacySwitch · RecordingBar · MeetingHeader · Tabs · TranscriptSegment · TagChip · SpeakerSuggestion · NotesEditor · EnhancedNotes · SummaryView · ProviderPicker · Inspector · ProbabilityRow · OwnerChoice · AgentLogItem · ActionItemRow · PersonCard · StageRow · McpServerCard.
+- Component map: Sidebar · RecordButton · NavItem · MeetingListItem · PrivacySwitch · RecordingBar · MeetingHeader · Tabs · TranscriptSegment · TagChip · SpeakerSuggestion · NotesEditor · EnhancedNotes · SummaryView · ProviderPicker · Inspector · ProbabilityRow · OwnerChoice · AgentLogItem · ActionItemRow · PersonCard · StageRow · McpServerCard · SettingsWindow (SettingsSidebar · SettingsSection).
 - Accessibility: text contrast ≥ 4.5:1 on glass (`--mi-muted` is the lightest allowed text color), focus ring on every control, 44 px main actions.
 - Respect `prefers-reduced-transparency`: fall back to solid `#F7F8F7` surfaces when it is set.
 

@@ -33,6 +33,11 @@ button:focus-visible,input:focus-visible{outline:2px solid #0E7466;outline-offse
     <svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#0E7466"></rect><path d="M28 72V46M39 72V32M50 72V26M61 72V36M72 72V48" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"></path><rect x="16" y="72" width="68" height="8" rx="4" fill="#FFFFFF"></rect></svg>
     <span style="font-size: 18px; font-weight: 700; letter-spacing: -0.01em;">Mirona</span>
     <span class="chip" style="background: #E3F1EE; color: #0B5C51; margin-left: auto;">{{privacyBadge}}</span>
+    <!-- App settings: a gear in the window chrome (app: right of the traffic lights on macOS, beside the
+         caption buttons on Windows). Opens the Settings window; ⌘, and the menus do too. -->
+    <button onClick="{{goModels}}" aria-label="Settings" style="width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: #3A3A36;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+    </button>
   </div>
 
   <button onClick="{{toggleRec}}" style="{{recBtnStyle}}">
@@ -54,10 +59,6 @@ button:focus-visible,input:focus-visible{outline:2px solid #0E7466;outline-offse
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.7c1.8.7 3 2.6 3.5 5.3"></path></svg>
       <span>People and voices</span>
     </button>
-    <button onClick="{{goModels}}" style="{{nav.models}}">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
-      <span>Models and MCP</span>
-    </button>
   </nav>
 
   <div style="display: flex; flex-direction: column; gap: 6px;">
@@ -72,13 +73,12 @@ button:focus-visible,input:focus-visible{outline:2px solid #0E7466;outline-offse
 
   <div style="flex-grow: 1;"></div>
 
-  <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07), inset 0 1px 0 rgba(255,255,255,0.9); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
-    <div style="display: flex; align-items: center; gap: 8px;">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0E7466" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"></path></svg>
-      <span style="font-weight: 600;">Privacy mode</span>
-      <button onClick="{{togglePrivacy}}" aria-pressed="{{privacy}}" aria-label="Toggle privacy mode" style="{{switchTrack}}"><span style="{{switchKnob}}"></span></button>
-    </div>
-    <span style="font-size: 12px; color: #5E5E58;">{{privacyText}}</span>
+  <!-- Privacy card: one row, privacy only. "?" shows {{privacyText}} in a bubble above the card (app: Sidebar in Shell.tsx). -->
+  <div title="{{privacyText}}" style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07), inset 0 1px 0 rgba(255,255,255,0.9); border-radius: 16px; padding: 10px 12px; display: flex; align-items: center; gap: 4px;">
+    <span style="font-weight: 600; white-space: nowrap;">Privacy mode</span>
+    <span aria-hidden="true" style="width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; font-size: 12px; font-weight: 600; color: #3A3A36;">?</span>
+    <span style="flex: 1;"></span>
+    <button onClick="{{togglePrivacy}}" aria-pressed="{{privacy}}" aria-label="Toggle privacy mode" style="{{switchTrack}}"><span style="{{switchKnob}}"></span></button>
   </div>
 </aside>
 
@@ -325,7 +325,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #0E7466;outline-offse
             </sc-for>
           </sc-if>
           <sc-if value="{{mcpOff}}" hint-placeholder-val="{{ false }}">
-            <span style="font-size: 13px; color: #5E5E58;">The MCP server is off. Turn it on in Models and MCP.</span>
+            <span style="font-size: 13px; color: #5E5E58;">The MCP server is off. Turn it on in Settings › Agents (MCP).</span>
           </sc-if>
         </div>
       </aside>
@@ -397,13 +397,30 @@ button:focus-visible,input:focus-visible{outline:2px solid #0E7466;outline-offse
     </div>
   </sc-if>
 
-  <!-- MODELS VIEW -->
+  <!-- SETTINGS WINDOW: its own macOS window (Mirona › Settings…, ⌘,, the menu bar icon or the sidebar).
+       Sections on the left, the section title in a fixed title bar, only the content scrolls.
+       This mock shows the AI models section; the app has General, Privacy and storage, AI models,
+       Clients, Agents (MCP) and Advanced. -->
   <sc-if value="{{viewOn.models}}" hint-placeholder-val="{{ false }}">
-    <div style="padding: 28px 32px; display: flex; flex-direction: column; gap: 18px; max-width: 1040px;">
-      <div style="display: flex; flex-direction: column; gap: 4px;">
-        <h1 style="margin: 0; font-size: 26px; font-weight: 700;">Models and MCP</h1>
-        <span style="color: #5E5E58;">Every stage is a provider you can swap. Local runs by default; cloud options unlock only when privacy mode is off.</span>
-      </div>
+    <div style="padding: 40px 32px; display: flex; justify-content: center;">
+    <div role="dialog" aria-label="Settings" style="width: 920px; max-width: 100%; height: 660px; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid rgba(0,0,0,0.12); box-shadow: 0 30px 80px rgba(20,40,36,0.25); background: radial-gradient(700px 500px at 20% 0%, rgba(14,116,102,0.18), transparent 62%), radial-gradient(600px 500px at 100% 10%, rgba(63,79,184,0.14), transparent 60%), #ECEFEE;">
+      <aside style="width: 220px; flex-shrink: 0; box-sizing: border-box; padding: 0 12px 12px; background: rgba(227,241,238,0.72); border-right: 1px solid rgba(255,255,255,0.7); display: flex; flex-direction: column; gap: 2px;">
+        <div style="height: 52px; display: flex; align-items: center; gap: 8px; padding-left: 6px;">
+          <span style="width: 12px; height: 12px; border-radius: 50%; background: #FF5F57;"></span>
+          <span style="width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E;"></span>
+          <span style="width: 12px; height: 12px; border-radius: 50%; background: #28C840;"></span>
+        </div>
+        <span style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; font-weight: 500;">General</span>
+        <span style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; font-weight: 500;">Privacy and storage</span>
+        <span aria-current="page" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; font-weight: 500; border-radius: 8px; background: rgba(255,255,255,0.85); box-shadow: 0 1px 3px rgba(20,40,36,0.08); color: #0B5C51;">AI models</span>
+        <span style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; font-weight: 500;">Clients</span>
+        <span style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; font-weight: 500;">Agents (MCP)</span>
+        <span style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; font-weight: 500;">Advanced</span>
+      </aside>
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+        <div style="height: 52px; flex-shrink: 0; display: flex; align-items: center; padding: 0 32px; border-bottom: 1px solid #EDEDE8; font-size: 17px; font-weight: 600;">AI models</div>
+    <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 16px 32px 32px; display: flex; flex-direction: column; gap: 18px;">
+      <span style="color: #5E5E58;">Every stage is a provider you can swap. Local runs by default; cloud options unlock only when privacy mode is off.</span>
       <div style="background: rgba(255,255,255,0.55); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border: 1px solid rgba(255,255,255,0.8); box-shadow: 0 10px 30px rgba(20,40,36,0.07), inset 0 1px 0 rgba(255,255,255,0.9); border-radius: 16px;">
         <sc-for list="{{stages}}" as="st" hint-placeholder-count="5">
           <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #EDEDE8;">
@@ -441,6 +458,9 @@ button:focus-visible,input:focus-visible{outline:2px solid #0E7466;outline-offse
           <span><span style="font-weight: 600;">Also ships:</span> a Claude Code skill and the <span class="mono" style="font-size: 12px;">mirona</span> CLI</span>
         </div>
       </div>
+    </div>
+      </div>
+    </div>
     </div>
   </sc-if>
 </main>

@@ -4,15 +4,50 @@ import type { SearchFilters } from "../bindings/SearchFilters";
 import type { SearchResults } from "../bindings/SearchResults";
 import type { TagKind } from "../bindings/TagKind";
 import { needsSetup, useStore, type View } from "../store";
-import { api, fmt } from "../lib/api";
+import { api, dayGroup, fmt } from "../lib/api";
 import { Icon, Logo, Reveal, Toggle, useLast } from "./ui";
 
 const nav: { id: View; label: string; icon: Parameters<typeof Icon>[0]["name"] }[] = [
-  { id: "meetings", label: "Meetings", icon: "list" },
+  { id: "all", label: "All meetings", icon: "list" },
   { id: "actions", label: "Action items", icon: "check" },
   { id: "people", label: "People and voices", icon: "people" },
-  { id: "models", label: "Models and MCP", icon: "sliders" },
+  { id: "activity", label: "Agent activity", icon: "plug" },
 ];
+
+/** The last message, kept mounted after it clears so it can fade out. */
+export function Toast() {
+  const toast = useStore((s) => s.toast);
+  const [lastToast, setLastToast] = useState(toast);
+  if (toast && toast !== lastToast) setLastToast(toast);
+  if (!lastToast) return null;
+  return (
+    <div
+      role={lastToast.error ? "alert" : "status"}
+      data-open={!!toast}
+      aria-hidden={!toast}
+      className={`mi-card mi-toast fixed bottom-5 left-1/2 max-w-[640px] -translate-x-1/2 rounded-lg! px-4 py-2.5 text-[14px] font-medium ${lastToast.error ? "text-record-text" : ""}`}
+    >
+      {lastToast.msg}
+    </div>
+  );
+}
+
+/** App settings open in their own window (also ⌘, and the menus). Lives in the window chrome:
+ * right of the traffic lights on macOS, beside the caption buttons on Windows. */
+function SettingsButton() {
+  const open = useStore((s) => s.openSettings);
+  return (
+    <button
+      type="button"
+      aria-label="Settings"
+      title={`Settings (${mac ? "⌘," : "Ctrl+,"})`}
+      onClick={() => open("general")}
+      className="grid size-8 place-items-center rounded-md text-ink-3 hover:bg-white/60"
+    >
+      <Icon name="gear" />
+    </button>
+  );
+}
 
 /** Windows 11 caption bar. On macOS the native traffic lights float over the sidebar instead. */
 export function WindowsTitleBar() {
@@ -21,6 +56,7 @@ export function WindowsTitleBar() {
     <div data-tauri-drag-region className="flex h-8 shrink-0 items-center pl-3 text-[12px]">
       <Logo size={16} />
       <span data-tauri-drag-region className="ml-2.5 flex-1 text-ink-3">Mirona</span>
+      <SettingsButton />
       <button type="button" className="mi-caption" aria-label="Minimize" onClick={() => w.minimize()}>
         <svg width="10" height="10" aria-hidden="true"><path d="M0 5h10" stroke="currentColor" /></svg>
       </button>
@@ -213,19 +249,31 @@ function Search({ clients, onActive }: { clients: string[]; onActive: (on: boole
   );
 }
 
+/** How many meetings the sidebar lists before "See all". */
+const RECENT = 15;
+
 export function Sidebar({ mac }: { mac: boolean }) {
   const s = useStore();
   const open = s.actionItems.filter((a) => !a.done).length;
   const rec = s.recording;
-  // Clients are the "folders" (NGR-157): the store keeps one folder per meeting, the UI groups.
   const clients = [...new Set(s.meetings.map((m) => m.client).filter(Boolean))].sort();
-  const filter = s.clientFilter !== null && clients.includes(s.clientFilter) ? s.clientFilter : null;
-  const shown = filter === null ? s.meetings : s.meetings.filter((m) => m.client === filter);
+  // The newest few, by day; everything else is one click away in All meetings.
+  const shown = s.meetings.slice(0, RECENT);
+  const groups: [string, typeof shown][] = [];
+  for (const m of shown) {
+    const g = dayGroup(m.created);
+    const last = groups[groups.length - 1];
+    if (last?.[0] === g) last[1].push(m);
+    else groups.push([g, [m]]);
+  }
   const [searching, setSearching] = useState(false);
+  const [privacyHelp, setPrivacyHelp] = useState(false);
   return (
     <aside className="mi-sidebar flex h-full w-[var(--mi-sidebar-w)] shrink-0 flex-col border-r border-white/60 px-3.5 pb-3.5">
       {/* macOS: room for the traffic lights, and the strip drags the window */}
-      <div data-tauri-drag-region className={mac ? "h-11 shrink-0" : "h-2 shrink-0"} />
+      <div data-tauri-drag-region className={mac ? "flex h-11 shrink-0 items-center justify-end" : "h-2 shrink-0"}>
+        {mac && <SettingsButton />}
+      </div>
       <div className="mb-4 flex items-center gap-2.5 px-1.5">
         <Logo size={28} />
         <span className="text-[18px] font-bold tracking-[-0.01em]">Mirona</span>
@@ -264,24 +312,12 @@ export function Sidebar({ mac }: { mac: boolean }) {
         </button>
       </div>
       <Search clients={clients} onActive={setSearching} />
-      {!searching && clients.length > 0 && (
-        <select
-          className="mi-field mx-1 mb-1.5 h-9 text-[13px]"
-          aria-label="Show meetings for a client"
-          value={filter ?? ""}
-          onChange={(e) => s.setClientFilter(e.target.value || null)}
-        >
-          <option value="">All clients</option>
-          {clients.map((c) => (
-            <option key={c} value={c}>
-              {c} ({s.meetings.filter((m) => m.client === c).length})
-            </option>
-          ))}
-        </select>
-      )}
       <div className={`-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1 ${searching ? "hidden" : ""}`}>
         <ImportProgress />
-        {shown.map((m) => {
+        {groups.map(([g, ms]) => (
+          <div key={g} className="flex flex-col gap-0.5">
+            <p className="px-2.5 pt-2 pb-0.5 text-[11px] font-semibold text-muted">{g}</p>
+        {ms.map((m) => {
           const active = s.view === "meetings" && s.meeting?.id === m.id;
           const live = rec?.meetingId === m.id;
           const busy = s.processing.includes(m.id) || m.id in s.summarizing;
@@ -302,20 +338,43 @@ export function Sidebar({ mac }: { mac: boolean }) {
             </button>
           );
         })}
+          </div>
+        ))}
+        {s.meetings.length > RECENT && (
+          <button type="button" className="mt-1 rounded px-2.5 py-1.5 text-left text-[13px] font-medium text-accent-strong hover:underline" onClick={() => s.go("all")}>
+            See all {s.meetings.length} meetings
+          </button>
+        )}
         {!s.meetings.length && !s.importing && <p className="px-2 py-2 text-[12px] leading-snug text-muted">No meetings yet. Start a recording or import an audio file.</p>}
       </div>
 
-      <div className="mi-card mt-3 p-3.5">
-        <div className="flex items-center gap-2">
-          <Icon name="shield" className="text-accent" />
-          <span className="flex-1 text-[14px] font-semibold">Privacy mode</span>
+      {/* Privacy mode, with its explanation behind "?". */}
+      <div className="mi-card relative mt-3 px-3 py-2.5">
+        <div className="flex items-center gap-1">
+          <span className="whitespace-nowrap text-[14px] font-semibold">Privacy mode</span>
+          <button
+            type="button"
+            aria-label="What privacy mode does"
+            aria-expanded={privacyHelp}
+            aria-controls="privacy-help"
+            onClick={() => setPrivacyHelp((v) => !v)}
+            onBlur={() => setPrivacyHelp(false)}
+            onKeyDown={(e) => e.key === "Escape" && setPrivacyHelp(false)}
+            className="grid size-6 shrink-0 place-items-center rounded-full text-[12px] font-semibold text-ink-3 hover:bg-white/60"
+          >
+            ?
+          </button>
+          <span className="flex-1" />
           <Toggle on={!!s.settings?.privacy} onChange={s.setPrivacy} label="Privacy mode" />
         </div>
-        <p className="mt-2 text-[12px] leading-snug text-muted">
-          {s.settings?.privacy
-            ? "On. Cloud providers are blocked: audio, transcripts and summaries stay on this device."
-            : "Off. Cloud providers can be picked in Models and MCP. Audio and voiceprints still stay on this device."}
-        </p>
+        {/* A bubble above the card: growing the card would push it out of the window. */}
+        {privacyHelp && (
+          <p id="privacy-help" role="status" className="mi-card absolute inset-x-0 bottom-full mb-2 px-3 py-2.5 text-[12px] leading-snug text-ink-3">
+            {s.settings?.privacy
+              ? "On. Cloud providers are blocked: audio, transcripts and summaries stay on this device."
+              : "Off. Cloud providers can be picked in Settings. Audio and voiceprints still stay on this device."}
+          </p>
+        )}
       </div>
     </aside>
   );
@@ -480,7 +539,7 @@ export function ConsentSheet() {
         )}
         <label className="mt-2 flex items-center gap-2 text-[13px] text-muted">
           <input type="checkbox" checked={never} onChange={(e) => setNever(e.target.checked)} />
-          Don't show this reminder again (turn it back on in Models and MCP)
+          Don't show this reminder again (turn it back on in Settings → General)
         </label>
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="mi-ghost min-h-11! px-4" onClick={cancel}>

@@ -1,11 +1,12 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useStore, type Tab } from "../store";
-import { api, fmt, priorityLabel, sure, toneLabel, typeLabel } from "../lib/api";
+import { api, fmt, sure, typeLabel } from "../lib/api";
 import { retime } from "../lib/notes";
 import { Avatar, Chip, Icon, Label, Logo, Mono } from "../components/ui";
 import { ImportProgress, RecordButton, useModelNames } from "../components/Shell";
 import type { Meeting } from "../bindings/Meeting";
+import type { MeetingPart } from "../bindings/MeetingPart";
 import type { Segment } from "../bindings/Segment";
 import type { Speaker } from "../bindings/Speaker";
 import type { TagKind } from "../bindings/TagKind";
@@ -42,7 +43,7 @@ function EmptyState() {
           Add demo meetings
         </button>
       </div>
-      <p className="mt-3 text-[12px] text-muted">Demo meetings are marked as sample data; delete their folders to remove them.</p>
+      <p className="mt-3 text-[12px] text-muted">Demo meetings are marked as sample data. Remove them all at once from All meetings.</p>
     </div>
   );
 }
@@ -98,54 +99,22 @@ function MeetingHeader({ m }: { m: Meeting }) {
   const rename = useStore((s) => s.rename);
   const busy = useStore((s) => s.processing.includes(m.id) || m.id in s.summarizing);
   const live = useStore((s) => s.recording?.meetingId === m.id);
+  const reviews = useStore((s) => s.review.length);
   const [title, setTitle] = useState(m.title);
   useEffect(() => setTitle(m.title), [m.title]);
   const rerunning = useStore((s) => s.rerunning[m.id]);
   const a = m.answers;
-  const followSure = a && (a.followUpProbability >= a.followUpThreshold || a.followUpProbability === 0 || a.followUpProbability === 1);
-  const [sureDelete, setSureDelete] = useState(false);
-  const remove = async () => {
-    if (!sureDelete) return setSureDelete(true);
-    try {
-      await api.deleteMeeting(m.id);
-      await useStore.getState().reload();
-      useStore.getState().flash(`Deleted “${m.title}” everywhere.`);
-    } catch (e) {
-      useStore.getState().flash(String(e), true);
-    }
-  };
   return (
     <header data-tauri-drag-region>
       <div className="flex flex-wrap items-center gap-2">
-        {a && (
-          <Chip kind={sure(a.meetingType) ? "action" : "review"}>
-            {typeLabel(a.meetingType.value)}
-            {sure(a.meetingType) ? "" : "?"} · {a.meetingType.confirmed ? "confirmed" : a.meetingType.probability.toFixed(2)}
-          </Chip>
-        )}
-        {a?.client.value &&
-          (sure(a.client) ? (
-            <Chip kind="action">{a.client.value}</Chip>
-          ) : (
-            <Chip kind="review">{a.client.value}? · {a.client.probability.toFixed(2)}</Chip>
-          ))}
-        {a && <Chip kind="neutral">Priority · {priorityLabel(a.priority)}</Chip>}
-        {a && <Chip kind="neutral">Tone · {toneLabel(a.tone)}</Chip>}
-        {a?.followUp && <Chip kind={followSure ? "decision" : "review"}>Follow-up email{followSure ? "" : "?"}</Chip>}
+        {/* Plain answers; scores live in the inspector under "Show model details". */}
+        {a?.meetingType.value && <Chip kind={sure(a.meetingType) ? "neutral" : "review"}>{typeLabel(a.meetingType.value)}{sure(a.meetingType) ? "" : "?"}</Chip>}
+        {a?.client.value && a.client.value !== "none" && <Chip kind={sure(a.client) ? "neutral" : "review"}>{a.client.value}{sure(a.client) ? "" : "?"}</Chip>}
+        {reviews > 0 && <Chip kind="review">{reviews} to check</Chip>}
         {m.sample && <span className="text-[12px] font-medium text-muted">Sample data</span>}
         {busy && <span className="mi-chip mi-chip--review mi-pulse">Writing the summary on this device…</span>}
         {rerunning && <span className="mi-chip mi-chip--review mi-pulse">{rerunning}</span>}
-        {!live && (
-          <button
-            type="button"
-            className={`mi-ghost ml-auto text-[13px] ${sureDelete ? "text-record-text!" : ""}`}
-            onBlur={() => setSureDelete(false)}
-            onClick={() => void remove()}
-            title="Deletes the folder, audio, transcript, search vectors, voices heard only here and corrections"
-          >
-            {sureDelete ? "Delete everywhere, for good" : "Delete meeting"}
-          </button>
-        )}
+        {!live && <MoreMenu m={m} />}
       </div>
       <input
         aria-label="Meeting title"
@@ -162,6 +131,114 @@ function MeetingHeader({ m }: { m: Meeting }) {
         {m.dateLabel} · {live ? "live" : `${m.durationMin} min`} · {m.speakers.length} speaker{m.speakers.length === 1 ? "" : "s"} · {m.language}
       </p>
     </header>
+  );
+}
+
+/** Redo and remove, out of the way until needed. */
+function MoreMenu({ m }: { m: Meeting }) {
+  const rerun = useStore((s) => s.rerun);
+  const st = useStore((s) => s.settings);
+  const busy = useStore((s) => s.processing.includes(m.id) || !!s.rerunning[m.id]);
+  const menu = useRef<HTMLDetailsElement>(null);
+  const [removing, setRemoving] = useState(false);
+  // <details> doesn't close on an outside click by itself.
+  useEffect(() => {
+    const close = (e: PointerEvent) => {
+      if (menu.current?.open && !menu.current.contains(e.target as Node)) menu.current.open = false;
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, []);
+  const pick =(f: () => void) => () => {
+    if (menu.current) menu.current.open = false;
+    f();
+  };
+  const item = "mi-nav flex min-h-10 w-full items-center px-3 text-left text-[14px] disabled:text-muted";
+  return (
+    <>
+      <details ref={menu} className="relative ml-auto">
+        <summary className="mi-ghost flex cursor-default list-none items-center text-[13px] [&::-webkit-details-marker]:hidden">More</summary>
+        <div className="mi-card absolute right-0 z-20 mt-1 flex w-64 flex-col p-1.5">
+          <button type="button" className={item} disabled={busy || st?.diarization === "off"} onClick={pick(() => rerun("diarization"))}>
+            Re-run speaker detection
+          </button>
+          <button type="button" className={item} disabled={busy || st?.classification === "off"} onClick={pick(() => rerun("classification"))}>
+            Re-run classification
+          </button>
+          <hr className="my-1 border-line-soft" />
+          <button type="button" className={`${item} text-record-text`} onClick={pick(() => setRemoving(true))}>
+            Remove or delete…
+          </button>
+        </div>
+      </details>
+      {removing && <RemoveDialog m={m} onClose={() => setRemoving(false)} />}
+    </>
+  );
+}
+
+/**
+ * Pick what goes: generated parts (the transcript and your notes stay), or the whole meeting.
+ * A native modal dialog: focus stays inside and Escape closes it.
+ */
+function RemoveDialog({ m, onClose }: { m: Meeting; onClose: () => void }) {
+  const row = useStore((s) => s.meetings.find((x) => x.id === m.id));
+  const items = useStore((s) => s.actionItems.filter((a) => a.meetingId === m.id).length);
+  const removeParts = useStore((s) => s.removeParts);
+  const deleteMeetings = useStore((s) => s.deleteMeetings);
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => ref.current?.showModal(), []);
+  const tagged = m.segments.filter((x) => x.tags.some((t) => t.kind !== "sensitive") || x.answers.length).length;
+  const parts: { id: MeetingPart; label: string; detail: string; has: boolean }[] = [
+    { id: "audio", label: "Recording", detail: `${m.durationMin} min of audio. The transcript stays.`, has: !!row?.hasAudio },
+    { id: "summary", label: "Summary and action items", detail: `${items} action item${items === 1 ? "" : "s"}. Write a new one any time.`, has: !!m.summary },
+    { id: "enhanced", label: "Enhanced notes", detail: `${m.notes.enhanced.length} lines. Your own notes stay.`, has: m.notes.enhanced.length > 0 },
+    { id: "classification", label: "Tags and classification", detail: `${tagged} tagged lines, meeting type, client, follow-up. Sensitive lines stay hidden.`, has: tagged > 0 || !!m.answers },
+  ];
+  const [picked, setPicked] = useState<MeetingPart[]>([]);
+  const [whole, setWhole] = useState(false);
+  const flip = (id: MeetingPart) => setPicked(picked.includes(id) ? picked.filter((p) => p !== id) : [...picked, id]);
+  const go = async () => {
+    onClose();
+    if (whole) await deleteMeetings([m.id]);
+    else await removeParts(m.id, picked);
+  };
+  return (
+    <dialog ref={ref} onClose={onClose} aria-labelledby="remove-title" className="mi-card mi-pop m-auto w-full max-w-[520px] p-6 text-ink backdrop:bg-black/20">
+      <h2 id="remove-title" className="text-[18px] font-semibold">Remove from “{m.title}”</h2>
+      <p className="mt-1 text-[14px] text-ink-3">Pick what Mirona generated and you no longer want. The transcript and your notes stay.</p>
+      <fieldset className="mt-4 flex flex-col gap-1" disabled={whole}>
+        {parts.map((p) => (
+          <label key={p.id} className={`flex items-start gap-3 rounded-md px-2 py-2 ${p.has && !whole ? "hover:bg-white/40" : "opacity-55"}`}>
+            <input type="checkbox" className="mt-1" disabled={!p.has} checked={picked.includes(p.id)} onChange={() => flip(p.id)} />
+            <span>
+              <span className="block text-[14px] font-medium">{p.label}</span>
+              <span className="block text-[13px] text-muted">{p.has ? p.detail : "Nothing to remove."}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <hr className="my-3 border-line-soft" />
+      <label className="flex items-start gap-3 px-2 py-2">
+        <input type="checkbox" className="mt-1" checked={whole} onChange={(e) => setWhole(e.target.checked)} />
+        <span>
+          <span className="block text-[14px] font-medium text-record-text">Delete the whole meeting</span>
+          <span className="block text-[13px] text-muted">The folder, audio, transcript, notes, search vectors, voices heard only here and your corrections. Can't be undone.</span>
+        </span>
+      </label>
+      <div className="mt-5 flex justify-end gap-2">
+        <button type="button" className="mi-ghost min-h-11! px-4" onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className={`flex h-11 items-center gap-2 px-5 ${whole ? "rounded-md bg-record font-semibold text-white" : "mi-btn-primary"}`}
+          disabled={!whole && !picked.length}
+          onClick={() => void go()}
+        >
+          {whole ? "Delete for good" : picked.length ? `Remove ${picked.length} part${picked.length === 1 ? "" : "s"}` : "Remove"}
+        </button>
+      </div>
+    </dialog>
   );
 }
 
@@ -245,7 +322,7 @@ function Transcript({ m }: { m: Meeting }) {
           <audio ref={audio.ref} src={audio.src} controls preload="metadata" className="w-full" aria-label="Meeting recording" />
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-[14px]">
+      <div className="flex flex-wrap items-center gap-2 text-[14px]">
         <input
           type="search"
           value={query}
@@ -257,14 +334,19 @@ function Transcript({ m }: { m: Meeting }) {
         {(
           [
             ["hideSmallTalk", "Hide small talk"],
-            ["onlyTagged", "Only tagged segments"],
+            ["onlyTagged", "Only tagged"],
             ["showSensitive", "Show sensitive text"],
           ] as const
         ).map(([k, label]) => (
-          <label key={k} className="flex items-center gap-2">
-            <input type="checkbox" checked={s.filters[k]} onChange={(e) => s.setFilter(k, e.target.checked)} />
+          <button
+            type="button"
+            key={k}
+            aria-pressed={s.filters[k]}
+            onClick={() => s.setFilter(k, !s.filters[k])}
+            className={`min-h-9 rounded-full px-4 text-[13px] font-medium ${s.filters[k] ? "bg-ink text-white" : "mi-ghost rounded-full!"}`}
+          >
             {label}
-          </label>
+          </button>
         ))}
       </div>
       <p className="mt-3 mb-3 flex text-[13px] text-muted">
@@ -356,10 +438,14 @@ function SpeakerName({ sp, onName }: { sp: Speaker; onName: (name: string) => vo
   );
 }
 
+/** Line buttons stay out of sight until the line is hovered or focused from the keyboard. */
+const reveal = "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100";
+
 const SegmentRow = memo(function SegmentRow({ seg, speaker: sp, suggest, selected, showSensitive, query, onPlay }: RowProps) {
   const select = useStore((s) => s.selectSegment);
   const nameSpeaker = useStore((s) => s.nameSpeaker);
   const edit = useStore((s) => s.editSegment);
+  const details = useStore((s) => s.modelDetails);
   const [draft, setDraft] = useState<string | null>(null);
   const save = () => {
     if (draft?.trim() && draft.trim() !== seg.text) void edit(seg.id, draft);
@@ -370,7 +456,7 @@ const SegmentRow = memo(function SegmentRow({ seg, speaker: sp, suggest, selecte
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: mouse shortcut; the Inspect button is the keyboard path
     // biome-ignore lint/a11y/useKeyWithClickEvents: same as above
-    <div className="mi-row flex gap-4 px-5 py-4" aria-current={selected} onClick={() => select(seg.id)}>
+    <div className="mi-row group flex gap-4 px-5 py-4" aria-current={selected} onClick={() => select(seg.id)}>
       {sp && <Avatar tint={sp.tint} initial={sp.initial} />}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2.5">
@@ -400,11 +486,15 @@ const SegmentRow = memo(function SegmentRow({ seg, speaker: sp, suggest, selecte
                 if (sp.suggestion) nameSpeaker(sp.id, sp.suggestion.name);
               }}
             >
-              {sp.suggestion.name}? {sp.suggestion.probability.toFixed(2)} {sp.suggestion.evidence ? `from “${sp.suggestion.evidence}” ` : ""}· Confirm
+              <span title={sp.suggestion.evidence ? `From “${sp.suggestion.evidence}”` : undefined}>
+                {sp.suggestion.name}? {details && `${sp.suggestion.probability.toFixed(2)} `}· Confirm
+              </span>
             </Chip>
           )}
           {seg.tags.map((t) => (
-            <Chip key={t.label} kind={t.kind}>{t.kind === "action" && seg.due && !t.label.includes(seg.due) ? `${t.label} · ${seg.due}` : t.label}</Chip>
+            <Chip key={t.label} kind={t.kind}>
+              {t.kind === "action" && seg.due && !t.label.includes(seg.due) ? `${t.label} · ${seg.due}` : details ? t.label : t.label.replace(/ \d\.\d+$/, "")}
+            </Chip>
           ))}
         </div>
         {draft !== null ? (
@@ -441,14 +531,14 @@ const SegmentRow = memo(function SegmentRow({ seg, speaker: sp, suggest, selecte
             e.stopPropagation();
             select(seg.id);
           }}
-          className={selected ? "mi-btn-primary h-9 px-3.5 text-[13px]" : "mi-ghost text-[13px]"}
+          className={selected ? "mi-btn-primary h-9 px-3.5 text-[13px]" : `mi-ghost text-[13px] ${reveal}`}
         >
           {selected ? "Inspecting" : "Inspect"}
         </button>
         {!hidden && draft === null && (
           <button
             type="button"
-            className="rounded px-1 text-[12px] font-medium text-accent-strong hover:underline"
+            className={`rounded px-1 text-[12px] font-medium text-accent-strong hover:underline ${selected ? "" : reveal}`}
             onClick={(e) => {
               e.stopPropagation();
               setDraft(seg.text);
@@ -599,7 +689,7 @@ function SummaryTab({ m }: { m: Meeting }) {
         </button>
         <span className="text-[13px] text-muted">
           with {llm}.{" "}
-          <button type="button" className="font-medium text-accent-strong underline underline-offset-2" onClick={() => s.go("models")}>
+          <button type="button" className="font-medium text-accent-strong underline underline-offset-2" onClick={() => s.openSettings("models")}>
             Change model
           </button>
         </span>
@@ -624,7 +714,7 @@ function SummaryTab({ m }: { m: Meeting }) {
             <Label>Template: {sum.template}</Label>
             <span className="text-[13px] text-muted">
               {m.answers && sure(m.answers.meetingType) && m.answers.meetingType.value.toLowerCase().replace(/[ _]/g, "-") === current
-                ? `picked by classification (${typeLabel(m.answers.meetingType.value)} · ${m.answers.meetingType.confirmed ? "confirmed" : m.answers.meetingType.probability.toFixed(2)}) · `
+                ? `picked for a ${typeLabel(m.answers.meetingType.value).toLowerCase()} · `
                 : ""}
               Written by {sum.writtenBy || "an unknown model"}
             </span>

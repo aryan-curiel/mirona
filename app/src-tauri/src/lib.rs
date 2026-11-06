@@ -185,6 +185,43 @@ fn list_people(st: St) -> Res<Vec<Person>> {
         .collect())
 }
 
+/// A rough picture of a voiceprint for the People page: `VOICE_BINS` values in 0..=1. Lossy on
+/// purpose (the window only draws it); the embedding stays in the store and MCP never sees this.
+#[tauri::command]
+fn voiceprint_shape(st: St, person_id: String) -> Option<Vec<f32>> {
+    let engine = st.engine();
+    let v = engine
+        .store
+        .lock()
+        .unwrap()
+        .voices()
+        .voiceprint(&person_id)?;
+    Some(voice_shape(&v, VOICE_BINS))
+}
+
+const VOICE_BINS: usize = 48;
+
+/// Mean |x| per slice of `v`, scaled so the quietest slice is 0 and the loudest 1.
+#[allow(clippy::cast_precision_loss)] // slices of a few dozen values
+fn voice_shape(v: &[f32], bins: usize) -> Vec<f32> {
+    if v.is_empty() || bins == 0 {
+        return vec![];
+    }
+    // Exactly `bins` slices, split proportionally (a slice repeats when `v` is shorter).
+    let raw: Vec<f32> = (0..bins)
+        .map(|i| {
+            let start = (i * v.len() / bins).min(v.len() - 1);
+            let c = &v[start..((i + 1) * v.len() / bins).max(start + 1)];
+            c.iter().map(|x| x.abs()).sum::<f32>() / c.len() as f32
+        })
+        .collect();
+    let (lo, hi) = raw
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(lo, hi), &x| (lo.min(x), hi.max(x)));
+    let span = (hi - lo).max(f32::EPSILON);
+    raw.iter().map(|x| (x - lo) / span).collect()
+}
+
 #[tauri::command]
 fn enroll_speaker(st: St, speaker_id: String, name: String) -> Res<Speaker> {
     st.engine()
@@ -482,30 +519,48 @@ fn delete_meeting(st: St, meeting_id: String) -> Res<()> {
         .delete_meeting(&meeting_id)
 }
 
+/// Remove generated parts of a meeting (recording, summary, enhanced notes, tags); the
+/// transcript and the user's notes stay.
+#[tauri::command]
+fn clear_meeting_parts(
+    st: St,
+    meeting_id: String,
+    parts: Vec<mirona_core::MeetingPart>,
+) -> Res<()> {
+    if st.rec_state().recording.as_deref() == Some(meeting_id.as_str()) {
+        return Err("Stop the recording first.".into());
+    }
+    st.engine()
+        .store
+        .lock()
+        .unwrap()
+        .clear_parts(&meeting_id, &parts)
+}
+
 /// Delete every meeting of a client. Returns how many went.
 #[tauri::command]
-fn delete_client(st: St, client: String) -> Res<usize> {
+fn delete_client(app: AppHandle, st: St, client: String) -> Res<usize> {
     if st.session.lock().unwrap().is_some() {
         return Err("Stop the recording first.".into());
     }
-    st.engine().delete_client(&client)
+    changed(&app, st.engine().delete_client(&client))
 }
 
 /// Apply the retention rules now; what was removed, one line each.
 #[tauri::command]
-fn run_retention(st: St) -> Res<Vec<String>> {
-    st.engine().retention()
+fn run_retention(app: AppHandle, st: St) -> Res<Vec<String>> {
+    changed(&app, st.engine().retention())
 }
 
 /// Encrypt (or decrypt) every meeting at rest. Rewrites files: never while recording.
 #[tauri::command]
-async fn set_encryption(st: St<'_>, on: bool) -> Res<Settings> {
+async fn set_encryption(app: AppHandle, st: St<'_>, on: bool) -> Res<Settings> {
     if st.session.lock().unwrap().is_some() {
         return Err("Stop the recording before changing encryption.".into());
     }
     let engine = st.engine();
     engine.set_encryption(&st.app_dir, on)?;
-    Ok(Settings::of(&engine.config(), &engine.paths))
+    changed(&app, Ok(Settings::of(&engine.config(), &engine.paths)))
 }
 
 /// Adds the four sample meetings, for a tour before the first real one.
@@ -921,7 +976,7 @@ fn cli_path() -> String {
 
 /// Empty `key` removes it. Keys never touch `config.toml`.
 #[tauri::command]
-fn set_api_key(provider: String, key: String) -> Res<()> {
+fn set_api_key(app: AppHandle, provider: String, key: String) -> Res<()> {
     if !KEY_PROVIDERS.contains(&provider.as_str()) {
         return Err(format!("no API key for {provider}"));
     }
@@ -931,7 +986,7 @@ fn set_api_key(provider: String, key: String) -> Res<()> {
     } else {
         keychain::set_api_key(&provider, key)
     };
-    res.map_err(|e| e.to_string())
+    changed(&app, res.map_err(|e| e.to_string()))
 }
 
 #[tauri::command]
@@ -1214,12 +1269,16 @@ fn get_settings(st: St) -> Settings {
 
 #[tauri::command]
 fn save_settings(app: AppHandle, st: St, settings: Settings) -> Res<Settings> {
+    changed(&app, save_settings_now(&app, &st, settings))
+}
+
+fn save_settings_now(app: &AppHandle, st: &AppState, settings: Settings) -> Res<Settings> {
     let engine = st.engine();
     let defaults = Paths::resolve(&Config::default(), &st.app_dir, &st.documents);
     let cfg = settings.apply(engine.config(), &defaults)?;
     let paths = Paths::resolve(&cfg, &st.app_dir, &st.documents);
-    swap_shortcut(&app, &engine.config().shortcut, &cfg.shortcut)?;
-    sync_mcp_http(&st, &cfg)?;
+    swap_shortcut(app, &engine.config().shortcut, &cfg.shortcut)?;
+    sync_mcp_http(st, &cfg)?;
     if paths.meetings == engine.paths.meetings && paths.models == engine.paths.models {
         engine.save_config(&st.app_dir, cfg.clone())?;
     } else {
@@ -1229,7 +1288,7 @@ fn save_settings(app: AppHandle, st: St, settings: Settings) -> Res<Settings> {
         // Open the new folder first, so a bad pick never reaches config.toml.
         let store = Store::open_with(&paths.meetings, mirona_engine::keep::store_key(&cfg)?)?;
         cfg.save(&mirona_engine::config_path(&st.app_dir))?;
-        allow_audio(&app, &paths.meetings);
+        allow_audio(app, &paths.meetings);
         let next = Engine::new(Arc::new(Mutex::new(store)), cfg.clone(), paths.clone());
         *st.engine.write().unwrap() = Arc::new(next);
     }
@@ -1269,7 +1328,7 @@ fn mcp_activity(st: St, limit: usize) -> Vec<mirona_mcp::Activity> {
 
 /// A new HTTP client token for `name`, returned once (the UI shows it in a config snippet).
 #[tauri::command]
-fn add_mcp_client(st: St, name: String) -> Res<String> {
+fn add_mcp_client(app: AppHandle, st: St, name: String) -> Res<String> {
     let name = name.trim();
     if name.is_empty() {
         return Err("Give the client a name, e.g. Claude Desktop.".into());
@@ -1282,15 +1341,67 @@ fn add_mcp_client(st: St, name: String) -> Res<String> {
     let token = mirona_mcp::new_token()?;
     cfg.mcp_tokens.insert(name.into(), token.clone());
     engine.save_config(&st.app_dir, cfg)?;
-    Ok(token)
+    changed(&app, Ok(token))
 }
 
 #[tauri::command]
-fn revoke_mcp_client(st: St, name: String) -> Res<()> {
+fn revoke_mcp_client(app: AppHandle, st: St, name: String) -> Res<()> {
     let engine = st.engine();
     let mut cfg = engine.config();
     cfg.mcp_tokens.remove(&name);
-    engine.save_config(&st.app_dir, cfg)
+    changed(&app, engine.save_config(&st.app_dir, cfg))
+}
+
+/// Tells every window that settings (or the meetings they delete) changed, so the main
+/// window and the settings window never drift apart. Passes `res` through.
+fn changed<T>(app: &AppHandle, res: Res<T>) -> Res<T> {
+    if res.is_ok() {
+        app.emit("settings", ()).ok();
+    }
+    res
+}
+
+const SETTINGS_TABS: [&str; 6] = [
+    "general", "privacy", "models", "clients", "agents", "advanced",
+];
+
+/// Settings live in their own window. Opening it again focuses it on `tab`.
+/// Async: on Windows a window built from a sync command deadlocks.
+#[tauri::command]
+async fn open_settings(app: AppHandle, tab: Option<String>) -> Res<()> {
+    show_settings(&app, tab.as_deref())
+}
+
+fn show_settings(app: &AppHandle, tab: Option<&str>) -> Res<()> {
+    let tab = tab
+        .filter(|t| SETTINGS_TABS.contains(t))
+        .unwrap_or("general");
+    if let Some(w) = app.get_webview_window("settings") {
+        app.emit_to("settings", "settings-tab", tab).ok();
+        w.unminimize().ok();
+        w.show().ok();
+        return w.set_focus().map_err(|e| e.to_string());
+    }
+    let url = tauri::WebviewUrl::App("index.html".into());
+    let b = tauri::WebviewWindowBuilder::new(app, "settings", url)
+        .title("Settings")
+        .theme(Some(tauri::Theme::Light))
+        .inner_size(1040.0, 760.0)
+        .min_inner_size(860.0, 560.0)
+        .initialization_script(format!("window.miSettingsTab = \"{tab}\";"));
+    #[cfg(target_os = "macos")]
+    let b = b
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(18.0, 22.0))
+        .transparent(true)
+        .effects(
+            tauri::window::EffectsBuilder::new()
+                .effect(tauri::window::Effect::Sidebar)
+                .state(tauri::window::EffectState::FollowsWindowActiveState)
+                .build(),
+        );
+    b.build().map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// Move the record shortcut from `old` to `new` right away. If `new` can't be registered
@@ -1346,8 +1457,9 @@ fn tray(app: &tauri::App, shortcut: &str) -> tauri::Result<()> {
     let accel = parse_shortcut(shortcut).is_ok().then_some(shortcut);
     let toggle_item = MenuItem::with_id(app, "toggle", "Start recording", true, accel)?;
     let show = MenuItem::with_id(app, "show", "Open Mirona", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let quit = PredefinedMenuItem::quit(app, Some("Quit Mirona"))?;
-    let menu = Menu::with_items(app, &[&toggle_item, &show, &quit])?;
+    let menu = Menu::with_items(app, &[&toggle_item, &show, &settings, &quit])?;
     let icon = if cfg!(target_os = "macos") {
         tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?
     } else {
@@ -1366,10 +1478,36 @@ fn tray(app: &tauri::App, shortcut: &str) -> tauri::Result<()> {
                     w.set_focus().ok();
                 }
             }
+            "settings" => {
+                if let Err(e) = show_settings(app, None) {
+                    eprintln!("mirona: settings window: {e}");
+                }
+            }
             _ => {}
         })
         .build(app)?;
     app.manage(TrayItem(toggle_item));
+    Ok(())
+}
+
+/// macOS: the standard app menu plus "Settings…" (⌘,) under Mirona, where Mac apps keep it.
+#[cfg(target_os = "macos")]
+fn app_menu(app: &tauri::App) -> tauri::Result<()> {
+    let menu = Menu::default(app.handle())?;
+    if let Some(tauri::menu::MenuItemKind::Submenu(mirona)) = menu.items()?.first() {
+        let settings =
+            MenuItem::with_id(app, "app-settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
+        // After "About" and its separator.
+        mirona.insert_items(&[&settings, &PredefinedMenuItem::separator(app)?], 2)?;
+    }
+    app.set_menu(menu)?;
+    app.on_menu_event(|app, ev| {
+        if ev.id.as_ref() == "app-settings"
+            && let Err(e) = show_settings(app, None)
+        {
+            eprintln!("mirona: settings window: {e}");
+        }
+    });
     Ok(())
 }
 
@@ -1394,15 +1532,22 @@ pub fn run() {
             let (engine, mut errors) = open_engine(&app_dir, &documents)?;
             allow_audio(app.handle(), &engine.paths.meetings);
             let shortcut = engine.config().shortcut;
-            let registered = parse_shortcut(&shortcut)
-                .and_then(|sc| app.global_shortcut().register(sc).map_err(|e| e.to_string()));
+            let registered = parse_shortcut(&shortcut).and_then(|sc| {
+                app.global_shortcut()
+                    .register(sc)
+                    .map_err(|e| e.to_string())
+            });
             if let Err(e) = registered {
                 errors.push(format!(
-                    "Record shortcut {shortcut} is unavailable ({e}). Pick another in Models and MCP."
+                    "Record shortcut {shortcut} is unavailable ({e}). Pick another in Settings."
                 ));
             }
             if let Err(e) = tray(app, &shortcut) {
                 errors.push(format!("No menu bar icon: {e}"));
+            }
+            #[cfg(target_os = "macos")]
+            if let Err(e) = app_menu(app) {
+                eprintln!("mirona: app menu: {e}");
             }
             for e in &errors {
                 eprintln!("mirona: {e}");
@@ -1434,7 +1579,9 @@ pub fn run() {
                 std::thread::spawn(move || {
                     loop {
                         match handle.state::<AppState>().engine().retention() {
-                            Ok(done) => done.iter().for_each(|l| eprintln!("mirona: retention: {l}")),
+                            Ok(done) => done
+                                .iter()
+                                .for_each(|l| eprintln!("mirona: retention: {l}")),
                             Err(e) => eprintln!("mirona: retention: {e}"),
                         }
                         std::thread::sleep(std::time::Duration::from_secs(3600));
@@ -1469,6 +1616,7 @@ pub fn run() {
             edit_segment,
             audio_path,
             delete_meeting,
+            clear_meeting_parts,
             delete_client,
             run_retention,
             set_encryption,
@@ -1491,11 +1639,15 @@ pub fn run() {
             mcp_activity,
             add_mcp_client,
             revoke_mcp_client,
+            open_settings,
+            voiceprint_shape,
         ])
-        // Closing the window keeps Mirona in the menu bar, so recording can still be started
-        // from the tray or the shortcut. Quit from the tray menu.
+        // Closing the main window keeps Mirona in the menu bar, so recording can still be
+        // started from the tray or the shortcut. Quit from the tray menu. Settings just close.
         .on_window_event(|w, e| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = e
+                && w.label() == "main"
+            {
                 w.hide().ok();
                 api.prevent_close();
             }
@@ -1518,6 +1670,23 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn voice_shape_is_scaled_and_tells_voices_apart() {
+        let a: Vec<f32> = (0u16..256).map(|i| (f32::from(i) * 0.37).sin()).collect();
+        let b: Vec<f32> = (0u16..256)
+            .map(|i| (f32::from(i) * 0.11).cos() * 0.5)
+            .collect();
+        let (sa, sb) = (voice_shape(&a, VOICE_BINS), voice_shape(&b, VOICE_BINS));
+        assert_eq!(sa.len(), VOICE_BINS);
+        assert!(sa.iter().all(|x| (0.0..=1.0).contains(x)));
+        assert!(sa.iter().copied().fold(1.0, f32::min) < 1e-6);
+        assert!(sa.iter().copied().fold(0.0, f32::max) > 1.0 - 1e-6);
+        assert_ne!(sa, sb);
+        assert_eq!(voice_shape(&[], VOICE_BINS), Vec::<f32>::new());
+        assert_eq!(voice_shape(&[0.5; 10], 4).len(), 4);
+        assert_eq!(voice_shape(&[0.1, 0.9], VOICE_BINS).len(), VOICE_BINS);
+    }
 
     fn defaults() -> Paths {
         Paths::resolve(

@@ -2,6 +2,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { ActionItem } from "../bindings/ActionItem";
 import type { Correction } from "../bindings/Correction";
 import type { Meeting } from "../bindings/Meeting";
+import type { MeetingPart } from "../bindings/MeetingPart";
 import type { MeetingSummary } from "../bindings/MeetingSummary";
 import type { Review } from "../bindings/Review";
 import type { SearchFilters } from "../bindings/SearchFilters";
@@ -98,6 +99,8 @@ export const api = {
     invoke<Speaker>("name_speaker", { meetingId, speakerId, name }),
   mergePeople: (from: string, into: string) => invoke<Speaker>("merge_people", { from, into }),
   deleteVoiceprint: (personId: string) => invoke<void>("delete_voiceprint", { personId }),
+  /** 48 values in 0..1 drawn from the voiceprint (lossy, for the People page only). */
+  voiceprintShape: (personId: string) => invoke<number[] | null>("voiceprint_shape", { personId }),
   correctAnswer: (correction: Correction) => invoke<number>("correct_answer", { correction }),
   confirmClient: (meetingId: string, client: string) => invoke<Meeting>("confirm_client", { meetingId, client }),
   review: (meetingId: string) => invoke<Review[]>("review", { meetingId }),
@@ -114,6 +117,7 @@ export const api = {
   },
   addDemoMeetings: () => invoke<void>("add_demo_meetings"),
   deleteMeeting: (meetingId: string) => invoke<void>("delete_meeting", { meetingId }),
+  clearMeetingParts: (meetingId: string, parts: MeetingPart[]) => invoke<void>("clear_meeting_parts", { meetingId, parts }),
   deleteClient: (client: string) => invoke<number>("delete_client", { client }),
   runRetention: () => invoke<string[]>("run_retention"),
   setEncryption: (on: boolean) => invoke<Settings>("set_encryption", { on }),
@@ -133,6 +137,8 @@ export const api = {
   pickFolder: () => invoke<string | null>("pick_folder"),
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
+  /** Opens the settings window, or focuses it, on `tab`. */
+  openSettings: (tab: string) => invoke<void>("open_settings", { tab }),
   mcpActivity: (limit: number) => invoke<McpActivity[]>("mcp_activity", { limit }),
   /** Returns the new token, once. */
   addMcpClient: (name: string) => invoke<string>("add_mcp_client", { name }),
@@ -145,6 +151,18 @@ export const fmt = (ms: number, long = false) => {
   const mm = String(Math.floor(s / 60) % 60).padStart(2, "0");
   const ss = String(s % 60).padStart(2, "0");
   return long || h ? `${String(h).padStart(2, "0")}:${mm}:${ss}` : `${mm}:${ss}`;
+};
+
+/** "Today", "Yesterday", "This week", then the month ("October 2026"), from an RFC 3339 time. */
+export const dayGroup = (created: string, now = new Date()) => {
+  const d = new Date(created);
+  if (Number.isNaN(d.getTime())) return "Undated";
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const ago = Math.round((day(now) - day(d)) / 86_400_000);
+  if (ago <= 0) return "Today";
+  if (ago === 1) return "Yesterday";
+  if (ago < 7) return "This week";
+  return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 };
 
 export const LLM_LOCAL = (s: Settings) =>

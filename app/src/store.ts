@@ -4,22 +4,35 @@ import { api, type CallSuggestion, LLM_LOCAL, type Person, type RecState, type S
 import type { ActionItem } from "./bindings/ActionItem";
 import type { Meeting } from "./bindings/Meeting";
 import type { MeetingSummary } from "./bindings/MeetingSummary";
+import type { MeetingPart } from "./bindings/MeetingPart";
 import type { PipelineEvent } from "./bindings/PipelineEvent";
 import type { Review } from "./bindings/Review";
 
-export type View = "meetings" | "actions" | "people" | "models" | "setup";
+export type View = "meetings" | "all" | "actions" | "people" | "activity" | "setup";
+export type SettingsTab = "general" | "privacy" | "models" | "clients" | "agents" | "advanced";
 export type Tab = "transcript" | "notes" | "summary";
 
 type Recording = { meetingId: string; elapsedMs: number; levels: number[] };
 
 const SETUP_SEEN = "mirona.setupSeen";
-const seen = () => {
+const DETAILS = "mirona.modelDetails";
+/** localStorage that never throws (private windows, blocked storage). */
+const stored = (k: string) => {
   try {
-    return localStorage.getItem(SETUP_SEEN) === "1";
+    return localStorage.getItem(k);
   } catch {
-    return false;
+    return null;
   }
 };
+const remember = (k: string, v: string) => {
+  try {
+    localStorage.setItem(k, v);
+  } catch {
+    // the preference just isn't remembered
+  }
+};
+
+const seen = () => stored(SETUP_SEEN) === "1";
 
 /** Anything a first recording still needs: permissions or speech models. */
 export const needsSetup = (s: Status | null) =>
@@ -28,6 +41,9 @@ export const needsSetup = (s: Status | null) =>
 type State = {
   view: View;
   tab: Tab;
+  settingsTab: SettingsTab;
+  /** Inspector: show probabilities, thresholds and the classifier's raw answers. */
+  modelDetails: boolean;
   meetings: MeetingSummary[];
   meeting: Meeting | null;
   segmentId: string | null;
@@ -62,7 +78,16 @@ type State = {
   consent: { call: boolean } | null;
 
   init: () => Promise<void>;
+  /** The settings window: settings, status and the client list only. */
+  initSettings: () => Promise<void>;
   go: (view: View) => void;
+  /** Opens (or focuses) the settings window on `tab`. */
+  openSettings: (tab: SettingsTab) => void;
+  setModelDetails: (on: boolean) => void;
+  /** Remove generated parts of a meeting; transcript and notes stay. */
+  removeParts: (id: string, parts: MeetingPart[]) => Promise<void>;
+  /** Delete whole meetings everywhere. */
+  deleteMeetings: (ids: string[]) => Promise<void>;
   finishSetup: () => void;
   setTab: (tab: Tab) => void;
   openMeeting: (id: string) => Promise<void>;
@@ -120,6 +145,13 @@ export const useStore = create<State>((set, get) => {
   const reloadLists = async () => {
     const [meetings, actionItems, people] = await Promise.all([api.listMeetings(), api.listActionItems(), api.listPeople()]);
     set({ meetings, actionItems, people });
+  };
+
+  /** Any window saved settings or deleted meetings from them: catch up. */
+  const onSettings = async () => {
+    set({ settings: await api.getSettings() });
+    await get().refreshStatus(true);
+    await get().reload();
   };
 
   const reloadMeeting = async (id?: string) => {
@@ -228,6 +260,8 @@ export const useStore = create<State>((set, get) => {
   return {
     view: "meetings",
     tab: "transcript",
+    settingsTab: "general",
+    modelDetails: stored(DETAILS) === "1",
     meetings: [],
     meeting: null,
     segmentId: null,
@@ -257,6 +291,7 @@ export const useStore = create<State>((set, get) => {
       await listen<PipelineEvent>("pipeline", (ev) => void onEvent(ev.payload));
       await listen<RecState>("recording", (ev) => void onRecording(ev.payload));
       await listen<CallSuggestion | null>("call", (ev) => set({ call: ev.payload }));
+      await listen("settings", () => void onSettings());
       // A call that started before this window listened.
       set({ call: await api.pendingCall().catch(() => null) });
       const [settings, status, templates] = await Promise.all([api.getSettings(), api.status(), api.listTemplates().catch(() => [])]);
@@ -278,17 +313,55 @@ export const useStore = create<State>((set, get) => {
       setInterval(() => void sync(), 5000);
     },
 
-    go: (view) => {
-      set({ view });
-      if (view === "models" || view === "setup") void get().refreshStatus(view === "models");
+    initSettings: async () => {
+      if (started) return;
+      started = true;
+      const tab = (window as { miSettingsTab?: SettingsTab }).miSettingsTab;
+      if (tab) set({ settingsTab: tab });
+      await listen("settings", () => void onSettings());
+      await listen<SettingsTab>("settings-tab", (ev) => set({ settingsTab: ev.payload }));
+      const [settings, status, templates] = await Promise.all([api.getSettings(), api.status(true), api.listTemplates().catch(() => [])]);
+      set({ settings, status, templates });
+      await reloadLists();
     },
 
+    go: (view) => {
+      set({ view });
+      if (view === "setup") void get().refreshStatus();
+    },
+
+    openSettings: (tab) => void run(() => api.openSettings(tab)),
+
+    setModelDetails: (on) => {
+      remember(DETAILS, on ? "1" : "0");
+      set({ modelDetails: on });
+    },
+
+    removeParts: (id, parts) =>
+      run(async () => {
+        await api.clearMeetingParts(id, parts);
+        await reloadLists();
+        await reloadMeeting(id);
+        get().flash("Removed. The transcript and your notes are kept.");
+      }),
+
+    deleteMeetings: (ids) =>
+      run(async () => {
+        const titles = new Map(get().meetings.map((m) => [m.id, m.title]));
+        let n = 0;
+        try {
+          for (const id of ids) {
+            await api.deleteMeeting(id);
+            n++;
+          }
+        } finally {
+          await get().reload();
+        }
+        get().flash(n === 1 ? `Deleted “${titles.get(ids[0])}” everywhere.` : `Deleted ${n} meetings everywhere.`);
+      }),
+
     finishSetup: () => {
-      try {
-        localStorage.setItem(SETUP_SEEN, "1");
-      } catch {
-        // private storage: the setup screen just shows again next time
-      }
+      remember(SETUP_SEEN, "1");
       set({ view: "meetings" });
     },
 
@@ -323,17 +396,8 @@ export const useStore = create<State>((set, get) => {
       const cur = get().settings;
       if (!cur) return false;
       try {
-        const settings = await api.saveSettings({ ...cur, ...patch });
-        const moved = settings.meetingsDir !== cur.meetingsDir;
-        set({ settings });
-        if (moved) {
-          await reloadLists();
-          const first = get().meetings[0];
-          set({ meeting: null });
-          if (first) await get().openMeeting(first.id);
-          set({ view: "models" });
-        }
-        await get().refreshStatus(true);
+        // The "settings" event then refreshes status and the lists in every window.
+        set({ settings: await api.saveSettings({ ...cur, ...patch }) });
         return true;
       } catch (e) {
         get().flash(String(e), true);

@@ -418,6 +418,49 @@ fn delete_meeting_removes_folder_index_and_items() {
 }
 
 #[test]
+fn clear_parts_keeps_transcript_notes_and_sensitive_tags() {
+    use mirona_core::MeetingPart;
+    let (_dir, mut s) = seeded();
+    // A sample meeting with a summary, items and tags.
+    let id = s
+        .list_meetings()
+        .into_iter()
+        .find(|m| m.has_summary && m.open_actions > 0)
+        .unwrap()
+        .id;
+    let before = s.meeting(&id).unwrap();
+    let i = s.idx(&id).unwrap();
+    s.entries[i].meeting.segments[0].tags = vec![
+        Tag {
+            kind: TagKind::Sensitive,
+            label: "Sensitive".into(),
+        },
+        Tag {
+            kind: TagKind::Action,
+            label: "Action".into(),
+        },
+    ];
+    s.clear_parts(&id, &[MeetingPart::Summary, MeetingPart::Classification])
+        .unwrap();
+    s.reindex().unwrap();
+    let m = s.meeting(&id).unwrap();
+    assert!(m.summary.is_none() && m.answers.is_none());
+    assert!(s.action_items().iter().all(|a| a.meeting_id != id));
+    assert_eq!(m.segments.len(), before.segments.len());
+    assert_eq!(m.notes.raw, before.notes.raw);
+    assert_eq!(m.segments[0].tags.len(), 1, "only the sensitive tag stays");
+    assert_eq!(m.segments[0].tags[0].kind, TagKind::Sensitive);
+    assert!(
+        m.segments
+            .iter()
+            .skip(1)
+            .all(|x| x.tags.iter().all(|t| t.kind == TagKind::Sensitive))
+    );
+    let row = s.list_meetings().into_iter().find(|r| r.id == id).unwrap();
+    assert!(!row.has_summary && row.open_actions == 0 && row.meeting_type.is_empty());
+}
+
+#[test]
 fn enrolling_names_the_real_meetings() {
     let (_dir, mut s) = seeded();
     let mut a = live_seg("a-0", "them", 0, "hello");
