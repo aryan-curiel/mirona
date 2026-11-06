@@ -6,7 +6,7 @@
 //! registry (`.mirona/voices.json`), never into `meeting.md`.
 
 use crate::{Engine, Result, block_on, stage};
-use mirona_core::{Locality, NameSuggestion, PipelineEvent, Segment, Speaker, TagKind, Tint};
+use mirona_core::{Locality, NameSuggestion, PipelineEvent, Segment, Speaker, Tint};
 use mirona_providers::questions::{self, NO_NAME, Reply};
 use mirona_providers::speakrs::{
     self, COREML_MODEL, CPU_MODEL, MIN_SPEAKER_SPEECH_MS, MODELS_DIR, Mode, Speakrs,
@@ -243,7 +243,7 @@ pub fn suggest_names(
         let mut chars = 0;
         for i in near {
             let s = &m.segments[i];
-            let sensitive = s.tags.iter().any(|t| t.kind == TagKind::Sensitive);
+            let sensitive = s.is_sensitive();
             if lines.iter().any(|(j, _)| *j == i) || s.redacted || (cloud && sensitive) {
                 continue;
             }

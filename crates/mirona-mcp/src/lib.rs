@@ -465,9 +465,7 @@ fn item_text(m: Option<&Meeting>, a: &mirona_core::ActionItem) -> String {
 
 /// Tagged sensitive (at/above threshold, or confirmed by the user): kept from agents.
 fn sensitive(s: &mirona_core::Segment) -> bool {
-    s.tags
-        .iter()
-        .any(|t| t.kind == mirona_core::TagKind::Sensitive)
+    s.is_sensitive()
 }
 
 /// Milliseconds → "m:ss" or "h:mm:ss".

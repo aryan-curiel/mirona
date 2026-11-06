@@ -11,7 +11,7 @@
 
 use crate::files::Entry;
 use crate::{Result, Store, index, when_labels};
-use mirona_core::{Id, MeetingSummary, Moment, SearchFilters, SearchResults, Segment, TagKind};
+use mirona_core::{Id, MeetingSummary, Moment, SearchFilters, SearchResults, Segment};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
@@ -56,7 +56,7 @@ fn embeddable(s: &Segment) -> bool {
 }
 
 pub(crate) fn is_sensitive(s: &Segment) -> bool {
-    s.redacted || s.tags.iter().any(|t| t.kind == TagKind::Sensitive)
+    s.is_sensitive()
 }
 
 fn normalized(v: &[f32]) -> Vec<f32> {

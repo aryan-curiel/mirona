@@ -22,10 +22,13 @@ yet). From a checkout: `brew install --HEAD --formula ./packaging/homebrew/miron
 | `mirona stop` | Stops a recording running in another terminal (`recording.lock` / `recording.stop` files in the app folder, so it works the same on Windows). Clears a stale lock if no recorder answers within 5 s. |
 | `mirona list` | Meetings, newest first |
 | `mirona show <id>` | Summary, decisions, action items, notes, transcript |
-| `mirona search <words…>` | Matching meetings and transcript moments |
+| `mirona search <words…> [--client X] [--from YYYY-MM-DD] [--to …] [--speaker X] [--tag action\|decision\|open-question\|small-talk\|sensitive] [--sensitive]` | Transcript moments by keywords and meaning (hybrid search, NGR-167), best first; sensitive lines only with `--sensitive` |
 | `mirona actions [--client X] [--open]` | Action items across meetings |
 | `mirona import <audio>` | Transcribes (wav/mp3/m4a/flac) and summarizes a file into a new meeting |
 | `mirona reindex` | Rebuilds `<meetings>/.mirona/index.sqlite` from the files |
+| `mirona privacy [on\|off]` | Shows or sets privacy mode, the same setting as the app's switch. `--privacy` on any command forces it on for that run |
+| `mirona retention` | Applies the retention rules now (old recordings, old meetings per client) and prints what it removed; also logged to `<meetings>/.mirona/retention.log` |
+| `mirona delete <id>` / `mirona delete --client X` | Deletes a meeting (or every meeting of a client) everywhere: folder, index, embeddings, voices heard only there, corrections |
 | `mirona compress` | Compresses recordings still kept as `audio.wav` (older meetings, crashed sessions) to `audio.caf` (Opus); the app does this at start |
 | `mirona mcp [--http [--port N]]` | The MCP server on stdio, or on `http://127.0.0.1:N/mcp` (default `mcp_port`, 7337) |
 | `mirona eval [--with jev\|local-llm\|fake] [--set file] [--no-labels] [--context] [--limit N]` | Scores the classifiers on the public synthetic set (`eval/chunks.jsonl`) plus your own corrections (`<meetings>/.mirona/labels.jsonl`, local only): accuracy and precision/recall per question, latency per call. Default: the configured classifier plus the local baseline. `--with fake` needs no network (CI). Jev uses the keychain key, or `TYPESAFE_API_KEY` |
@@ -37,9 +40,19 @@ safe to run while the app is open.
 
 Read tools (results are compact JSON, the transcript is plain text):
 
-- `search_meetings { query }`: matching transcript moments (`at` = `m:ss`, snippet) and meetings.
+- `search_meetings { query, client?, from?, to?, speaker?, tag?, include_sensitive? }`: transcript
+  moments by keywords and meaning, best first (`at` = `m:ss`, speaker, snippet, `matched`), and
+  the meetings they come from. Meaning needs Ollama with `nomic-embed-text`
+  (`search_by_meaning` says whether it took part).
+- `ask_meeting { question, meeting_id? }`: a plain question, routed by the classifier (`route`):
+  `search`, `decisions`, `action_items` and `summary` are answered straight from the meetings;
+  only `open_question` goes to the configured LLM, with the relevant transcript.
 - `get_meeting { id }`: overview, decisions, open questions, action items, notes. No transcript.
-- `get_transcript { id, from?, to? }`: `[m:ss] Speaker: text` lines, optionally a time range.
+- `get_transcript { id, from?, to?, include_sensitive? }`: `[m:ss] Speaker: text` lines,
+  optionally a time range.
+
+Sensitive lines (tagged by the classifier, or naming a password, a salary, an account number…)
+read `[redacted]` everywhere unless `include_sensitive` is set, and never reach a model.
 - `list_action_items { client?, open_only? }`.
 
 Write tools, listed and callable only with `mcp_write = true` (Settings → Models and MCP →

@@ -1,4 +1,4 @@
-# Mirona testing checklist (milestone 1 → gate 1)
+# Mirona testing checklist (milestones 1–3 and their gates)
 
 Tick items as you go (`- [x]`). Anything that fails: note what you saw under **Findings** at the end
 (or open a Linear issue in the Mirona project) with the meeting folder name and time.
@@ -129,6 +129,34 @@ For each call: record the whole call, then check the transcript has both "Me" an
 - [ ] **Follow-up draft:** shown with Copy when a follow-up is needed.
 - [ ] **Action items view:** filter by client and status; links jump to the moment.
 - [ ] **Claude Code:** "What do I owe Northwind?" returns action items, with unconfirmed ones marked.
+
+## 6c. Milestone 3: privacy and search
+
+- [ ] **Privacy mode:** sidebar switch on → Models and MCP shows privacy on; `mirona privacy`
+  says on. Off in the app → `mirona privacy` says off.
+- [ ] **Search:** `ollama pull nomic-embed-text`, restart Mirona (older meetings are embedded in
+  the background). Sidebar search "pricing worries" finds a line that says "the budget is tight";
+  filters (client, dates, speaker, tag) narrow it; a click opens the meeting at that line.
+- [ ] **Sensitive:** say a password in a call: the line is hidden in the transcript, missing from
+  the summary, and Claude Code can't quote it.
+- [ ] **Encryption:** Models and MCP → Encryption on. In Finder, `transcript.jsonl` is unreadable;
+  the app still shows and searches everything; audio plays. Off again: files readable.
+- [ ] **Retention:** set "Delete old recordings" to 1 day, Apply rules now: recordings older than a
+  day are gone, their transcripts stay; `.mirona/retention.log` lists them.
+- [ ] **Delete:** Delete meeting → it's gone from the list, search and the folder.
+- [ ] **Consent:** Start recording → the reminder shows; pick a client and tick "agreed" → the
+  next recording with that client shows "already agreed".
+- [ ] **Call detection:** start a Zoom/Meet test call → "Record this call?" banner and
+  notification; nothing records without a click.
+- [ ] **MCP over HTTP:** turn it on, create a token, paste the `claude mcp add` line; Claude Code
+  answers from Mirona; the activity list shows it. Also from Claude Desktop and one other client.
+- [ ] **ask_meeting:** in Claude Code, "what did we decide about X?" (route `decisions`, no LLM)
+  and "why did the client hesitate?" (route `open_question`).
+
+## 7c. Gate 3: privacy audit (NGR-171)
+
+- [ ] `scripts/privacy-audit.sh` passes.
+- [ ] The app run with Little Snitch in `docs/privacy-audit.md` passes; add a row to its Results.
 
 ## 7b. Gate 2: labelled set (NGR-163)
 

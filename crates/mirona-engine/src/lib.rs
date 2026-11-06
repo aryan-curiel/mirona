@@ -644,7 +644,11 @@ pub fn speaker_id(s: Source) -> &'static str {
     }
 }
 
+/// A new transcript line. Obviously sensitive ones are tagged at once, so they stay hidden
+/// even with classification off.
 fn segment(meeting_id: &str, n: usize, s: &mirona_capture::Segment) -> Segment {
+    let mut tags = vec![];
+    classify::add_sensitive_net(&s.text, &mut tags);
     Segment {
         id: format!("{meeting_id}-{n}"),
         speaker_id: speaker_id(s.source).into(),
@@ -652,7 +656,7 @@ fn segment(meeting_id: &str, n: usize, s: &mirona_capture::Segment) -> Segment {
         end_ms: s.end_ms,
         text: s.text.clone(),
         redacted: false,
-        tags: vec![],
+        tags,
         answers: vec![],
         owners: vec![],
         due: None,

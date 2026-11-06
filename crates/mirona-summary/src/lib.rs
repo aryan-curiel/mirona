@@ -152,7 +152,7 @@ fn transcript_lines(m: &Meeting) -> Vec<String> {
                 .iter()
                 .find(|p| p.id == s.speaker_id)
                 .map_or(s.speaker_id.as_str(), |p| p.name.as_str());
-            let text = if s.redacted || tagged(s, TagKind::Sensitive) {
+            let text = if s.is_sensitive() {
                 "[redacted]"
             } else {
                 &s.text

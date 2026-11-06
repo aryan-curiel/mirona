@@ -150,6 +150,18 @@ pub fn tags(answers: &[Answer], owners: &[Choice], owner_threshold: f32) -> Vec<
         .collect()
 }
 
+pub use mirona_core::sensitive_words;
+
+/// The safety-net tag, added when the classifier didn't tag the line sensitive itself.
+pub fn add_sensitive_net(text: &str, tags: &mut Vec<Tag>) {
+    if sensitive_words(text) && !tags.iter().any(|t| t.kind == TagKind::Sensitive) {
+        tags.push(Tag {
+            kind: TagKind::Sensitive,
+            label: "Sensitive · keyword".into(),
+        });
+    }
+}
+
 /// Ask the segment questions about `line` (with `context`), thresholded per `cfg`.
 pub fn classify_segment(
     c: &impl Classifier,
@@ -168,7 +180,8 @@ pub fn classify_segment(
     if !answers.iter().any(|a| a.id == "action" && a.answer) {
         owners.clear();
     }
-    let tags = tags(&answers, &owners, cfg.threshold("owner", local));
+    let mut tags = tags(&answers, &owners, cfg.threshold("owner", local));
+    add_sensitive_net(line, &mut tags);
     Ok((answers, tags, owners))
 }
 
@@ -212,7 +225,7 @@ fn run(
         match res {
             Ok(s) => {
                 // A sensitive line isn't sent again as context.
-                if !s.tags.iter().any(|t| t.kind == TagKind::Sensitive) {
+                if !s.is_sensitive() {
                     context.push_back(line);
                 }
                 events
@@ -377,7 +390,7 @@ pub fn refresh_owners(
                     .iter()
                     .any(|o| o.label != NO_OWNER && !names.contains(&o.label)))
             && !s.redacted
-            && (local || !s.tags.iter().any(|t| t.kind == TagKind::Sensitive))
+            && (local || !s.is_sensitive())
     };
     let mut asked = 0;
     for seg in m.segments.iter().filter(|s| stale(s)) {
@@ -428,7 +441,7 @@ pub fn live<C: Classifier + Send + Sync + 'static>(
 pub fn meeting_text(m: &Meeting, cloud: bool) -> String {
     let mut out = String::new();
     for s in &m.segments {
-        let sensitive = s.tags.iter().any(|t| t.kind == TagKind::Sensitive);
+        let sensitive = s.is_sensitive();
         if s.redacted || (cloud && sensitive) {
             continue;
         }
@@ -536,7 +549,7 @@ pub fn coverage(
         .segments
         .iter()
         .filter(|s| s.tags.iter().any(|t| t.kind == TagKind::Action))
-        .filter(|s| !(cloud && s.tags.iter().any(|t| t.kind == TagKind::Sensitive)))
+        .filter(|s| !(cloud && s.is_sensitive()))
         .map(|s| format!("- {}: {}", speaker_name(&m, s), s.text))
         .collect();
     if said.is_empty() {
@@ -621,10 +634,9 @@ pub fn follow_up_draft(store: &Shared, id: &str, llm: &impl LlmProvider) -> Resu
     };
     // An item said on a sensitive line never goes into an email (NGR-166).
     let secret = |at: Option<u32>| {
-        m.segments.iter().any(|s| {
-            Some(s.start_ms) == at
-                && (s.redacted || s.tags.iter().any(|t| t.kind == TagKind::Sensitive))
-        })
+        m.segments
+            .iter()
+            .any(|s| Some(s.start_ms) == at && s.is_sensitive())
     };
     let actions: Vec<String> = items
         .iter()
@@ -993,6 +1005,34 @@ mod tests {
         cfg.clients
             .insert("Northwind Bank".into(), "contact: Karen".into());
         cfg
+    }
+
+    #[test]
+    fn obvious_secrets_are_sensitive_whatever_the_model_says() {
+        for yes in [
+            "The salary would be 182,000 a year.",
+            "the staging password is Tulip4471",
+            "My PIN is 4471.",
+            "card 4111 1111 1111 1111",
+            "IBAN DE89 3704 0044 0532 0130 00",
+            "She was diagnosed last spring.",
+        ] {
+            assert!(sensitive_words(yes), "{yes}");
+        }
+        for no in [
+            "We agreed to ship on Monday.",
+            "Pinned the issue to the board.",
+            "It costs 4,500 a month.",
+            "Call me at 3 pm on the 14th.",
+            "Our compensation for travel is fine.",
+        ] {
+            assert!(!sensitive_words(no), "{no}");
+        }
+        let mut tags = vec![];
+        add_sensitive_net("the password is hunter2", &mut tags);
+        add_sensitive_net("the password is hunter2", &mut tags);
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].kind, TagKind::Sensitive);
     }
 
     #[test]

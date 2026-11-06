@@ -166,6 +166,83 @@ pub struct Segment {
     pub due: Option<String>,
 }
 
+impl Segment {
+    /// Kept from models and agents (NGR-166): redacted, tagged sensitive, or obviously
+    /// sensitive by its words ([`sensitive_words`]) unless the user corrected it to "no".
+    pub fn is_sensitive(&self) -> bool {
+        if self.redacted || self.tags.iter().any(|t| t.kind == TagKind::Sensitive) {
+            return true;
+        }
+        let user_no = self
+            .answers
+            .iter()
+            .any(|a| a.id == "sensitive" && a.source == AnswerSource::User && !a.answer);
+        !user_no && sensitive_words(&self.text)
+    }
+}
+
+/// A safety net under the classifier (NGR-166/171): lines naming a password, a salary, an
+/// account or card number, or health details are sensitive whatever the model says. The Gate
+/// 3 audit caught the local model scoring "the salary would be 182,000" at 0.01.
+/// ponytail: English keywords plus long digit runs; misses paraphrases, which the classifier
+/// still catches. A user "not sensitive" correction removes the tag as usual.
+pub fn sensitive_words(text: &str) -> bool {
+    const WORDS: &[&str] = &[
+        "password",
+        "passcode",
+        "passphrase",
+        "pin code",
+        "pin is",
+        "pin number",
+        "login is",
+        "credentials",
+        "api key",
+        "secret key",
+        "private key",
+        "recovery code",
+        "salary",
+        "salaries",
+        "paycheck",
+        "compensation package",
+        "bank account",
+        "account number",
+        "routing number",
+        "sort code",
+        "iban",
+        "credit card",
+        "card number",
+        "cvv",
+        "social security",
+        "ssn",
+        "passport number",
+        "date of birth",
+        "diagnosis",
+        "diagnosed",
+        "prescription",
+        "medical condition",
+    ];
+    let t = text.to_lowercase();
+    let word = |w: &str| {
+        t.match_indices(w).any(|(i, _)| {
+            let before = t[..i].chars().next_back();
+            let after = t[i + w.len()..].chars().next();
+            !before.is_some_and(char::is_alphanumeric) && !after.is_some_and(char::is_alphanumeric)
+        })
+    };
+    // Card and account numbers: 9+ digits, spaces and dashes allowed in between.
+    let mut digits = 0;
+    let mut long_number = false;
+    for c in t.chars() {
+        if c.is_ascii_digit() {
+            digits += 1;
+            long_number |= digits >= 9;
+        } else if c != ' ' && c != '-' {
+            digits = 0;
+        }
+    }
+    long_number || WORDS.iter().any(|w| word(w))
+}
+
 /// A meeting-level choice question with a confidence threshold (type, client).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
