@@ -55,7 +55,10 @@ fn list_show_search_actions_reindex() {
 
     let found = ok(t, &["search", "onboarding", "copy"]);
     assert!(found.contains("(corvo-review)"), "{found}");
-    assert!(found.contains("[6:45] Andrés: [Onboarding] [copy]"), "{found}");
+    assert!(
+        found.contains("[6:45] Andrés: [Onboarding] [copy]"),
+        "{found}"
+    );
     assert_eq!(ok(t, &["search", "zebra"]), "");
 
     let actions = ok(t, &["actions", "--client", "CORVO", "--open"]);

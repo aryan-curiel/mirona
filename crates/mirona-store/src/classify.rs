@@ -276,7 +276,21 @@ impl Store {
             .append(true)
             .open(&path)
             .map_err(|e| format!("{}: {e}", path.display()))?;
-        writeln!(f, "{row}").map_err(|e| format!("{}: {e}", path.display()))
+        let line = crate::crypt::seal_line(self.key.as_ref(), &row.to_string())?;
+        writeln!(f, "{line}").map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    /// The corrections file as plain JSONL, for `mirona eval`. Empty when there is none.
+    pub fn labels_text(&self) -> Result<String> {
+        let Ok(text) = std::fs::read_to_string(self.labels_path()) else {
+            return Ok(String::new());
+        };
+        let mut out = String::new();
+        for line in text.lines().filter(|l| !l.trim().is_empty()) {
+            out += &crate::crypt::open_line(self.key.as_ref(), line)?;
+            out += "\n";
+        }
+        Ok(out)
     }
 
     /// One labelled example per correction, appended to [`Store::labels_path`].

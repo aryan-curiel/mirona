@@ -346,7 +346,7 @@ impl Engine {
         if which == "off" {
             return Ok(0);
         }
-        let Some(audio) = self.store.lock().unwrap().audio_path(id)? else {
+        let Some(audio) = self.store.lock().unwrap().plain_audio(id)? else {
             return Ok(0); // nothing recorded, nothing to separate
         };
         let dir = self.paths.models.join(MODELS_DIR);

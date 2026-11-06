@@ -43,6 +43,12 @@ export type Settings = {
   calendarTitles: boolean;
   /** Clients whose calls start recording without a click. */
   autoRecord: string[];
+  /** Encryption at rest; change it with `setEncryption` (NGR-165). */
+  encrypt: boolean;
+  /** Delete recordings this many days old (text stays); null keeps them. */
+  retentionAudioDays: number | null;
+  /** Client → delete its meetings this many days old. */
+  retentionClients: Record<string, number>;
 };
 
 /** A call app started using the mic: the "call" event (NGR-170). */
@@ -102,6 +108,10 @@ export const api = {
     return path ? convertFileSrc(path) : null;
   },
   addDemoMeetings: () => invoke<void>("add_demo_meetings"),
+  deleteMeeting: (meetingId: string) => invoke<void>("delete_meeting", { meetingId }),
+  deleteClient: (client: string) => invoke<number>("delete_client", { client }),
+  runRetention: () => invoke<string[]>("run_retention"),
+  setEncryption: (on: boolean) => invoke<Settings>("set_encryption", { on }),
   listTemplates: () => invoke<Template[]>("list_templates"),
   regenerate: (meetingId: string, template: string) => invoke<void>("regenerate", { meetingId, template }),
   /** Opens the file picker; the file name, or null when cancelled. Errors while one runs. */

@@ -577,7 +577,7 @@ fn transcripts_from_before_end_times_and_due_dates_load() {
     let path = dir.path().join(files::TRANSCRIPT);
     let old = r#"{"id":"a-0","speakerId":"me","startMs":1000,"text":"Hi.","redacted":false,"tags":[],"answers":[],"owners":[]}"#;
     std::fs::write(&path, format!("{old}\n")).unwrap();
-    let (segs, errors) = files::read_transcript(&path);
+    let (segs, errors) = files::read_transcript(&path, None);
     assert!(errors.is_empty(), "{errors:?}");
     assert_eq!((segs[0].end_ms, segs[0].due.clone()), (0, None));
 }

@@ -67,6 +67,16 @@ enum Cmd {
     Import { audio: PathBuf },
     /// Rebuild the search index from the meeting files
     Reindex,
+    /// Apply the retention rules now (old recordings, old meetings of a client); also logged
+    /// to <meetings>/.mirona/retention.log
+    Retention,
+    /// Delete a meeting everywhere (files, index, embeddings, voices, corrections), or every
+    /// meeting of a client
+    Delete {
+        id: Option<String>,
+        #[arg(long, conflicts_with = "id")]
+        client: Option<String>,
+    },
     /// Compress recordings still kept as WAV (older meetings, crashed sessions) to Opus
     Compress,
     /// Run the MCP server on stdio (for Claude Code / Claude Desktop), or on localhost HTTP
@@ -160,6 +170,8 @@ fn main() {
         Cmd::Actions { client, open } => actions(&app_dir, client.as_deref(), open),
         Cmd::Import { audio } => import(&app_dir, &audio),
         Cmd::Reindex => reindex(&app_dir),
+        Cmd::Retention => retention(&app_dir),
+        Cmd::Delete { id, client } => delete(&app_dir, id.as_deref(), client.as_deref()),
         Cmd::Compress => compress(&app_dir),
         Cmd::Mcp { http: false, .. } => mirona_mcp::serve(),
         Cmd::Mcp { http: true, port } => mcp_http(&app_dir, port),
@@ -180,13 +192,11 @@ fn main() {
 
 type Result<T = ()> = std::result::Result<T, String>;
 
-fn meetings_dir(app_dir: &Path) -> Result<PathBuf> {
-    Ok(mirona_mcp::load(app_dir)?.1.meetings)
-}
-
-/// A read-only view that never touches the app's index.
+/// A read-only view that never touches the app's index (decrypted with the keychain key when
+/// encryption is on).
 fn snapshot(app_dir: &Path) -> Result<Store> {
-    Store::open_snapshot(meetings_dir(app_dir)?)
+    let (cfg, paths) = mirona_mcp::load(app_dir)?;
+    Store::open_snapshot_with(paths.meetings, mirona_engine::keep::store_key(&cfg)?)
 }
 
 fn list(app_dir: &Path) -> Result {
@@ -305,9 +315,15 @@ fn run_eval(
 ) -> Result {
     use mirona_engine::classify::AnyClassifier;
     use mirona_providers::{fake::Fake, jev::Jev, ollama::Ollama};
-    let (cfg, paths) = mirona_mcp::load(app_dir)?;
-    let labels = (!no_labels).then(|| paths.meetings.join(".mirona").join("labels.jsonl"));
-    let mut examples = eval::load(set, labels.as_deref())?;
+    let (cfg, _) = mirona_mcp::load(app_dir)?;
+    let labels = if no_labels {
+        None
+    } else {
+        let s = snapshot(app_dir)?;
+        Some((s.labels_path(), s.labels_text()?))
+    };
+    let labels = labels.as_ref().map(|(p, t)| (p.as_path(), t.as_str()));
+    let mut examples = eval::load(set, labels)?;
     examples.truncate(limit.unwrap_or(usize::MAX));
     if with.is_empty() {
         // The configured classifier (without reading the keychain yet) and the local baseline.
@@ -388,8 +404,34 @@ fn privacy(app_dir: &Path, state: Option<&str>) -> Result {
     Ok(())
 }
 
+fn retention(app_dir: &Path) -> Result {
+    let engine = Engine::open(app_dir, &mirona_engine::documents_dir())?;
+    let done = engine.retention()?;
+    if done.is_empty() {
+        println!("Nothing to remove.");
+    }
+    for line in done {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+fn delete(app_dir: &Path, id: Option<&str>, client: Option<&str>) -> Result {
+    let engine = Engine::open(app_dir, &mirona_engine::documents_dir())?;
+    match (id, client) {
+        (Some(id), _) => {
+            engine.store.lock().unwrap().delete_meeting(id)?;
+            println!("Deleted {id}.");
+        }
+        (None, Some(c)) => println!("Deleted {} meetings of {c}.", engine.delete_client(c)?),
+        (None, None) => return Err("say which: `mirona delete <id>` or `--client <name>`".into()),
+    }
+    Ok(())
+}
+
 fn reindex(app_dir: &Path) -> Result {
-    let store = Store::open(meetings_dir(app_dir)?)?;
+    let (cfg, paths) = mirona_mcp::load(app_dir)?;
+    let store = Store::open_with(paths.meetings, mirona_engine::keep::store_key(&cfg)?)?;
     for e in store.load_errors() {
         eprintln!("skipped: {e}");
     }

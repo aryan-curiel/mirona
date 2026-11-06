@@ -5,6 +5,7 @@
 //! `GENERATED` marker is rendered from the frontmatter on every write and ignored on read.
 
 use crate::Result;
+use crate::crypt::{self, Key};
 use mirona_core::{
     ActionItem, EnhancedNote, Id, Meeting, MeetingAnswers, Note, Segment, Speaker, Summary,
 };
@@ -72,11 +73,11 @@ struct NoteTime {
 }
 
 /// Reads a meeting folder. Bad transcript lines are skipped and returned as errors.
-pub fn read(dir: &Path) -> Result<(Entry, Vec<String>)> {
+pub fn read(dir: &Path, key: Option<&Key>) -> Result<(Entry, Vec<String>)> {
     let text = std::fs::read_to_string(dir.join(MEETING)).map_err(|e| e.to_string())?;
     let (f, raw) = parse(&text)?;
     let raw_at_ms = match_times(&raw, f.note_times);
-    let (segments, errors) = read_transcript(&dir.join(TRANSCRIPT));
+    let (segments, errors) = read_transcript(&dir.join(TRANSCRIPT), key);
     let mut e = Entry {
         meeting: Meeting {
             id: f.id,
@@ -102,7 +103,7 @@ pub fn read(dir: &Path) -> Result<(Entry, Vec<String>)> {
         audio: f.audio,
         items: f.action_items,
         dir: dir.to_path_buf(),
-        vectors: read_vectors(dir),
+        vectors: read_vectors(dir, key),
     };
     normalize(&mut e);
     Ok((e, errors))
@@ -161,7 +162,7 @@ fn notes(body: &str) -> Vec<String> {
     raw
 }
 
-pub fn read_transcript(path: &Path) -> (Vec<Segment>, Vec<String>) {
+pub fn read_transcript(path: &Path, key: Option<&Key>) -> (Vec<Segment>, Vec<String>) {
     let Ok(text) = std::fs::read_to_string(path) else {
         return (vec![], vec![]); // no transcript yet
     };
@@ -171,7 +172,14 @@ pub fn read_transcript(path: &Path) -> (Vec<Segment>, Vec<String>) {
         if line.trim().is_empty() {
             continue;
         }
-        match serde_json::from_str(line) {
+        let line = match crypt::open_line(key, line) {
+            Ok(l) => l,
+            Err(e) => {
+                errors.push(format!("{}:{}: {e}", path.display(), n + 1));
+                continue;
+            }
+        };
+        match serde_json::from_str(&line) {
             Ok(s) => segs.push(s),
             Err(e) => errors.push(format!("{}:{}: {e}", path.display(), n + 1)),
         }
@@ -273,31 +281,41 @@ pub fn write_meeting(e: &Entry) -> Result<()> {
     write_atomic(&e.dir.join(MEETING), &render(e)?)
 }
 
-pub fn write_transcript(e: &Entry) -> Result<()> {
+pub fn write_transcript(e: &Entry, key: Option<&Key>) -> Result<()> {
     let mut s = String::new();
     for seg in &e.meeting.segments {
-        s += &serde_json::to_string(seg).map_err(|e| e.to_string())?;
+        s += &crypt::seal_line(key, &serde_json::to_string(seg).map_err(|e| e.to_string())?)?;
         s += "\n";
     }
     write_atomic(&e.dir.join(TRANSCRIPT), &s)
 }
 
 /// Missing or unreadable embeddings are just recomputed.
-fn read_vectors(dir: &Path) -> crate::search::Vectors {
-    std::fs::read_to_string(dir.join(crate::search::EMBEDDINGS))
+fn read_vectors(dir: &Path, key: Option<&Key>) -> crate::search::Vectors {
+    crypt::read_string(key, &dir.join(crate::search::EMBEDDINGS))
         .ok()
+        .flatten()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default()
 }
 
-pub fn write_vectors(e: &Entry) -> Result<()> {
+pub fn write_vectors(e: &Entry, key: Option<&Key>) -> Result<()> {
     let s = serde_json::to_string(&e.vectors).map_err(|e| e.to_string())?;
-    write_atomic(&e.dir.join(crate::search::EMBEDDINGS), &s)
+    write_sealed(&e.dir.join(crate::search::EMBEDDINGS), key, s.as_bytes())
 }
 
-pub fn append_segment(dir: &Path, seg: &Segment) -> Result<()> {
+/// Write a whole file sealed with `key` (or plain), via a temp file + rename.
+pub fn write_sealed(path: &Path, key: Option<&Key>, plain: &[u8]) -> Result<()> {
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, crypt::seal(key, plain)?)
+        .map_err(|e| format!("{}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+pub fn append_segment(dir: &Path, seg: &Segment, key: Option<&Key>) -> Result<()> {
     let path = dir.join(TRANSCRIPT);
-    let line = serde_json::to_string(seg).map_err(|e| e.to_string())? + "\n";
+    let line = crypt::seal_line(key, &serde_json::to_string(seg).map_err(|e| e.to_string())?)?;
+    let line = line + "\n";
     std::fs::OpenOptions::new()
         .create(true)
         .append(true)

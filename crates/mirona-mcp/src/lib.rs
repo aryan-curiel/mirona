@@ -297,7 +297,7 @@ impl Server {
         if !cfg.mcp_enabled {
             return Err(DISABLED.into());
         }
-        Store::open_snapshot(&paths.meetings)
+        Store::open_snapshot_with(&paths.meetings, mirona_engine::keep::store_key(&cfg)?)
     }
 }
 

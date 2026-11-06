@@ -49,6 +49,23 @@ pub struct Config {
     pub calendar_titles: bool,
     /// Clients whose calls (matched by calendar title) start recording without a click.
     pub auto_record: Vec<String>,
+    /// Encrypt recordings, transcripts, embeddings and voiceprints at rest (NGR-165). The key
+    /// is in the OS keychain (account [`STORE_KEY`]).
+    pub encrypt: bool,
+    pub retention: Retention,
+}
+
+/// Keychain account of the meeting store's encryption key.
+pub const STORE_KEY: &str = "store-key";
+
+/// What to forget, and when (NGR-165). Runs on app start, then hourly; `mirona retention`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Retention {
+    /// Delete recordings this many days old; transcripts, notes and summaries stay.
+    pub audio_days: Option<u32>,
+    /// Client name → delete that client's meetings entirely once this many days old.
+    pub clients: BTreeMap<String, u32>,
 }
 
 /// Set to `1` to force privacy mode on, whatever `config.toml` says.
@@ -90,6 +107,8 @@ impl Default for Config {
             detect_calls: true,
             calendar_titles: false,
             auto_record: vec![],
+            encrypt: false,
+            retention: Retention::default(),
         }
     }
 }
@@ -190,6 +209,14 @@ mod tests {
         cfg.detect_calls = false;
         cfg.calendar_titles = true;
         cfg.auto_record = vec!["Northwind Bank".into()];
+        cfg.save(&path).unwrap();
+        assert_eq!(Config::load(&path).unwrap(), cfg);
+
+        // Encryption and retention: off and keep everything unless set.
+        assert!(!old.encrypt && old.retention == Retention::default());
+        cfg.encrypt = true;
+        cfg.retention.audio_days = Some(30);
+        cfg.retention.clients.insert("Northwind Bank".into(), 90);
         cfg.save(&path).unwrap();
         assert_eq!(Config::load(&path).unwrap(), cfg);
 

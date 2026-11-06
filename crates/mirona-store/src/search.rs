@@ -212,7 +212,7 @@ impl Store {
         e.vectors
             .segments
             .retain(|id, _| keep.contains_key(id.as_str()));
-        crate::files::write_vectors(e)?;
+        crate::files::write_vectors(e, self.key.as_ref())?;
         self.touched();
         Ok(())
     }

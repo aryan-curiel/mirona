@@ -431,11 +431,51 @@ fn edit_segment(st: St, meeting_id: String, segment_id: String, text: String) ->
         .edit_segment_text(&meeting_id, &segment_id, text.trim())
 }
 
-/// The recording's path, for `convertFileSrc` (the meetings folder is in the asset scope).
+/// The recording's path, for `convertFileSrc` (the meetings folder is in the asset scope). An
+/// encrypted recording is decrypted to `.mirona/tmp` first (cleared on the next start).
 #[tauri::command]
 fn audio_path(st: St, meeting_id: String) -> Res<Option<PathBuf>> {
-    let path = st.engine().store.lock().unwrap().audio_path(&meeting_id)?;
+    let path = st.engine().store.lock().unwrap().plain_audio(&meeting_id)?;
     Ok(path.filter(|p| p.is_file()))
+}
+
+/// Delete a meeting everywhere: folder, index, embeddings, voices and corrections (NGR-165).
+#[tauri::command]
+fn delete_meeting(st: St, meeting_id: String) -> Res<()> {
+    if st.rec_state().recording.as_deref() == Some(meeting_id.as_str()) {
+        return Err("Stop the recording first.".into());
+    }
+    st.engine()
+        .store
+        .lock()
+        .unwrap()
+        .delete_meeting(&meeting_id)
+}
+
+/// Delete every meeting of a client. Returns how many went.
+#[tauri::command]
+fn delete_client(st: St, client: String) -> Res<usize> {
+    if st.session.lock().unwrap().is_some() {
+        return Err("Stop the recording first.".into());
+    }
+    st.engine().delete_client(&client)
+}
+
+/// Apply the retention rules now; what was removed, one line each.
+#[tauri::command]
+fn run_retention(st: St) -> Res<Vec<String>> {
+    st.engine().retention()
+}
+
+/// Encrypt (or decrypt) every meeting at rest. Rewrites files: never while recording.
+#[tauri::command]
+async fn set_encryption(st: St<'_>, on: bool) -> Res<Settings> {
+    if st.session.lock().unwrap().is_some() {
+        return Err("Stop the recording before changing encryption.".into());
+    }
+    let engine = st.engine();
+    engine.set_encryption(&st.app_dir, on)?;
+    Ok(Settings::of(&engine.config(), &engine.paths))
 }
 
 /// Adds the four sample meetings, for a tour before the first real one.
@@ -890,6 +930,15 @@ struct Settings {
     /// Clients whose calls start recording without a click (needs calendar titles).
     #[serde(default)]
     auto_record: Vec<String>,
+    /// Encryption at rest; read-only here: `set_encryption` turns it on or off (NGR-165).
+    #[serde(default, skip_deserializing)]
+    encrypt: bool,
+    /// Delete recordings this many days old (text stays). `None`: keep them.
+    #[serde(default)]
+    retention_audio_days: Option<u32>,
+    /// Client → delete its meetings this many days old.
+    #[serde(default)]
+    retention_clients: BTreeMap<String, u32>,
 }
 
 /// Questions with a threshold the user can set (NGR-158).
@@ -957,6 +1006,9 @@ impl Settings {
             detect_calls: cfg.detect_calls,
             calendar_titles: cfg.calendar_titles,
             auto_record: cfg.auto_record.clone(),
+            encrypt: cfg.encrypt,
+            retention_audio_days: cfg.retention.audio_days,
+            retention_clients: cfg.retention.clients.clone(),
         }
     }
 
@@ -1047,6 +1099,17 @@ impl Settings {
         cfg.clients = clients;
         cfg.detect_calls = self.detect_calls;
         cfg.calendar_titles = self.calendar_titles;
+        if self.retention_audio_days == Some(0) || self.retention_clients.values().any(|d| *d == 0)
+        {
+            return Err("Retention needs at least 1 day.".into());
+        }
+        cfg.retention.audio_days = self.retention_audio_days;
+        cfg.retention.clients = self
+            .retention_clients
+            .iter()
+            .map(|(c, d)| (c.trim().to_string(), *d))
+            .filter(|(c, _)| !c.is_empty())
+            .collect();
         Ok(cfg)
     }
 }
@@ -1072,7 +1135,7 @@ fn save_settings(app: AppHandle, st: St, settings: Settings) -> Res<Settings> {
             return Err("Stop the recording before moving folders.".into());
         }
         // Open the new folder first, so a bad pick never reaches config.toml.
-        let store = Store::open(&paths.meetings)?;
+        let store = Store::open_with(&paths.meetings, mirona_engine::keep::store_key(&cfg)?)?;
         cfg.save(&mirona_engine::config_path(&st.app_dir))?;
         allow_audio(&app, &paths.meetings);
         let next = Engine::new(Arc::new(Mutex::new(store)), cfg.clone(), paths.clone());
@@ -1269,10 +1332,22 @@ pub fn run() {
             }
             // Recordings a crash left as WAV get compressed in the background.
             let engine = app.state::<AppState>().engine();
+            let handle = app.handle().clone();
             std::thread::spawn(move || {
                 for e in engine.compress_recordings() {
                     eprintln!("mirona: compressing a recording: {e}");
                 }
+                // Retention now and then hourly (NGR-165).
+                // The engine is looked up each time: moving folders swaps it.
+                std::thread::spawn(move || {
+                    loop {
+                        match handle.state::<AppState>().engine().retention() {
+                            Ok(done) => done.iter().for_each(|l| eprintln!("mirona: retention: {l}")),
+                            Err(e) => eprintln!("mirona: retention: {e}"),
+                        }
+                        std::thread::sleep(std::time::Duration::from_secs(3600));
+                    }
+                });
                 // Meetings recorded before search by meaning (or while Ollama was off).
                 if let Some(emb) = mirona_engine::search::embedder(&engine.config())
                     && let Err(e) = mirona_engine::search::backfill(&engine.store, &emb)
@@ -1305,6 +1380,10 @@ pub fn run() {
             save_notes,
             edit_segment,
             audio_path,
+            delete_meeting,
+            delete_client,
+            run_retention,
+            set_encryption,
             add_demo_meetings,
             list_templates,
             regenerate,

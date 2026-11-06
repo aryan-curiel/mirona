@@ -103,6 +103,17 @@ function MeetingHeader({ m }: { m: Meeting }) {
   const rerunning = useStore((s) => s.rerunning[m.id]);
   const a = m.answers;
   const followSure = a && (a.followUpProbability >= a.followUpThreshold || a.followUpProbability === 0 || a.followUpProbability === 1);
+  const [sureDelete, setSureDelete] = useState(false);
+  const remove = async () => {
+    if (!sureDelete) return setSureDelete(true);
+    try {
+      await api.deleteMeeting(m.id);
+      await useStore.getState().reload();
+      useStore.getState().flash(`Deleted “${m.title}” everywhere.`);
+    } catch (e) {
+      useStore.getState().flash(String(e), true);
+    }
+  };
   return (
     <header data-tauri-drag-region>
       <div className="flex flex-wrap items-center gap-2">
@@ -124,6 +135,17 @@ function MeetingHeader({ m }: { m: Meeting }) {
         {m.sample && <span className="text-[12px] font-medium text-muted">Sample data</span>}
         {busy && <span className="mi-chip mi-chip--review mi-pulse">Writing the summary on this device…</span>}
         {rerunning && <span className="mi-chip mi-chip--review mi-pulse">{rerunning}</span>}
+        {!live && (
+          <button
+            type="button"
+            className={`mi-ghost ml-auto text-[13px] ${sureDelete ? "text-record-text!" : ""}`}
+            onBlur={() => setSureDelete(false)}
+            onClick={() => void remove()}
+            title="Deletes the folder, audio, transcript, search vectors, voices heard only here and corrections"
+          >
+            {sureDelete ? "Delete everywhere, for good" : "Delete meeting"}
+          </button>
+        )}
       </div>
       <input
         aria-label="Meeting title"

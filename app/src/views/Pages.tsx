@@ -635,6 +635,94 @@ const llmDefaults = {
   anthropic: { model: "claude-opus-5-5", url: "" },
 };
 
+/** Encryption at rest and retention (NGR-165). */
+function Storage({ st, save, clients }: { st: Settings; save: (patch: Partial<Settings>) => Promise<boolean>; clients: string[] }) {
+  const flash = useStore((s) => s.flash);
+  const reload = useStore((s) => s.reload);
+  const [busy, setBusy] = useState(false);
+  const [sure, setSure] = useState<string | null>(null);
+  const [log, setLog] = useState<string[] | null>(null);
+  const encrypt = async (on: boolean) => {
+    setBusy(true);
+    try {
+      useStore.setState({ settings: await api.setEncryption(on) });
+      flash(on ? "Meetings are encrypted on this Mac. The key is in your keychain." : "Encryption is off. Files are readable again.");
+    } catch (e) {
+      flash(String(e), true);
+    }
+    setBusy(false);
+  };
+  const days = (raw: string) => {
+    const n = Number.parseInt(raw, 10);
+    return raw.trim() === "" || Number.isNaN(n) ? null : n;
+  };
+  const rule = (c: string, raw: string) => {
+    const next = { ...st.retentionClients };
+    const n = days(raw);
+    if (n == null) delete next[c];
+    else next[c] = n;
+    return save({ retentionClients: next });
+  };
+  const forget = async (c: string) => {
+    if (sure !== c) return setSure(c);
+    setSure(null);
+    try {
+      const n = await api.deleteClient(c);
+      flash(`Deleted ${n} meetings of ${c}.`);
+      await reload();
+    } catch (e) {
+      flash(String(e), true);
+    }
+  };
+  const run = async () => {
+    try {
+      setLog(await api.runRetention());
+      await reload();
+    } catch (e) {
+      flash(String(e), true);
+    }
+  };
+  return (
+    <section className="mi-card mt-5 overflow-hidden">
+      <Row title="Encryption" sub="Recordings, transcripts, search vectors and voiceprints are encrypted on disk; the key stays in your keychain">
+        <div className="flex items-center gap-3">
+          <Toggle on={st.encrypt} onChange={(on) => void encrypt(on)} label="Encrypt meetings on this Mac" />
+          <span className="text-[14px] text-ink-3">{busy ? "Rewriting files…" : st.encrypt ? "On" : "Off"}</span>
+        </div>
+        <p className="mt-2 text-[12px] text-muted">meeting.md (title, your notes, the summary) stays readable so other apps can open it. While a call is recorded, its audio is encrypted when the recording stops.</p>
+      </Row>
+      <Row title="Delete old recordings" sub="Audio only; transcripts, notes and summaries stay">
+        <div className="w-40">
+          <Field label="After days (empty: keep)" value={st.retentionAudioDays?.toString() ?? ""} placeholder="Keep" onSave={(v) => save({ retentionAudioDays: days(v) })} />
+        </div>
+      </Row>
+      <Row title="Per client" sub="Delete a client's meetings entirely after some days, or right now">
+        <div className="flex flex-col gap-2">
+          {clients.length === 0 && <p className="text-[13px] text-muted">No clients yet.</p>}
+          {clients.map((c) => (
+            <div key={c} className="flex items-end gap-3">
+              <span className="w-48 truncate pb-2 text-[14px]">{c}</span>
+              <div className="w-36">
+                <Field label="Delete after days" value={st.retentionClients[c]?.toString() ?? ""} placeholder="Keep" onSave={(v) => void rule(c, v)} />
+              </div>
+              <button type="button" className={`mi-ghost text-[13px] ${sure === c ? "text-record-text!" : ""}`} onBlur={() => setSure(null)} onClick={() => void forget(c)}>
+                {sure === c ? `Delete every ${c} meeting for good` : "Delete all now"}
+              </button>
+            </div>
+          ))}
+          <div className="mt-1 flex items-center gap-3">
+            <button type="button" className="mi-ghost text-[13px]" onClick={() => void run()}>
+              Apply rules now
+            </button>
+            <span className="text-[12px] text-muted">Rules also run when Mirona starts and every hour. Everything removed is logged in .mirona/retention.log.</span>
+          </div>
+          {log && <p className="text-[13px] text-ink-3" role="status">{log.length ? log.join(" · ") : "Nothing to remove."}</p>}
+        </div>
+      </Row>
+    </section>
+  );
+}
+
 export function ModelsView() {
   const s = useStore();
   const st = s.settings;
@@ -748,6 +836,8 @@ export function ModelsView() {
           </div>
         </Row>
       </section>
+
+      <Storage st={st} save={save} clients={[...new Set([...Object.keys(st.clients), ...s.meetings.map((m) => m.client)])].filter((c) => c && c !== "Unsorted").sort()} />
 
       <section className="mi-card mt-5 overflow-hidden">
         <Row title="Meetings folder" sub="One Markdown folder per meeting">

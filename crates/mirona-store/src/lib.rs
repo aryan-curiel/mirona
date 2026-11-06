@@ -14,8 +14,10 @@
 //! hundreds of meetings, switch to lazy loading + mtime-based incremental reindex past that.
 
 mod classify;
+pub mod crypt;
 mod files;
 mod index;
+mod lifecycle;
 mod people;
 pub mod sample;
 mod search;
@@ -44,29 +46,50 @@ pub struct Store {
     /// Last `.mirona/generation` this store wrote or loaded. Every write bumps the file, so a
     /// store can tell when another process (CLI, an import) changed the folder: `refresh`.
     seen: std::cell::RefCell<String>,
+    /// Encryption at rest (NGR-165): set, every sealed file is written sealed and the index
+    /// stays in memory.
+    key: Option<crypt::Key>,
 }
 
 impl Store {
     /// Opens (or creates) a store at `root` and indexes what is there. Meetings that fail to
     /// load are skipped and listed in [`Store::load_errors`].
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
+        Self::open_with(root, None)
+    }
+
+    /// `open` for an encrypted store (NGR-165): the index lives in memory, and any
+    /// `index.sqlite` left from before encryption is deleted.
+    pub fn open_with(root: impl AsRef<Path>, key: Option<crypt::Key>) -> Result<Self> {
         let root = root.as_ref().to_path_buf();
         let meta = root.join(".mirona");
         std::fs::create_dir_all(&meta).map_err(|e| format!("{}: {e}", meta.display()))?;
-        let db = index::open(&meta.join("index.sqlite"))?;
-        Self::with_index(root, db)
+        let file = meta.join("index.sqlite");
+        let db = if key.is_some() {
+            std::fs::remove_file(&file).ok();
+            index::open(Path::new(":memory:"))?
+        } else {
+            index::open(&file)?
+        };
+        let s = Self::with_index(root, db, key)?;
+        s.clear_tmp();
+        Ok(s)
     }
 
     /// Like `open`, but indexes into a private in-memory database and leaves
     /// `.mirona/index.sqlite` alone: for readers (MCP server, CLI) running next to the app, so
     /// they never race its index. Writes still go to the meeting files.
     pub fn open_snapshot(root: impl AsRef<Path>) -> Result<Self> {
-        let root = root.as_ref().to_path_buf();
-        std::fs::create_dir_all(&root).map_err(|e| format!("{}: {e}", root.display()))?;
-        Self::with_index(root, index::open(Path::new(":memory:"))?)
+        Self::open_snapshot_with(root, None)
     }
 
-    fn with_index(root: PathBuf, db: Connection) -> Result<Self> {
+    pub fn open_snapshot_with(root: impl AsRef<Path>, key: Option<crypt::Key>) -> Result<Self> {
+        let root = root.as_ref().to_path_buf();
+        std::fs::create_dir_all(&root).map_err(|e| format!("{}: {e}", root.display()))?;
+        Self::with_index(root, index::open(Path::new(":memory:"))?, key)
+    }
+
+    fn with_index(root: PathBuf, db: Connection, key: Option<crypt::Key>) -> Result<Self> {
         let mut s = Self {
             root,
             db,
@@ -74,6 +97,7 @@ impl Store {
             people: vec![],
             errors: vec![],
             seen: std::cell::RefCell::new(String::new()),
+            key,
         };
         s.reindex()?;
         Ok(s)
@@ -149,7 +173,7 @@ impl Store {
             .collect();
         dirs.sort();
         for dir in dirs {
-            match files::read(&dir) {
+            match files::read(&dir, self.key.as_ref()) {
                 Ok((e, errs)) if entries.iter().any(|x| x.meeting.id == e.meeting.id) => {
                     errors.extend(errs);
                     errors.push(format!(
@@ -274,7 +298,7 @@ impl Store {
             vectors: search::Vectors::default(),
         };
         files::normalize(&mut e);
-        files::write_transcript(&e)?;
+        files::write_transcript(&e, self.key.as_ref())?;
         files::write_meeting(&e)?;
         index::reindex_meeting(&mut self.db, &e)?;
         self.touched();
@@ -327,7 +351,7 @@ impl Store {
             .find(|p| p.id == seg.speaker_id)
             .cloned()
             .unwrap_or_else(|| new_speaker(&seg.speaker_id));
-        files::append_segment(&self.entries[i].dir, &seg)?;
+        files::append_segment(&self.entries[i].dir, &seg, self.key.as_ref())?;
         index::insert_segment(&self.db, meeting_id, &seg)?;
         self.touched();
         self.entries[i].meeting.segments.push(seg);
@@ -377,7 +401,8 @@ impl Store {
         Ok(s)
     }
 
-    /// Delete a meeting everywhere: its folder (transcript, audio, notes) and the index.
+    /// Delete a meeting everywhere: its folder (transcript, audio, notes, embeddings), the
+    /// index, its anonymous voices and the corrections quoting it (NGR-165).
     pub fn delete_meeting(&mut self, id: &str) -> Result<()> {
         let i = self.idx(id)?;
         let e = self.entries.remove(i);
@@ -385,7 +410,8 @@ impl Store {
         index::remove_meeting(&mut self.db, id)?;
         self.touched();
         self.refresh_people();
-        self.forget_meeting_voices(id)
+        self.forget_meeting_voices(id)?;
+        self.forget_labels(id)
     }
 
     /// Records the meeting length once recording stops. The summary comes from `set_summary`.
@@ -630,7 +656,7 @@ impl Store {
         let e = &mut self.entries[i];
         files::normalize(e);
         if transcript {
-            files::write_transcript(e)?;
+            files::write_transcript(e, self.key.as_ref())?;
         }
         files::write_meeting(e)?;
         index::reindex_meeting(&mut self.db, e)?;

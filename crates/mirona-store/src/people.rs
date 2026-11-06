@@ -12,7 +12,6 @@
 //! relabelling a cluster, and the voiceprint follows. Segments point at their embedding through
 //! `(meeting id, speaker id)`.
 
-use crate::files::write_atomic;
 use crate::{Result, Store};
 use mirona_core::{Id, NameSuggestion, Speaker, Voiceprint};
 use serde::{Deserialize, Serialize};
@@ -97,14 +96,15 @@ impl Voices {
 }
 
 impl Store {
-    fn voices_path(&self) -> PathBuf {
+    pub(crate) fn voices_path(&self) -> PathBuf {
         self.root.join(".mirona").join(VOICES)
     }
 
     /// The registry; empty when there is none yet (or it can't be read).
     pub fn voices(&self) -> Voices {
-        std::fs::read_to_string(self.voices_path())
+        crate::crypt::read_string(self.key.as_ref(), &self.voices_path())
             .ok()
+            .flatten()
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or_default()
     }
@@ -114,7 +114,8 @@ impl Store {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
-        write_atomic(&path, &serde_json::to_string(v).map_err(|e| e.to_string())?)?;
+        let json = serde_json::to_string(v).map_err(|e| e.to_string())?;
+        crate::files::write_sealed(&path, self.key.as_ref(), json.as_bytes())?;
         self.touched();
         Ok(())
     }

@@ -7,6 +7,7 @@
 
 pub mod classify;
 mod diarize;
+pub mod keep;
 mod llm;
 pub mod search;
 
@@ -138,7 +139,7 @@ impl Engine {
     pub fn open(app_dir: &Path, documents: &Path) -> Result<Self> {
         let cfg = Config::load(&config_path(app_dir))?;
         let paths = Paths::resolve(&cfg, app_dir, documents);
-        let store = Store::open(&paths.meetings)?;
+        let store = Store::open_with(&paths.meetings, keep::store_key(&cfg)?)?;
         Ok(Self::new(Arc::new(Mutex::new(store)), cfg, paths))
     }
 
@@ -270,6 +271,7 @@ impl Engine {
             let name = format!("audio.{ext}");
             std::fs::copy(path, s.meeting_dir(&id)?.join(&name)).map_err(|e| e.to_string())?;
             s.set_audio(&id, &name)?;
+            s.seal_audio(&id)?;
             s.finish_meeting(&id, end_ms)?;
         }
         self.post_process(&id, events);
@@ -514,8 +516,10 @@ fn compress_audio(store: &Shared, id: &str) -> Result<()> {
         return Err(format!("{} changed while compressing", wav.display()));
     }
     let name = caf.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-    store.lock().unwrap().set_audio(id, name)?;
-    std::fs::remove_file(&wav).map_err(|e| format!("{}: {e}", wav.display()))
+    let mut s = store.lock().unwrap();
+    s.set_audio(id, name)?;
+    std::fs::remove_file(&wav).map_err(|e| format!("{}: {e}", wav.display()))?;
+    s.seal_audio(id)
 }
 
 /// How often a live recording refreshes its lock, and when an unrefreshed lock counts as left

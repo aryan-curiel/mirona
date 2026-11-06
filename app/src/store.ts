@@ -86,6 +86,8 @@ type State = {
   setClientFilter: (client: string | null) => void;
   regenerate: (template: string) => Promise<void>;
   addDemo: () => Promise<void>;
+  /** Reload the lists after meetings were deleted; reopens one if the open one is gone. */
+  reload: () => Promise<void>;
   importAudio: () => Promise<void>;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
@@ -417,6 +419,17 @@ export const useStore = create<State>((set, get) => {
         if (!m) return;
         set({ regenerating: m.id });
         await api.regenerate(m.id, template);
+      }),
+
+    reload: () =>
+      run(async () => {
+        await reloadLists();
+        const m = get().meeting;
+        if (m && !get().meetings.some((x) => x.id === m.id)) {
+          set({ meeting: null, review: [] });
+          const first = get().meetings[0];
+          if (first) await get().openMeeting(first.id);
+        }
       }),
 
     addDemo: () =>

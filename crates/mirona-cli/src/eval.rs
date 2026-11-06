@@ -255,14 +255,15 @@ pub fn run(c: &impl Classifier, examples: &[Example], context: bool) -> Report {
 }
 
 /// The examples: `set` (or the built-in public set), plus the user's corrections.
-pub fn load(set: Option<&Path>, labels: Option<&Path>) -> Result<Vec<Example>, String> {
+/// `labels` is the corrections file's text (decrypted), with its path for messages.
+pub fn load(set: Option<&Path>, labels: Option<(&Path, &str)>) -> Result<Vec<Example>, String> {
     let read = |p: &Path| std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()));
     let mut out = match set {
         Some(p) => parse(&read(p)?)?,
         None => parse(PUBLIC_SET)?,
     };
-    if let Some(p) = labels.filter(|p| p.is_file()) {
-        let own = parse(&read(p)?).map_err(|e| format!("{}: {e}", p.display()))?;
+    if let Some((p, text)) = labels.filter(|(_, t)| !t.trim().is_empty()) {
+        let own = parse(text).map_err(|e| format!("{}: {e}", p.display()))?;
         eprintln!(
             "+ {} of your own labelled examples ({})",
             own.len(),
