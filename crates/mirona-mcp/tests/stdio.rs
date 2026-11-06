@@ -164,6 +164,12 @@ fn initialize_list_and_call_every_tool() {
         json!({ "id": "corvo-review", "from": "x" }),
     );
     assert!(err);
+
+    // Every call is logged as coming from stdio.
+    let log = mirona_mcp::activity(&tmp.path().join("app"), 100);
+    assert_eq!(log.len(), 9);
+    assert!(log.iter().all(|a| a.client == "stdio"));
+    assert_eq!((log[0].tool.as_str(), log[0].ok), ("get_transcript", false));
 }
 
 #[test]

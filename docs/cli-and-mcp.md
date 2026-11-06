@@ -1,4 +1,4 @@
-# CLI, MCP server and Claude Code skill (NGR-148, NGR-149)
+# CLI, MCP server and Claude Code skill (NGR-148, NGR-149, NGR-168)
 
 The `mirona` CLI and the `mirona-mcp` server use the same engine and meeting folders as the
 app. They read `config.toml` from the app folder (`~/Library/Application Support/com.nagare.mirona`
@@ -27,7 +27,7 @@ yet). From a checkout: `brew install --HEAD --formula ./packaging/homebrew/miron
 | `mirona import <audio>` | Transcribes (wav/mp3/m4a/flac) and summarizes a file into a new meeting |
 | `mirona reindex` | Rebuilds `<meetings>/.mirona/index.sqlite` from the files |
 | `mirona compress` | Compresses recordings still kept as `audio.wav` (older meetings, crashed sessions) to `audio.caf` (Opus); the app does this at start |
-| `mirona mcp` | The MCP server on stdio |
+| `mirona mcp [--http [--port N]]` | The MCP server on stdio, or on `http://127.0.0.1:N/mcp` (default `mcp_port`, 7337) |
 | `mirona eval [--with jev\|local-llm\|fake] [--set file] [--no-labels] [--context] [--limit N]` | Scores the classifiers on the public synthetic set (`eval/chunks.jsonl`) plus your own corrections (`<meetings>/.mirona/labels.jsonl`, local only): accuracy and precision/recall per question, latency per call. Default: the configured classifier plus the local baseline. `--with fake` needs no network (CI). Jev uses the keychain key, or `TYPESAFE_API_KEY` |
 
 Read commands and the MCP server index into memory and never write the app's index, so they are
@@ -35,12 +35,24 @@ safe to run while the app is open.
 
 ## MCP server
 
-Tools (all read-only; results are compact JSON, the transcript is plain text):
+Read tools (results are compact JSON, the transcript is plain text):
 
 - `search_meetings { query }`: matching transcript moments (`at` = `m:ss`, snippet) and meetings.
 - `get_meeting { id }`: overview, decisions, open questions, action items, notes. No transcript.
 - `get_transcript { id, from?, to? }`: `[m:ss] Speaker: text` lines, optionally a time range.
 - `list_action_items { client?, open_only? }`.
+
+Write tools, listed and callable only with `mcp_write = true` (Settings → Models and MCP →
+Write tools; off by default). They change the meeting files the way the app does, and the open
+app picks the change up within a few seconds:
+
+- `set_action_item_done { id, done }`: mark an action item done, or open again.
+- `rename_speaker { meeting_id, speaker_id, name }`: name a speaker (ids from `get_meeting`'s
+  `speakers`); like naming them in the app, the name follows the voice to other meetings.
+
+Every tool call, on either transport, appends one line to `<app dir>/mcp-activity.jsonl`:
+`{"time", "client", "tool", "ok"}`, where `client` is `stdio` or the HTTP client's name. Never
+arguments or results. The newest ~1000 lines are kept; the app shows them under MCP activity.
 
 Every call rereads `config.toml` and the meeting folders, so it sees what the app just wrote and
 works with the app closed. With `mcp_enabled = false` the server refuses to start (and calls
@@ -67,6 +79,26 @@ absolute path from `which mirona`, Claude Desktop does not use your shell's PATH
   }
 }
 ```
+
+### Over HTTP
+
+For clients that connect to a URL rather than start a process. It listens on `127.0.0.1` only,
+and every request needs `Authorization: Bearer <token>` (401 otherwise). Each client gets its
+own token, so the activity log shows who called what and one client can be cut off alone.
+
+1. Settings → Models and MCP → MCP over HTTP: turn it on (the app runs the server while it is
+   open; `mirona mcp --http` runs it without the app). Default port 7337.
+2. Client tokens: type a name (e.g. "Claude Desktop") and Create token. The token is shown once,
+   with a ready `claude mcp add` line. Tokens live in `config.toml` under `[mcp_tokens]`
+   (name = token); Revoke removes one and takes effect on the next request.
+
+```bash
+claude mcp add --transport http mirona http://127.0.0.1:7337/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+Other clients take the URL `http://127.0.0.1:7337/mcp` plus that header (e.g. Cursor's
+`mcp.json`: `{"mcpServers": {"mirona": {"url": "…", "headers": {"Authorization": "Bearer …"}}}}`).
 
 ## Claude Code skill
 

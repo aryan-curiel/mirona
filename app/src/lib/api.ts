@@ -16,6 +16,13 @@ export type Settings = {
   llmBaseUrl: string;
   template: string;
   mcpEnabled: boolean;
+  /** MCP over HTTP on 127.0.0.1:mcpPort; clients need a token (NGR-168). */
+  mcpHttp: boolean;
+  mcpPort: number;
+  /** Let agents mark action items done and rename speakers. */
+  mcpWrite: boolean;
+  /** HTTP clients holding a token (read-only; tokens are shown once, on creation). */
+  mcpClients: string[];
   /** Global record shortcut, a Tauri accelerator like "CmdOrCtrl+Alt+Shift+R". */
   shortcut: string;
   meetingsDir: string;
@@ -47,6 +54,9 @@ export type Status = {
   shortcut: string;
   errors: string[];
 };
+
+/** One MCP tool call, as `mcp_activity` returns them (newest first). */
+export type McpActivity = { time: string; client: string; tool: string; ok: boolean };
 
 /** Sent on the "recording" channel whenever the recorder changes. */
 export type RecState = { recording: string | null; processing: string[] };
@@ -93,6 +103,10 @@ export const api = {
   pickFolder: () => invoke<string | null>("pick_folder"),
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
+  mcpActivity: (limit: number) => invoke<McpActivity[]>("mcp_activity", { limit }),
+  /** Returns the new token, once. */
+  addMcpClient: (name: string) => invoke<string>("add_mcp_client", { name }),
+  revokeMcpClient: (name: string) => invoke<void>("revoke_mcp_client", { name }),
 };
 
 export const fmt = (ms: number, long = false) => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useStore } from "../store";
-import { api, fmt, LLM_LOCAL, type Person, type Settings } from "../lib/api";
+import { api, fmt, LLM_LOCAL, type McpActivity, type Person, type Settings } from "../lib/api";
 import { CopyLine } from "./Setup";
 import { Avatar, Icon, PageHeader, Toggle } from "../components/ui";
 import { shortcutLabel } from "../components/Shell";
@@ -478,6 +478,119 @@ function Clients({ clients, onSave }: { clients: Record<string, string>; onSave:
   );
 }
 
+/** MCP over localhost HTTP (NGR-168): on/off and port, one token per client, write tools. */
+function McpHttp({ st, save }: { st: Settings; save: (patch: Partial<Settings>) => Promise<boolean> }) {
+  const flash = useStore((s) => s.flash);
+  const [name, setName] = useState("");
+  const [created, setCreated] = useState<{ name: string; token: string } | null>(null);
+  const url = `http://127.0.0.1:${st.mcpPort}/mcp`;
+  const reload = async () => useStore.setState({ settings: await api.getSettings() });
+  const add = async () => {
+    try {
+      const token = await api.addMcpClient(name);
+      setCreated({ name: name.trim(), token });
+      setName("");
+      await reload();
+    } catch (e) {
+      flash(String(e), true);
+    }
+  };
+  const revoke = async (n: string) => {
+    try {
+      await api.revokeMcpClient(n);
+      if (created?.name === n) setCreated(null);
+      await reload();
+    } catch (e) {
+      flash(String(e), true);
+    }
+  };
+  return (
+    <section className="mi-card mt-5 overflow-hidden">
+      <Row title="MCP over HTTP" sub="For clients that connect to a URL instead of starting Mirona. Only this Mac can reach it">
+        <div className="flex flex-wrap items-end gap-3">
+          <Toggle on={st.mcpHttp} onChange={(mcpHttp) => save({ mcpHttp })} label="Serve MCP over HTTP" />
+          <span className="text-[14px] text-ink-3">{!st.mcpEnabled ? "Off while the MCP server is off" : st.mcpHttp ? `Listening on ${url}` : "Off"}</span>
+          <div className="w-28">
+            <Field label="Port" value={String(st.mcpPort)} onSave={(v) => save({ mcpPort: Number.parseInt(v, 10) || st.mcpPort })} />
+          </div>
+        </div>
+      </Row>
+      <Row title="Client tokens" sub="One per app. The name shows in the activity log; revoking cuts that app off at once">
+        <div className="flex flex-col gap-2">
+          {st.mcpClients.map((n) => (
+            <div key={n} className="flex items-center gap-2">
+              <span className="flex-1 text-[14px]">{n}</span>
+              <button type="button" className="mi-ghost text-[13px]" aria-label={`Revoke ${n}`} onClick={() => revoke(n)}>
+                Revoke
+              </button>
+            </div>
+          ))}
+          <div className="flex gap-2">
+            <input
+              className="mi-field w-64 text-[14px]"
+              aria-label="Client name"
+              placeholder="Client name, e.g. Claude Desktop"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && name.trim() && add()}
+            />
+            <button type="button" className="mi-ghost text-[13px]" disabled={!name.trim()} onClick={add}>
+              Create token
+            </button>
+          </div>
+          {created && (
+            <div className="mt-2 text-[13px] text-ink-3" role="status">
+              Token for {created.name}, shown only now. Claude Code:
+              <CopyLine text={`claude mcp add --transport http mirona ${url} --header "Authorization: Bearer ${created.token}"`} />
+              <p className="mt-2">Other clients: URL {url}, header</p>
+              <CopyLine text={`Authorization: Bearer ${created.token}`} />
+            </div>
+          )}
+        </div>
+      </Row>
+      <Row title="Write tools" sub="Agents can mark action items done and rename speakers. Over stdio and HTTP">
+        <div className="flex items-center gap-3">
+          <Toggle on={st.mcpWrite} onChange={(mcpWrite) => save({ mcpWrite })} label="Let MCP clients change meetings" />
+          <span className="text-[14px] text-ink-3">{st.mcpWrite ? "On: agents can change your meetings" : "Off: agents can only read"}</span>
+        </div>
+      </Row>
+    </section>
+  );
+}
+
+/** The newest MCP tool calls: which agent called what. Never the arguments or results. */
+function McpLog() {
+  const [log, setLog] = useState<McpActivity[]>([]);
+  useEffect(() => {
+    const load = () => api.mcpActivity(20).then(setLog, () => {});
+    load();
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <section className="mi-card mt-5 p-6" aria-labelledby="mcp-activity">
+      <h2 id="mcp-activity" className="text-[16px] font-semibold">
+        MCP activity
+      </h2>
+      {log.length === 0 ? (
+        <p className="mt-2 text-[14px] text-ink-3">No agent has called Mirona yet.</p>
+      ) : (
+        <ul className="mt-3 flex flex-col gap-1 text-[13px]">
+          {log.map((a, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: entries have no id; the list is replaced whole
+            <li key={i} className="flex gap-3">
+              <span className="w-40 shrink-0 text-muted">{new Date(a.time).toLocaleString()}</span>
+              <span className="w-40 shrink-0 truncate">{a.client}</span>
+              <span className="flex-1 font-mono">{a.tool}</span>
+              <span className={a.ok ? "text-accent-strong" : "text-record-text"}>{a.ok ? "ok" : "error"}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 const llmDefaults = {
   ollama: { model: "qwen3:4b", url: "http://localhost:11434/api/chat" },
   openai: { model: "gpt-4.1-mini", url: "https://api.openai.com/v1" },
@@ -624,6 +737,9 @@ export function ModelsView() {
         <p className="mt-4 text-[14px] text-ink-3">Claude Desktop (claude_desktop_config.json):</p>
         <CopyLine text={desktop} />
       </section>
+
+      <McpHttp st={st} save={save} />
+      <McpLog />
 
       <section className="mi-card mt-5 p-6" aria-labelledby="credits">
         <h2 id="credits" className="text-[16px] font-semibold">
