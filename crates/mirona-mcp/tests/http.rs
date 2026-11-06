@@ -135,6 +135,7 @@ fn tokens_activity_and_write_tools() {
     let mut c = client(server.port, "s3cret");
     init(&mut c);
     let read = [
+        "ask_meeting",
         "get_meeting",
         "get_transcript",
         "list_action_items",

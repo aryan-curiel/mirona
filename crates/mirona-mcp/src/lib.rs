@@ -12,6 +12,8 @@
 //! ponytail: a full re-read per call; fine for hundreds of meetings, cache by folder mtime
 //! past that.
 
+mod ask;
+
 use mirona_core::{Meeting, SearchFilters, TagKind};
 use mirona_engine::Paths;
 use mirona_engine::search::Embed;
@@ -164,6 +166,14 @@ impl SearchArgs {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+pub struct AskArgs {
+    /// The question, in plain words ("what did we decide about pricing?").
+    pub question: String,
+    /// Only this meeting (id from `search_meetings`). Default: the meetings the question is about.
+    pub meeting_id: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct MeetingArgs {
     /// Meeting id, as returned by `search_meetings` (e.g. "m-1762331400000").
     pub id: String,
@@ -204,6 +214,29 @@ impl Server {
         let (cfg, _) = load(&self.app_dir)?;
         let emb = mirona_engine::search::embedder(&cfg);
         Ok(search(&store, emb.as_ref(), &a)?.to_string())
+    }
+
+    #[tool(
+        description = "Ask a question about the meetings in plain words. Mirona's classifier \
+        routes it: lookups (where something was said, decisions, action items, a recap) come \
+        straight from the meetings with timestamps; only open questions are answered by the \
+        configured LLM from the relevant transcript. `route` says which path answered.",
+        annotations(read_only_hint = true)
+    )]
+    fn ask_meeting(&self, Parameters(a): Parameters<AskArgs>) -> Result<String, String> {
+        let store = self.store()?;
+        let (cfg, _) = load(&self.app_dir)?;
+        let emb = mirona_engine::search::embedder(&cfg);
+        let (classifier, _) = mirona_engine::classify::AnyClassifier::from_config(&cfg);
+        let v = ask::ask(
+            &store,
+            classifier.as_ref(),
+            emb.as_ref(),
+            || mirona_engine::Llm::from_config(&cfg),
+            &a.question,
+            a.meeting_id.as_deref(),
+        )?;
+        Ok(v.to_string())
     }
 
     #[tool(

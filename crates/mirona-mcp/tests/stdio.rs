@@ -106,6 +106,7 @@ fn initialize_list_and_call_every_tool() {
     assert_eq!(
         names,
         [
+            "ask_meeting",
             "get_meeting",
             "get_transcript",
             "list_action_items",
