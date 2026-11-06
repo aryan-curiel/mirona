@@ -27,7 +27,8 @@ only for the part you need to quote.
 
 Anything with `needs_review: true` or listed under `unconfirmed` is the classifier's guess:
 say so, don't state it as fact. Lines shown as `[redacted]` are sensitive; don't ask for them
-with `include_sensitive` unless the user explicitly wants that content.
+with `include_sensitive` unless the user explicitly wants that content. Even then they stay
+redacted unless the user allowed it in Settings › Agents (MCP) › Sensitive lines.
 
 ## Preparing for a meeting
 

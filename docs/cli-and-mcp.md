@@ -7,9 +7,8 @@ on macOS); set `MIRONA_APP_DIR` to use another one.
 ## Install
 
 The app already contains the MCP server: `Mirona.app/Contents/MacOS/mirona-app mcp` serves on
-stdio, no window. Releases will be signed, notarized DMGs on GitHub Releases
-(`docs/releasing.md`); the repo is still private and there is no release yet, so for now build
-from a checkout.
+stdio, no window. Releases are signed, notarized DMGs on
+[GitHub Releases](https://github.com/aryan-curiel/mirona/releases) (`docs/releasing.md`).
 
 The CLI, from a checkout:
 
@@ -18,9 +17,8 @@ cargo install --path crates/mirona-cli   # installs `mirona`
 cargo install --path crates/mirona-mcp   # optional: standalone `mirona-mcp` (same as `mirona mcp`)
 ```
 
-Homebrew: `packaging/homebrew/mirona.rb` (HEAD only, macOS) is ready but unpublished: no tap
-and no tagged release yet, and HEAD clones the private repo. From a checkout with access:
-`brew install --HEAD --formula ./packaging/homebrew/mirona.rb`.
+Homebrew: `packaging/homebrew/mirona.rb` (HEAD only, macOS) isn't in a tap yet. From a
+checkout: `brew install --HEAD --formula ./packaging/homebrew/mirona.rb`.
 
 ## CLI
 
@@ -59,11 +57,13 @@ flowchart LR
 ```
 
 Every call rereads `config.toml` and the meeting folders, so it sees what the app just wrote and
-works with the app closed. With `mcp_enabled = false` (Settings › Agents (MCP) › MCP server)
-the server refuses to start, and calls fail if it is turned off while running.
+works with the app closed. `mcp_enabled` is off until the user turns it on (onboarding, or
+Settings › Agents (MCP) › MCP server); while it's off the server refuses to start, and calls fail
+if it is turned off while running.
 
 Sensitive lines (tagged by the classifier, or naming a password, a salary, an account number…)
-read `[redacted]` everywhere unless `include_sensitive` is set, and never reach a model. Action
+read `[redacted]` everywhere. `include_sensitive` shows them only if the user allowed it
+(`mcp_sensitive = true`, Settings › Agents (MCP) › Sensitive lines; off by default). Action
 items said on such a line read `[redacted]` too. Classifier answers below their threshold are
 marked (`needs_review`, `unconfirmed`), never served as fact.
 

@@ -163,6 +163,8 @@ pub fn add_sensitive_net(text: &str, tags: &mut Vec<Tag>) {
 }
 
 /// Ask the segment questions about `line` (with `context`), thresholded per `cfg`.
+/// A line the keyword check already calls sensitive never goes to a cloud classifier: it's
+/// tagged sensitive here and nothing else is asked about it.
 pub fn classify_segment(
     c: &impl Classifier,
     cfg: &Config,
@@ -170,6 +172,11 @@ pub fn classify_segment(
     context: &[String],
     line: &str,
 ) -> PResult<(Vec<Answer>, Vec<Tag>, Vec<Choice>)> {
+    if !is_local(c) && sensitive_words(line) {
+        let mut tags = vec![];
+        add_sensitive_net(line, &mut tags);
+        return Ok((vec![], tags, vec![]));
+    }
     let qs = segment_questions(speakers);
     let replies = block_on(c.ask(&segment_state(context, line), &qs))?;
     let (mut answers, mut owners) = to_answers(&qs, &replies);
@@ -1033,6 +1040,22 @@ mod tests {
         add_sensitive_net("the password is hunter2", &mut tags);
         assert_eq!(tags.len(), 1);
         assert_eq!(tags[0].kind, TagKind::Sensitive);
+    }
+
+    #[test]
+    fn obvious_secrets_never_reach_a_cloud_classifier() {
+        let c = Scripted::default();
+        let cfg = Config::default();
+        let (answers, tags, _) =
+            classify_segment(&c, &cfg, &[], &[], "the staging password is Tulip4471").unwrap();
+        assert!(answers.is_empty());
+        assert!(tags.iter().any(|t| t.kind == TagKind::Sensitive));
+        assert!(
+            c.states.lock().unwrap().is_empty(),
+            "the line went to the classifier"
+        );
+        classify_segment(&c, &cfg, &[], &[], "We agreed to ship on Monday.").unwrap();
+        assert_eq!(c.states.lock().unwrap().len(), 1);
     }
 
     #[test]

@@ -114,9 +114,10 @@ fetches fixed files from Hugging Face and GitHub and sends nothing about your me
 
 **Sensitive lines** (tagged by the classifier, or mentioning a password, salary, account or card
 number, or health details) stay out of summaries, notes and follow-up emails, are never indexed
-for meaning search, and show as `[redacted]` to AI agents unless the agent asks for them
-(`include_sensitive`, meant for when you asked it to). The classifier does read each
-line to tag it, so with privacy mode off and Jev picked, lines go to Jev once for tagging.
+for meaning search, and show as `[redacted]` to AI agents, unless you allow agents to read them
+(Settings › Agents (MCP) › Sensitive lines, off by default). The classifier does read each line
+to tag it, so with privacy mode off and Jev picked, lines go to Jev once for tagging. Lines with
+an obvious password, salary or account number are tagged on your Mac and never sent.
 
 ## Encryption and retention
 
@@ -132,7 +133,8 @@ Settings › Privacy and storage:
 
 ## AI agents (MCP)
 
-Settings › Agents (MCP) lets Claude and other MCP clients read your meetings. They can search,
+Off until you turn it on, in onboarding or Settings › Agents (MCP). Then Claude and other MCP
+clients can read your meetings. They can search,
 read summaries and transcripts, list action items and ask questions. With **Write tools** on,
 they can also mark action items done and rename speakers. Every call is logged under **Agent
 activity**. Setup for each client is in [CLI and MCP](cli-and-mcp.md).

@@ -541,14 +541,14 @@ mod tests {
         let opts = ["yes".to_string(), "no".to_string()];
         let m = distribution(alts.as_array().unwrap(), &opts);
         assert!((m[0] - 0.75).abs() < 1e-6, "{m:?}");
-        // "Ma" starts both Marco and Ines: its mass is split between them.
+        // "Ma" starts both Marco and Mateo: its mass is split between them.
         let alts = json!([
             { "token": "Ma", "logprob": (0.8_f64).ln() },
-            { "token": "Pri", "logprob": (0.2_f64).ln() },
+            { "token": "Kei", "logprob": (0.2_f64).ln() },
         ]);
         let opts = [
             "Marco".to_string(),
-            "Ines".to_string(),
+            "Mateo".to_string(),
             "Keiko".to_string(),
         ];
         let m = distribution(alts.as_array().unwrap(), &opts);

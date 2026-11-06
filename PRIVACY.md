@@ -17,7 +17,7 @@ the macOS keychain.
 | Model files (download only) | When you click Download in onboarding or Settings | Hugging Face, GitHub (and the download servers they redirect to). Fixed files, checked against pinned checksums. Nothing about you or your meetings is sent. |
 | Transcript text for summaries, notes, follow-up drafts and agents' open questions | Only with privacy mode off and a cloud LLM picked (Anthropic, or an OpenAI-compatible server that isn't on this Mac) | That provider, with your API key |
 | Transcript lines for tags and meeting questions, and agents' `ask_meeting` questions | Only with privacy mode off and Jev picked for classification | Jev (TypeSafe), with your API key |
-| Meeting data for AI agents | Only to an MCP client you set up yourself. Agent access is on by default; turn it off in Settings › Agents (MCP) | The MCP client you connected, on this Mac. Your agent may then send it to its own provider. |
+| Meeting data for AI agents | Only if you turn on agent access (off by default) and connect an MCP client yourself | The MCP client you connected, on this Mac. Your agent may then send it to its own provider. |
 
 ```mermaid
 flowchart LR
@@ -42,10 +42,12 @@ one exception, and only when you start it.
 
 **Sensitive lines** (passwords, salaries, account and card numbers, health details, and lines the
 classifier tags as sensitive) never go to a cloud model for summaries, notes or follow-up emails,
-are never indexed for search by meaning, and show as `[redacted]` to AI agents unless the agent
-asks for them (`include_sensitive`). To tag a line, the classifier has to read it first: with
-privacy mode off and Jev picked, each line is sent to Jev once for tagging, including lines that
-turn out to be sensitive. Keep privacy mode on for calls where that matters.
+are never indexed for search by meaning, and show as `[redacted]` to AI agents unless you allow
+it (Settings › Agents (MCP) › Sensitive lines, off by default). To tag a line, the classifier has
+to read it first: with privacy mode off and Jev picked, each line is sent to Jev once for tagging.
+Lines with an obvious password, salary, account or card number are tagged on your Mac and never
+sent, but a sensitive line without those words still goes to Jev. Keep privacy mode on for calls
+where that matters.
 
 Mirona never checks for updates on its own. New versions are on the
 [Releases](https://github.com/aryan-curiel/mirona/releases) page.

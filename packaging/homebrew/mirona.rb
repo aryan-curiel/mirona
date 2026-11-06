@@ -1,5 +1,5 @@
 # Homebrew formula for the `mirona` CLI (+ `mirona-mcp`), NGR-149.
-# Not published yet: the repo is private and has no tagged releases. To publish, copy this file
+# Not in a tap yet. To publish, copy this file
 # into a tap repo (nagare-studio/homebrew-tap → `brew install nagare-studio/tap/mirona`) and add
 # a stable `url` + `sha256` for a release tarball. Until then, from a checkout:
 #   brew install --HEAD --formula ./packaging/homebrew/mirona.rb

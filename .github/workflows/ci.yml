@@ -1,4 +1,4 @@
-# NGR-127. Every push to main and every PR: one Linux job (1x minutes on a private repo).
+# NGR-127. Every push to main and every PR: one Linux job (cheapest runner).
 # macOS (10x) and Windows (2x) only on demand: Actions › CI › Run workflow, with "all OSes".
 # Releases build macOS anyway (release.yml). Docs-only changes skip CI.
 name: CI

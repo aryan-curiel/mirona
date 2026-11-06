@@ -4,8 +4,8 @@ Mirona records private conversations, so we treat privacy bugs as security bugs.
 
 - anything leaving the Mac while privacy mode is on
 - a sensitive line (password, salary, account number…) reaching a summary, a search vector, a
-  cloud model other than the classifier tagging it, or an MCP result that didn't ask for
-  `include_sensitive`
+  cloud model other than the classifier tagging it, or an MCP result while the user hasn't
+  allowed sensitive lines
 - encrypted meeting data readable without the key
 - an MCP client reading meetings without a valid token, or reaching the server from another
   machine
