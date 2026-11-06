@@ -100,6 +100,10 @@ export function Sidebar({ mac }: { mac: boolean }) {
   const s = useStore();
   const open = s.actionItems.filter((a) => !a.done).length;
   const rec = s.recording;
+  // Clients are the "folders" (NGR-157): the store keeps one folder per meeting, the UI groups.
+  const clients = [...new Set(s.meetings.map((m) => m.client).filter(Boolean))].sort();
+  const filter = s.clientFilter !== null && clients.includes(s.clientFilter) ? s.clientFilter : null;
+  const shown = filter === null ? s.meetings : s.meetings.filter((m) => m.client === filter);
   return (
     <aside className="mi-sidebar flex h-full w-[var(--mi-sidebar-w)] shrink-0 flex-col border-r border-white/60 px-3.5 pb-3.5">
       {/* macOS: room for the traffic lights, and the strip drags the window */}
@@ -141,9 +145,24 @@ export function Sidebar({ mac }: { mac: boolean }) {
           {s.importing ? "Importing…" : "Import audio…"}
         </button>
       </div>
+      {clients.length > 0 && (
+        <select
+          className="mi-field mx-1 mb-1.5 h-9 text-[13px]"
+          aria-label="Show meetings for a client"
+          value={filter ?? ""}
+          onChange={(e) => s.setClientFilter(e.target.value || null)}
+        >
+          <option value="">All clients</option>
+          {clients.map((c) => (
+            <option key={c} value={c}>
+              {c} ({s.meetings.filter((m) => m.client === c).length})
+            </option>
+          ))}
+        </select>
+      )}
       <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1">
         <ImportProgress />
-        {s.meetings.map((m) => {
+        {shown.map((m) => {
           const active = s.view === "meetings" && s.meeting?.id === m.id;
           const live = rec?.meetingId === m.id;
           const busy = s.processing.includes(m.id) || m.id in s.summarizing;
@@ -159,7 +178,7 @@ export function Sidebar({ mac }: { mac: boolean }) {
                 <span className="truncate">{m.title}</span>
               </div>
               <div className="truncate text-[12px] text-muted">
-                {busy ? "Writing the summary…" : `${m.client} · ${m.when}`}
+                {busy ? "Writing the summary…" : [m.client, m.when].filter(Boolean).join(" · ")}
               </div>
             </button>
           );

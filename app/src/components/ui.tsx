@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import type { TagKind } from "../bindings/TagKind";
 import type { Tint } from "../bindings/Tint";
 
@@ -32,7 +32,8 @@ export function Logo({ size = 30 }: { size?: number }) {
   );
 }
 
-const chipClass: Record<TagKind, string> = {
+const chipClass: Record<TagKind | "neutral", string> = {
+  neutral: "mi-chip--neutral",
   action: "mi-chip--action",
   decision: "mi-chip--decision",
   openQuestion: "mi-chip--question",
@@ -41,9 +42,15 @@ const chipClass: Record<TagKind, string> = {
   review: "mi-chip--review",
 };
 
-export function Chip({ kind, children, onClick }: { kind: TagKind; children: ReactNode; onClick?: () => void }) {
+export function Chip({ kind, children, onClick, label }: { kind: TagKind | "neutral"; children: ReactNode; onClick?: (e: MouseEvent) => void; label?: string }) {
   const cls = `mi-chip ${chipClass[kind]}`;
-  return onClick ? <button type="button" className={cls} onClick={onClick}>{children}</button> : <span className={cls}>{children}</span>;
+  return onClick ? (
+    <button type="button" className={cls} onClick={onClick} aria-label={label}>
+      {children}
+    </button>
+  ) : (
+    <span className={cls}>{children}</span>
+  );
 }
 
 const tintClass: Record<Tint, string> = {

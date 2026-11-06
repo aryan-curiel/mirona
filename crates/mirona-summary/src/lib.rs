@@ -436,6 +436,7 @@ pub async fn summarize_streaming(
             due: it.due,
             client: meeting.client.clone(),
             done: false,
+            owner_confirmed: false,
         })
         .collect();
     let mut quality = vec![];

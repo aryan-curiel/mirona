@@ -150,12 +150,20 @@ pub struct Segment {
     pub speaker_id: Id,
     /// Milliseconds from the start of the call.
     pub start_ms: u32,
+    /// Where the speech ends, from the call's start; 0 in transcripts from before it was kept
+    /// (unknown: diarization estimates it).
+    #[serde(default)]
+    pub end_ms: u32,
     pub text: String,
     pub redacted: bool,
     pub tags: Vec<Tag>,
     pub answers: Vec<Answer>,
     /// "Who owns it?" distribution, only for action items.
     pub owners: Vec<Choice>,
+    /// The due date as said ("by Thursday", "end of month") when "is a due date said?" is yes
+    /// (NGR-156).
+    #[serde(default)]
+    pub due: Option<String>,
 }
 
 /// A meeting-level choice question with a confidence threshold (type, client).
@@ -263,6 +271,9 @@ pub struct ActionItem {
     pub client: String,
     pub done: bool,
     pub needs_review: bool,
+    /// The user set the owner: kept when the summary is rewritten or speakers change.
+    #[serde(default)]
+    pub owner_confirmed: bool,
 }
 
 /// Row in the sidebar's recent list.

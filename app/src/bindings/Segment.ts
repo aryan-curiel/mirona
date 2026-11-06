@@ -7,8 +7,18 @@ export type Segment = { id: string, speakerId: string,
 /**
  * Milliseconds from the start of the call.
  */
-startMs: number, text: string, redacted: boolean, tags: Array<Tag>, answers: Array<Answer>, 
+startMs: number, 
+/**
+ * Where the speech ends, from the call's start; 0 in transcripts from before it was kept
+ * (unknown: diarization estimates it).
+ */
+endMs: number, text: string, redacted: boolean, tags: Array<Tag>, answers: Array<Answer>, 
 /**
  * "Who owns it?" distribution, only for action items.
  */
-owners: Array<Choice>, };
+owners: Array<Choice>, 
+/**
+ * The due date as said ("by Thursday", "end of month") when "is a due date said?" is yes
+ * (NGR-156).
+ */
+due: string | null, };

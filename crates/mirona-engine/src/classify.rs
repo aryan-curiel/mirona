@@ -3,7 +3,11 @@
 //! - **Live, per segment:** a worker thread asks the segment questions (five yes/no, "is a due
 //!   date said?", and "who owns it?" among the meeting's speakers) in one call per segment, with
 //!   the previous lines as context. Capture never waits on it. Answers, tags and owners go to
-//!   the store and out as `Classified`.
+//!   the store and out as `Classified`. When "is a due date said?" is yes, the phrase as said
+//!   ("by Thursday") is kept on the segment ([`due_phrase`]).
+//! - **After diarization:** owners chosen among speakers the meeting no longer has ("Them") are
+//!   asked again among the real ones ([`refresh_owners`]). Action items take the owner and due
+//!   date of the line they cite, unless the user set the owner (`Store::set_action_owner`).
 //! - **After the call:** segments the worker missed (imports, failures) are classified, then the
 //!   meeting questions (type → template, client, priority, tone, follow-up), the summary, the
 //!   quality check ("does it cover every action item?" → one rewrite if not) and the follow-up
@@ -17,8 +21,8 @@
 
 use crate::{Labelled, Paths, Shared, block_on, stage, summarize_hinted};
 use mirona_core::{
-    ActionItem, Answer, Choice, ChoiceAnswer, Locality, Meeting, MeetingAnswers, PipelineEvent,
-    ProviderOption, Segment, Tag, TagKind,
+    ActionItem, Answer, AnswerSource, Choice, ChoiceAnswer, Locality, Meeting, MeetingAnswers,
+    PipelineEvent, ProviderOption, Segment, Tag, TagKind,
 };
 use mirona_providers::config::Config;
 use mirona_providers::jev::Jev;
@@ -196,10 +200,14 @@ fn run(
         let ctx: Vec<String> = context.iter().cloned().collect();
         let res = classify_segment(c, cfg, &speakers, &ctx, &line).map_err(|e| e.to_string());
         let res = res.and_then(|(answers, tags, owners)| {
+            let due_said = answers
+                .iter()
+                .any(|a| a.id == "due" && a.answer && !a.needs_review());
+            let due = due_said.then(|| due_phrase(&seg.text)).flatten();
             store
                 .lock()
                 .unwrap()
-                .set_classification(id, &seg.id, answers, tags, owners)
+                .set_classification(id, &seg.id, answers, tags, owners, due)
         });
         match res {
             Ok(s) => {
@@ -232,6 +240,171 @@ fn run(
         }
     }
     failed
+}
+
+/// The due date as said in `text` ("by Thursday", "by the end of the month", "next Friday",
+/// "tomorrow", "in two weeks", "March 3"), taken when "is a due date said?" is yes. A small
+/// word pass, not a date parser: the phrase is kept as said, never turned into a date.
+/// ponytail: English only and the first match wins; ask a choice question if it misses
+/// phrasings in real meetings (NGR-156).
+pub fn due_phrase(text: &str) -> Option<String> {
+    const DAYS: [&str; 10] = [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+        "tomorrow",
+        "tonight",
+        "today",
+    ];
+    const SHORT: [&str; 6] = ["eod", "eow", "eom", "cob", "noon", "midnight"];
+    const PERIODS: [&str; 9] = [
+        "day",
+        "week",
+        "month",
+        "quarter",
+        "year",
+        "sprint",
+        "morning",
+        "afternoon",
+        "evening",
+    ];
+    const MONTHS: [&str; 12] = [
+        "january",
+        "february",
+        "march",
+        "april",
+        "may",
+        "june",
+        "july",
+        "august",
+        "september",
+        "october",
+        "november",
+        "december",
+    ];
+    const BEFORE: [&str; 7] = ["by", "before", "until", "till", "on", "due", "for"];
+    let words: Vec<(usize, &str)> = text
+        .split_whitespace()
+        .map(|w| (w.as_ptr().addr() - text.as_ptr().addr(), w))
+        .collect();
+    let norm: Vec<String> = words
+        .iter()
+        .map(|(_, w)| {
+            w.trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase()
+        })
+        .collect();
+    let at = |i: usize| norm.get(i).map_or("", String::as_str);
+    let numberish = |w: &str| {
+        w.trim_end_matches(|c: char| c.is_alphabetic())
+            .parse::<u32>()
+            .is_ok()
+            || ["a", "one", "two", "three", "four", "few", "couple"].contains(&w)
+    };
+    let date = |w: &str| w.contains('/') && w.split('/').all(|p| p.parse::<u32>().is_ok());
+    for i in 0..norm.len() {
+        let w = at(i);
+        // (first word, last word) of the phrase.
+        let span = if DAYS.contains(&w) || SHORT.contains(&w) || date(w) {
+            Some((i, i))
+        } else if (w == "next" || w == "this")
+            && (DAYS.contains(&at(i + 1)) || PERIODS.contains(&at(i + 1)))
+        {
+            Some((i, i + 1))
+        } else if w == "end" && at(i + 1) == "of" {
+            let k = if at(i + 2) == "the" { i + 3 } else { i + 2 };
+            let k = if at(k) == "next" || at(k) == "this" {
+                k + 1
+            } else {
+                k
+            };
+            (PERIODS.contains(&at(k)) || DAYS.contains(&at(k)) || MONTHS.contains(&at(k)))
+                .then_some((i, k))
+        } else if MONTHS.contains(&w) && (w != "may" || numberish(at(i + 1))) {
+            Some((i, if numberish(at(i + 1)) { i + 1 } else { i }))
+        } else if w == "in" && numberish(at(i + 1)) {
+            let k = if at(i + 2) == "of" { i + 3 } else { i + 2 };
+            ["days", "weeks", "months", "day", "week", "month", "hours"]
+                .contains(&at(k))
+                .then_some((i, k))
+        } else {
+            None
+        };
+        let Some((mut first, last)) = span else {
+            continue;
+        };
+        // "on a" / "of" etc. aren't part of it; "by", "by the", "no later than" are.
+        if first > 0 && at(first - 1) == "the" && first > 1 && BEFORE.contains(&at(first - 2)) {
+            first -= 2;
+        } else if first > 0 && BEFORE.contains(&at(first - 1)) {
+            first -= 1;
+        }
+        let start = words[first].0;
+        let (end_at, end_word) = words[last];
+        let phrase =
+            text[start..end_at + end_word.len()].trim_end_matches(|c: char| !c.is_alphanumeric());
+        return Some(phrase.to_string());
+    }
+    None
+}
+
+/// After diarization (NGR-156): action items whose owners were chosen among speakers the
+/// meeting no longer has ("Them", before it was split into people) are asked "who owns it?"
+/// again among the real ones; their tags, and the action items citing them, follow. Sensitive
+/// lines stay off cloud classifiers. Returns how many segments were asked.
+pub fn refresh_owners(
+    store: &Shared,
+    cfg: &Config,
+    id: &str,
+    c: &impl Classifier,
+    events: &Sender<PipelineEvent>,
+) -> Result<usize> {
+    let m = store.lock().unwrap().meeting(id)?;
+    let names: Vec<String> = m.speakers.iter().map(|p| p.name.clone()).collect();
+    let local = is_local(c);
+    let qs: Vec<Question> = segment_questions(&names)
+        .into_iter()
+        .filter(|q| q.id == "owner")
+        .collect();
+    let stale = |s: &Segment| {
+        s.answers.iter().any(|a| a.id == "action" && a.answer)
+            && (s.owners.is_empty()
+                || s.owners
+                    .iter()
+                    .any(|o| o.label != NO_OWNER && !names.contains(&o.label)))
+            && !s.redacted
+            && (local || !s.tags.iter().any(|t| t.kind == TagKind::Sensitive))
+    };
+    let mut asked = 0;
+    for seg in m.segments.iter().filter(|s| stale(s)) {
+        let line = format!("{}: {}", speaker_name(&m, seg), seg.text);
+        let replies = block_on(c.ask(&line, &qs)).map_err(|e| e.to_string())?;
+        let (_, owners) = to_answers(&qs, &replies);
+        let tags = tags(&seg.answers, &owners, cfg.threshold("owner", local));
+        let s = store.lock().unwrap().set_classification(
+            id,
+            &seg.id,
+            seg.answers.clone(),
+            tags,
+            owners,
+            seg.due.clone(),
+        )?;
+        asked += 1;
+        events
+            .send(PipelineEvent::Classified {
+                meeting_id: id.into(),
+                segment_id: s.id,
+                tags: s.tags,
+                answers: s.answers,
+                owners: s.owners,
+            })
+            .ok();
+    }
+    Ok(asked)
 }
 
 /// The live worker: segments go in through the sender as they're transcribed; it ends once
@@ -459,7 +632,7 @@ pub fn follow_up_draft(store: &Shared, id: &str, llm: &impl LlmProvider) -> Resu
             let due = a
                 .due
                 .as_deref()
-                .map(|d| format!(", by {d}"))
+                .map(|d| format!(" (due {d})"))
                 .unwrap_or_default();
             format!("- {owner}: {}{due}", a.text)
         })
@@ -492,6 +665,30 @@ pub fn follow_up_draft(store: &Shared, id: &str, llm: &impl LlmProvider) -> Resu
     answers.follow_up_draft.clone_from(&draft);
     store.lock().unwrap().set_answers(id, answers)?;
     Ok(Some(draft))
+}
+
+/// Ask everything again for a finished meeting ("Re-run classification"): every segment the
+/// user hasn't corrected, then the meeting questions. Returns how many segments failed.
+/// The summary is left alone (rewrite it with the template the new type picks).
+pub fn reclassify(
+    store: &Shared,
+    cfg: &Config,
+    id: &str,
+    c: &impl Classifier,
+    events: &Sender<PipelineEvent>,
+) -> Result<usize> {
+    let segs: Vec<Segment> = store.lock().unwrap().meeting(id)?.segments;
+    let user = |s: &Segment| s.answers.iter().any(|a| a.source == AnswerSource::User);
+    let failed = run(
+        store,
+        id,
+        c,
+        cfg,
+        events,
+        segs.into_iter().filter(|s| !user(s)),
+    );
+    classify_meeting(store, id, c, cfg)?;
+    Ok(failed)
 }
 
 /// Everything after the call, after diarization: tag the segments still untagged, answer the
@@ -660,7 +857,10 @@ mod tests {
                     "action" => Reply::YesNo(if last.contains("I'll") { 0.9 } else { 0.05 }),
                     // Below decision's 0.95: needs review.
                     "decision" => Reply::YesNo(if last.contains("go with") { 0.7 } else { 0.05 }),
-                    "due" => Reply::YesNo(if last.contains("Thursday") { 0.8 } else { 0.1 }),
+                    "due" => {
+                        let said = last.contains("Thursday") || last.contains("month");
+                        Reply::YesNo(if said { 0.8 } else { 0.1 })
+                    }
                     "follow_up" => Reply::YesNo(0.9),
                     "owner" => {
                         let who = last.split(':').next().unwrap_or_default().to_string();
@@ -765,11 +965,13 @@ mod tests {
             id: format!("m1-{n}"),
             speaker_id: (*who).into(),
             start_ms: u32::try_from(n).unwrap() * 4000,
+            end_ms: u32::try_from(n).unwrap() * 4000 + 3000,
             text: (*text).into(),
             redacted: false,
             tags: vec![],
             answers: vec![],
             owners: vec![],
+            due: None,
         })
         .collect();
         for seg in &segs {
@@ -889,6 +1091,31 @@ mod tests {
     }
 
     #[test]
+    fn reclassify_asks_again_but_keeps_corrections() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, segs) = meeting(dir.path());
+        let c = Scripted::default();
+        let (events, _rx) = channel();
+        assert_eq!(reclassify(&store, &cfg(), "m1", &c, &events).unwrap(), 0);
+        let fix = mirona_core::Correction {
+            segment_id: segs[0].id.clone(),
+            answer_id: "action".into(),
+            value: false,
+        };
+        store.lock().unwrap().correct(fix).unwrap();
+        c.states.lock().unwrap().clear();
+        reclassify(&store, &cfg(), "m1", &c, &events).unwrap();
+        let asked = c.states.lock().unwrap().clone();
+        assert!(
+            !asked.iter().any(|s| s.contains("SOW") && !s.contains('\n')),
+            "{asked:?}"
+        );
+        let m = store.lock().unwrap().meeting("m1").unwrap();
+        assert!(!m.segments[0].tags.iter().any(|t| t.kind == TagKind::Action));
+        assert!(m.answers.is_some());
+    }
+
+    #[test]
     fn below_threshold_meeting_type_keeps_the_default_template() {
         let mut a = MeetingAnswers {
             meeting_type: ChoiceAnswer {
@@ -925,5 +1152,153 @@ mod tests {
         assert_eq!(c.locality(), Locality::Local);
         cfg.providers.insert("classification".into(), "off".into());
         assert!(AnyClassifier::from_config(&cfg).0.is_none());
+    }
+
+    #[test]
+    fn due_phrases_are_kept_as_said() {
+        let cases = [
+            (
+                "I'll send the revised SOW by Thursday.",
+                Some("by Thursday"),
+            ),
+            (
+                "Can you get it done by the end of the month?",
+                Some("by the end of the month"),
+            ),
+            ("Draft it by end of week, please", Some("by end of week")),
+            ("Let's ship it next Friday!", Some("next Friday")),
+            ("I'll have numbers in two weeks.", Some("in two weeks")),
+            ("Due March 3, no later.", Some("Due March 3")),
+            ("Send it before 3/14.", Some("before 3/14")),
+            ("I'll do it tomorrow", Some("tomorrow")),
+            ("Ping me EOD.", Some("EOD")),
+            ("We may want to revisit pricing.", None),
+            ("Thanks for the update.", None),
+        ];
+        for (text, want) in cases {
+            assert_eq!(due_phrase(text).as_deref(), want, "{text}");
+        }
+    }
+
+    fn speaker(id: &str, name: &str) -> mirona_core::Speaker {
+        mirona_core::Speaker {
+            id: id.into(),
+            name: name.into(),
+            initial: name[..1].into(),
+            tint: mirona_core::Tint::Indigo,
+            subtitle: String::new(),
+            voiceprint: None,
+            suggestion: None,
+        }
+    }
+
+    fn item(n: u32, at_ms: u32, owner: &str) -> ActionItem {
+        ActionItem {
+            id: format!("m1-ai-{n}"),
+            meeting_id: "m1".into(),
+            meeting_title: String::new(),
+            at_ms: Some(at_ms),
+            text: "Draft the contract".into(),
+            owner: owner.into(),
+            due: None,
+            client: String::new(),
+            done: false,
+            needs_review: false,
+            owner_confirmed: false,
+        }
+    }
+
+    #[test]
+    fn after_diarization_owners_are_asked_again_and_items_follow() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, mut segs) = meeting(dir.path());
+        let mut late = segs[1].clone();
+        late.id = "m1-2".into();
+        late.start_ms = 8_000;
+        late.text = "I'll draft the contract by the end of the month.".into();
+        store
+            .lock()
+            .unwrap()
+            .push_segment("m1", late.clone())
+            .unwrap();
+        segs.push(late);
+        let c = Scripted::default();
+        let (events, rx) = channel();
+        assert_eq!(run(&store, "m1", &c, &cfg(), &events, segs), 0);
+        let summary = |s: &Shared, owner: &str| {
+            let sum = mirona_core::Summary {
+                template: "general".into(),
+                overview: String::new(),
+                decisions: vec![],
+                open_questions: vec![],
+                written_by: String::new(),
+                quality: String::new(),
+            };
+            let items = vec![item(1, 0, "me"), item(2, 8_000, owner)];
+            s.lock().unwrap().set_summary("m1", sum, items).unwrap();
+        };
+        summary(&store, "");
+        {
+            let s = store.lock().unwrap();
+            let m = s.meeting("m1").unwrap();
+            // Live, "them" owns it, and the due date is the phrase as said.
+            assert_eq!(m.segments[2].owners[0].label, "Them");
+            assert_eq!(
+                m.segments[2].due.as_deref(),
+                Some("by the end of the month")
+            );
+            assert_eq!(m.segments[0].due.as_deref(), Some("by Thursday"));
+            assert_eq!(m.segments[1].due, None, "no due date said");
+            let items = s.action_items();
+            assert_eq!(items[0].due.as_deref(), Some("by Thursday"));
+            assert_eq!(
+                (items[1].owner.as_str(), items[1].due.as_deref()),
+                ("Them", Some("by the end of the month"))
+            );
+        }
+        // Nothing changed speakers yet: nothing to ask.
+        assert_eq!(
+            refresh_owners(&store, &cfg(), "m1", &c, &events).unwrap(),
+            0
+        );
+
+        // Diarization splits "them" into Speaker 1.
+        store
+            .lock()
+            .unwrap()
+            .set_diarization(
+                "m1",
+                &["me".into(), "m1-s1".into(), "m1-s1".into()],
+                vec![speaker("m1-s1", "Speaker 1")],
+                vec![],
+            )
+            .unwrap();
+        // Both actions were owned among Me/Them: both are asked among Me/Speaker 1.
+        rx.try_iter().count();
+        assert_eq!(
+            refresh_owners(&store, &cfg(), "m1", &c, &events).unwrap(),
+            2
+        );
+        assert_eq!(rx.try_iter().count(), 2);
+        let s = store.lock().unwrap();
+        let m = s.meeting("m1").unwrap();
+        assert_eq!(m.segments[2].owners[0].label, "Speaker 1");
+        assert_eq!(m.segments[2].tags[0].label, "Action · Speaker 1");
+        assert_eq!(s.action_items()[1].owner, "Speaker 1");
+        drop(s);
+
+        // An owner the user set stays through a rewritten summary.
+        store
+            .lock()
+            .unwrap()
+            .set_action_owner("m1-ai-2", "Nadia")
+            .unwrap();
+        summary(&store, "Them");
+        let items = store.lock().unwrap().action_items();
+        assert_eq!(
+            (items[1].owner.as_str(), items[1].owner_confirmed),
+            ("Nadia", true)
+        );
+        assert_eq!(items[0].owner, "Me", "the model's owner, from the tag");
     }
 }

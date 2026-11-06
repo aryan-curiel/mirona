@@ -286,15 +286,28 @@ impl Engine {
                 })
                 .ok();
         };
-        if let Err(e) = self.diarize(id, events) {
-            notice(format!("Speakers not separated: {e}"), true);
-        }
-        // Tags, meeting answers, summary (template picked by meeting type), quality check and
-        // follow-up draft (NGR-155..162).
         let (classifier, why) = classify::AnyClassifier::from_config(&cfg);
         if let Some(why) = why {
             notice(why, false);
         }
+        match self.diarize(id, events) {
+            Err(e) => notice(format!("Speakers not separated: {e}"), true),
+            // New voices: names from how they're addressed, and owners among the real
+            // speakers (NGR-153/156). Without a classifier the text heuristic's names stay.
+            Ok(n) if n > 0 => {
+                if let Some(c) = &classifier {
+                    if let Err(e) = diarize::suggest_names(&self.store, &cfg, id, c) {
+                        notice(format!("Name suggestions failed: {e}"), true);
+                    }
+                    if let Err(e) = classify::refresh_owners(&self.store, &cfg, id, c, events) {
+                        notice(format!("Owners not updated: {e}"), true);
+                    }
+                }
+            }
+            Ok(_) => {}
+        }
+        // Tags, meeting answers, summary (template picked by meeting type), quality check and
+        // follow-up draft (NGR-155..162).
         let llm = Llm::from_config(&cfg);
         classify::after_call(
             &self.store,
@@ -620,11 +633,13 @@ fn segment(meeting_id: &str, n: usize, s: &mirona_capture::Segment) -> Segment {
         id: format!("{meeting_id}-{n}"),
         speaker_id: speaker_id(s.source).into(),
         start_ms: s.start_ms,
+        end_ms: s.end_ms,
         text: s.text.clone(),
         redacted: false,
         tags: vec![],
         answers: vec![],
         owners: vec![],
+        due: None,
     }
 }
 

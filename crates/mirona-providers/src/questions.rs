@@ -161,6 +161,27 @@ pub fn segment_questions(speakers: &[String]) -> Vec<Question> {
     qs
 }
 
+/// The "who is this voice?" option for none of the known people.
+pub const NO_NAME: &str = "none of them";
+
+/// Who an unknown voice is, from how the others address them (NGR-153): a choice among known
+/// people plus [`NO_NAME`], asked about the lines around `speaker`'s turns.
+pub fn speaker_name_question(speaker: &str, names: &[String]) -> Question {
+    let mut options: Vec<(String, String)> = names.iter().map(|n| (n.clone(), n.clone())).collect();
+    options.push((
+        NO_NAME.into(),
+        format!("Nobody names {speaker}, or they are called something else."),
+    ));
+    Question {
+        id: "speaker_name".into(),
+        question: "Who is this unknown speaker?".into(),
+        instructions: format!(
+            "Who is {speaker}, based on how the others address or name them (\"Thanks, Ana\", \"Ana, can you…\", \"over to you, Ana\")? Pick a name only if the transcript shows it is {speaker}'s."
+        ),
+        kind: Kind::Choice(options),
+    }
+}
+
 pub const MEETING_TYPES: [(&str, &str); 5] = [
     (
         "standup",

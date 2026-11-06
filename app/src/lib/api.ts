@@ -3,6 +3,7 @@ import type { ActionItem } from "../bindings/ActionItem";
 import type { Correction } from "../bindings/Correction";
 import type { Meeting } from "../bindings/Meeting";
 import type { MeetingSummary } from "../bindings/MeetingSummary";
+import type { Review } from "../bindings/Review";
 import type { Segment } from "../bindings/Segment";
 import type { Speaker } from "../bindings/Speaker";
 
@@ -19,7 +20,18 @@ export type Settings = {
   shortcut: string;
   meetingsDir: string;
   modelsDir: string;
+  classification: "jev" | "local-llm" | "off";
+  diarization: "speakrs" | "speakrs-cpu" | "off";
+  /** Question id → the user's threshold; the rest use `thresholdDefaults`. */
+  thresholds: Record<string, number>;
+  /** Defaults for the classifier in use (read-only). */
+  thresholdDefaults: Record<string, number>;
+  /** Client name → short description. */
+  clients: Record<string, string>;
 };
+
+/** A person as `list_people` returns them: the speaker plus where they were last heard. */
+export type Person = Speaker & { meetings: number; lastSeen: MeetingSummary | null };
 
 export type Permission = "granted" | "denied" | "notDetermined";
 
@@ -46,7 +58,7 @@ export const api = {
   getMeeting: (id: string) => invoke<Meeting>("get_meeting", { id }),
   listActionItems: () => invoke<ActionItem[]>("list_action_items"),
   toggleActionItem: (id: string) => invoke<ActionItem>("toggle_action_item", { id }),
-  listPeople: () => invoke<Speaker[]>("list_people"),
+  listPeople: () => invoke<Person[]>("list_people"),
   enrollSpeaker: (speakerId: string, name: string) => invoke<Speaker>("enroll_speaker", { speakerId, name }),
   nameSpeaker: (meetingId: string, speakerId: string, name: string) =>
     invoke<Speaker>("name_speaker", { meetingId, speakerId, name }),
@@ -54,6 +66,11 @@ export const api = {
   deleteVoiceprint: (personId: string) => invoke<void>("delete_voiceprint", { personId }),
   correctAnswer: (correction: Correction) => invoke<number>("correct_answer", { correction }),
   confirmClient: (meetingId: string, client: string) => invoke<Meeting>("confirm_client", { meetingId, client }),
+  review: (meetingId: string) => invoke<Review[]>("review", { meetingId }),
+  resolveReview: (meetingId: string, review: Review, accept: boolean) => invoke<void>("resolve_review", { meetingId, review, accept }),
+  setOwner: (meetingId: string, segmentId: string, owner: string) => invoke<Segment>("set_owner", { meetingId, segmentId, owner }),
+  rerunDiarization: (meetingId: string) => invoke<void>("rerun_diarization", { meetingId }),
+  rerunClassification: (meetingId: string) => invoke<void>("rerun_classification", { meetingId }),
   renameMeeting: (meetingId: string, title: string) => invoke<Meeting>("rename_meeting", { meetingId, title }),
   saveNotes: (meetingId: string, raw: string[], atMs: (number | null)[]) => invoke<void>("save_notes", { meetingId, raw, atMs }),
   editSegment: (meetingId: string, segmentId: string, text: string) => invoke<Segment>("edit_segment", { meetingId, segmentId, text }),
@@ -87,3 +104,22 @@ export const fmt = (ms: number, long = false) => {
 
 export const LLM_LOCAL = (s: Settings) =>
   s.llm === "ollama" || (s.llm === "openai" && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(s.llmBaseUrl.trim()));
+
+/** Labels for the classifier's ids. */
+export const MEETING_TYPES: Record<string, string> = {
+  standup: "Standup",
+  client_call: "Client call",
+  one_on_one: "1:1",
+  planning: "Planning",
+  other: "Other",
+};
+export const typeLabel = (v: string) => MEETING_TYPES[v] ?? v;
+export const TONES = ["Very unhappy", "Concerned", "Neutral", "Positive", "Delighted"];
+export const toneLabel = (t: number) => TONES[Math.min(4, Math.max(0, Math.round(t)))];
+export const PRIORITIES = ["Nothing to do", "Low", "Normal", "High", "Very high", "Critical"];
+export const priorityLabel = (p: number) => PRIORITIES[Math.min(5, Math.max(0, Math.round(p)))];
+/** Same rule as `Answer::needs_review` in mirona-core. */
+export const needsReview = (a: { source: string; answer: boolean; probability: number; threshold: number }) =>
+  a.source === "model" && a.answer && a.probability < a.threshold;
+/** A choice the model is sure enough of (or the user confirmed). */
+export const sure = (c: { confirmed: boolean; probability: number; threshold: number }) => c.confirmed || c.probability >= c.threshold;

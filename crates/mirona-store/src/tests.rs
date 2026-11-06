@@ -458,7 +458,7 @@ fn classification_review_list_and_labels() {
     answers[0].threshold = 0.99;
     let tags = vec![review_tag(TagKind::Action, 0.7)];
     let back = s
-        .set_classification("claims-desk", &seg.id, answers, tags, vec![])
+        .set_classification("claims-desk", &seg.id, answers, tags, vec![], None)
         .unwrap();
     assert_eq!(back.text, seg.text, "text left alone");
     assert_eq!(back.tags[0].label, "Needs review · action? 0.70");
@@ -491,7 +491,7 @@ fn classification_review_list_and_labels() {
     again[0].source = mirona_core::AnswerSource::Model;
     again[0].probability = 0.1;
     let kept = s
-        .set_classification("claims-desk", &seg.id, again, fixed.tags, vec![])
+        .set_classification("claims-desk", &seg.id, again, fixed.tags, vec![], None)
         .unwrap();
     assert!((kept.answers[0].probability - 1.0).abs() < 1e-6);
 }
@@ -515,4 +515,69 @@ fn clients_below_threshold_are_not_filed() {
     a.client.probability = 0.9;
     s.set_answers("claims-desk", a).unwrap();
     assert_eq!(s.meeting("claims-desk").unwrap().client, "Elsewhere");
+}
+
+#[test]
+fn corrections_file_drop_and_reassign_action_items() {
+    let (_d, mut s) = seeded();
+    let items = |s: &Store| -> Vec<ActionItem> {
+        s.action_items()
+            .into_iter()
+            .filter(|a| a.meeting_id == "claims-desk")
+            .collect()
+    };
+    let fix = |s: &mut Store, seg: &str, value: bool| {
+        s.correct(Correction {
+            segment_id: seg.into(),
+            answer_id: "action".into(),
+            value,
+        })
+        .unwrap()
+    };
+    // Not an action after all: its item goes.
+    fix(&mut s, "c6", false);
+    assert!(
+        !items(&s)
+            .iter()
+            .any(|a| a.at_ms == Some(sample::ms("04:45")))
+    );
+    // An action the summary missed: filed, owned by the speaker.
+    fix(&mut s, "c3", true);
+    let added = items(&s)
+        .into_iter()
+        .find(|a| a.at_ms == Some(sample::ms("02:40")))
+        .unwrap();
+    assert_eq!(added.owner, "Speaker 3");
+    assert!(!added.needs_review);
+
+    // Owner choice: tag, owners and items follow.
+    let seg = s.set_owner("claims-desk", "c5", "Nadia").unwrap();
+    assert_eq!(seg.owners[0].label, "Nadia");
+    assert!(seg.tags.iter().any(|t| t.label == "Action · Nadia"));
+    assert_eq!(items(&s)[0].owner, "Nadia");
+
+    // Review list items resolve in one call.
+    s.resolve_action_item("a3", true).unwrap();
+    assert!(!items(&s).iter().any(|a| a.needs_review));
+    s.resolve_action_item("a3", false).unwrap();
+    assert!(!items(&s).iter().any(|a| a.id == "a3"));
+
+    let s = Store::open(s.root()).unwrap();
+    assert_eq!(items(&s)[0].owner, "Nadia");
+    assert!(
+        items(&s)
+            .iter()
+            .any(|a| a.at_ms == Some(sample::ms("02:40")))
+    );
+}
+
+#[test]
+fn transcripts_from_before_end_times_and_due_dates_load() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(files::TRANSCRIPT);
+    let old = r#"{"id":"a-0","speakerId":"me","startMs":1000,"text":"Hi.","redacted":false,"tags":[],"answers":[],"owners":[]}"#;
+    std::fs::write(&path, format!("{old}\n")).unwrap();
+    let (segs, errors) = files::read_transcript(&path);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!((segs[0].end_ms, segs[0].due.clone()), (0, None));
 }

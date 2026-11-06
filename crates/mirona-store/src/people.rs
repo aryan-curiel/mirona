@@ -14,7 +14,7 @@
 
 use crate::files::write_atomic;
 use crate::{Result, Store};
-use mirona_core::{Id, Speaker, Voiceprint};
+use mirona_core::{Id, NameSuggestion, Speaker, Voiceprint};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -315,6 +315,26 @@ impl Store {
         }
         self.sync_voiceprints(&v, &[from.into(), into.into()])?;
         self.person_speaker(into)
+    }
+
+    /// Replace the name suggested for a speaker of one meeting (`None` clears it).
+    pub fn set_suggestion(
+        &mut self,
+        meeting_id: &str,
+        speaker_id: &str,
+        suggestion: Option<NameSuggestion>,
+    ) -> Result<()> {
+        let i = self.idx(meeting_id)?;
+        let sp = self.entries[i]
+            .meeting
+            .speakers
+            .iter_mut()
+            .find(|s| s.id == speaker_id)
+            .ok_or("no speaker")?;
+        sp.suggestion = suggestion;
+        self.save(i, false)?;
+        self.refresh_people();
+        Ok(())
     }
 
     /// Forget a person's voice: their voiceprint and every embedding behind it are deleted.
@@ -644,6 +664,7 @@ mod tests {
             client: String::new(),
             done: false,
             needs_review: false,
+            owner_confirmed: false,
         };
         let summary = Summary {
             template: "general".into(),

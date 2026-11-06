@@ -10,14 +10,16 @@
 
 use mirona_capture::Permission;
 use mirona_core::{
-    ActionItem, Correction, Locality, Meeting, MeetingSummary, PipelineEvent, ProviderOption,
-    Segment, Speaker,
+    ActionItem, Correction, Locality, Meeting, MeetingAnswers, MeetingSummary, PipelineEvent,
+    ProviderOption, Review, Segment, Speaker,
 };
-use mirona_engine::{Engine, Paths, Session};
-use mirona_providers::config::Config;
+use mirona_engine::{Engine, Llm, Paths, Session};
+use mirona_providers::config::{Config, default_threshold};
+use mirona_providers::questions::NO_CLIENT;
 use mirona_providers::{check_privacy, keychain};
 use mirona_store::Store;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex, RwLock};
@@ -88,9 +90,44 @@ fn toggle_action_item(st: St, id: String) -> Res<ActionItem> {
     st.engine().store.lock().unwrap().toggle_action_item(&id)
 }
 
+/// A person for the People view (NGR-154): the speaker, how many meetings they're in and the
+/// newest one.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Person {
+    #[serde(flatten)]
+    speaker: Speaker,
+    meetings: u32,
+    last_seen: Option<MeetingSummary>,
+}
+
 #[tauri::command]
-fn list_people(st: St) -> Vec<Speaker> {
-    st.engine().store.lock().unwrap().people().to_vec()
+fn list_people(st: St) -> Res<Vec<Person>> {
+    let engine = st.engine();
+    let s = engine.store.lock().unwrap();
+    let mut seen: Vec<(MeetingSummary, Vec<String>)> = vec![];
+    for m in s.list_meetings() {
+        let ids = s
+            .meeting(&m.id)?
+            .speakers
+            .into_iter()
+            .map(|p| p.id)
+            .collect();
+        seen.push((m, ids));
+    }
+    Ok(s.people()
+        .iter()
+        .map(|p| {
+            let mut mine = seen.iter().filter(|(_, ids)| ids.contains(&p.id));
+            let last_seen = mine.next().map(|(m, _)| m.clone());
+            Person {
+                speaker: p.clone(),
+                meetings: u32::try_from(mine.count() + usize::from(last_seen.is_some()))
+                    .unwrap_or(u32::MAX),
+                last_seen,
+            }
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -141,6 +178,185 @@ fn confirm_client(st: St, meeting_id: String, client: String) -> Res<Meeting> {
         .lock()
         .unwrap()
         .confirm_client(&meeting_id, &client)
+}
+
+/// What in a meeting is below its threshold and not yet confirmed (NGR-158).
+#[tauri::command]
+fn review(st: St, meeting_id: String) -> Res<Vec<Review>> {
+    st.engine().store.lock().unwrap().review(&meeting_id)
+}
+
+/// Confirm (`accept`) or reject one review item in one click (NGR-158). For the meeting type
+/// and client, `review.value` is the option the user picked. A confirmed "needs a follow-up?"
+/// gets its draft written in the background (a `Notice` says when).
+#[tauri::command]
+fn resolve_review(
+    app: AppHandle,
+    st: St,
+    meeting_id: String,
+    review: Review,
+    accept: bool,
+) -> Res<()> {
+    let engine = st.engine();
+    let draft = resolve(
+        &mut engine.store.lock().unwrap(),
+        &meeting_id,
+        &review,
+        accept,
+    )?;
+    if draft {
+        let tx = events(&app);
+        std::thread::spawn(move || {
+            let res = Llm::from_config(&engine.config()).and_then(|llm| {
+                mirona_engine::classify::follow_up_draft(&engine.store, &meeting_id, &llm)
+            });
+            let ev = match res {
+                Ok(Some(_)) => notice(&meeting_id, "Follow-up draft written.".into(), false),
+                Ok(None) => notice(&meeting_id, "No summary yet to draft from.".into(), false),
+                Err(e) => notice(&meeting_id, format!("Follow-up draft failed: {e}"), true),
+            };
+            tx.send(ev).ok();
+        });
+    }
+    Ok(())
+}
+
+/// Applies one review decision; true when a follow-up draft should be written now.
+fn resolve(s: &mut Store, meeting_id: &str, r: &Review, accept: bool) -> Res<bool> {
+    let fix = |s: &mut Store, segment_id: &str, answer_id: &str| {
+        s.correct(Correction {
+            segment_id: segment_id.into(),
+            answer_id: answer_id.into(),
+            value: accept,
+        })
+        .map(drop)
+    };
+    match (r.segment_id.as_deref(), r.question.as_str()) {
+        (Some(seg), q) => fix(s, seg, q)?,
+        (None, "action_item") => {
+            let m = s.meeting(meeting_id)?;
+            let seg = m.segments.iter().find(|x| {
+                Some(x.start_ms) == r.at_ms && x.answers.iter().any(|a| a.id == "action")
+            });
+            if let Some(seg) = seg {
+                fix(s, &seg.id, "action")?;
+            } else {
+                let item = s
+                    .action_items()
+                    .into_iter()
+                    .find(|a| a.meeting_id == meeting_id && a.text == r.value && a.at_ms == r.at_ms)
+                    .ok_or("That action item is gone.")?;
+                s.resolve_action_item(&item.id, accept)?;
+            }
+        }
+        (None, "client") => {
+            let client = if accept && r.value != NO_CLIENT {
+                r.value.as_str()
+            } else {
+                ""
+            };
+            s.confirm_client(meeting_id, client)?;
+        }
+        (None, q @ ("meeting_type" | "follow_up")) => {
+            let mut a = s.meeting(meeting_id)?.answers.ok_or("no meeting answers")?;
+            confirm_answer(&mut a, q, &r.value, accept);
+            let draft = q == "follow_up" && accept && a.follow_up_draft.is_empty();
+            s.set_answers(meeting_id, a)?;
+            return Ok(draft);
+        }
+        (None, q) => return Err(format!("nothing to review for {q}")),
+    }
+    Ok(false)
+}
+
+/// The user's answer to a meeting question: certain from now on.
+fn confirm_answer(a: &mut MeetingAnswers, question: &str, value: &str, accept: bool) {
+    let p = if accept { 1.0 } else { 0.0 };
+    if question == "meeting_type" {
+        let t = &mut a.meeting_type;
+        t.value = if accept { value } else { "other" }.into();
+        t.probability = 1.0;
+        t.confirmed = true;
+    } else {
+        a.follow_up = accept;
+        a.follow_up_probability = p;
+    }
+}
+
+/// The user picks who owns an action (NGR-159).
+#[tauri::command]
+fn set_owner(st: St, meeting_id: String, segment_id: String, owner: String) -> Res<Segment> {
+    st.engine()
+        .store
+        .lock()
+        .unwrap()
+        .set_owner(&meeting_id, &segment_id, &owner)
+}
+
+/// Refuses a rerun on a meeting still recording or being processed.
+fn idle(st: &AppState, meeting_id: &str) -> Res<()> {
+    let s = st.rec_state();
+    if s.recording.as_deref() == Some(meeting_id) || s.processing.iter().any(|p| p == meeting_id) {
+        return Err("Wait until this meeting has finished processing.".into());
+    }
+    Ok(())
+}
+
+/// Separate the speakers of a finished meeting again (NGR-154). Returns at once; a `Diarized`
+/// event and a `Notice` follow.
+#[tauri::command]
+fn rerun_diarization(app: AppHandle, st: St, meeting_id: String) -> Res<()> {
+    idle(&st, &meeting_id)?;
+    if mirona_engine::stage(&st.engine().config(), "diarization", "speakrs") == "off" {
+        return Err("Speaker detection is off in Models and MCP.".into());
+    }
+    let (engine, tx) = (st.engine(), events(&app));
+    std::thread::spawn(move || {
+        let ev = match engine.diarize(&meeting_id, &tx) {
+            Ok(0) => notice(&meeting_id, "No other voices found.".into(), false),
+            Ok(n) => notice(
+                &meeting_id,
+                format!("Speakers separated: {n} voice(s)."),
+                false,
+            ),
+            Err(e) => notice(&meeting_id, format!("Speakers not separated: {e}"), true),
+        };
+        tx.send(ev).ok();
+    });
+    Ok(())
+}
+
+/// Ask the classifier about every segment and the meeting again (NGR-156/157). Corrections
+/// are kept. Returns at once; `Classified` events and a `Notice` follow.
+#[tauri::command]
+fn rerun_classification(app: AppHandle, st: St, meeting_id: String) -> Res<()> {
+    idle(&st, &meeting_id)?;
+    let engine = st.engine();
+    let cfg = engine.config();
+    let (c, why) = mirona_engine::classify::AnyClassifier::from_config(&cfg);
+    let c = c.ok_or("Classification is off in Models and MCP.")?;
+    let tx = events(&app);
+    if let Some(why) = why {
+        tx.send(notice(&meeting_id, why, false)).ok();
+    }
+    std::thread::spawn(move || {
+        let res = mirona_engine::classify::reclassify(&engine.store, &cfg, &meeting_id, &c, &tx);
+        let ev = match res {
+            Ok(0) => notice(
+                &meeting_id,
+                "Tags and meeting answers updated.".into(),
+                false,
+            ),
+            Ok(n) => notice(
+                &meeting_id,
+                format!("Updated; {n} segment(s) failed."),
+                true,
+            ),
+            Err(e) => notice(&meeting_id, format!("Classification failed: {e}"), true),
+        };
+        tx.send(ev).ok();
+    });
+    Ok(())
 }
 
 #[tauri::command]
@@ -499,7 +715,37 @@ struct Settings {
     shortcut: String,
     meetings_dir: PathBuf,
     models_dir: PathBuf,
+    /// jev | local-llm | off
+    #[serde(default)]
+    classification: String,
+    /// speakrs (`CoreML` when it can) | speakrs-cpu | off
+    #[serde(default)]
+    diarization: String,
+    /// Question id → the user's threshold; questions left out use `threshold_defaults`.
+    #[serde(default)]
+    thresholds: BTreeMap<String, f32>,
+    /// The defaults for the classifier in use (local or Jev); read-only.
+    #[serde(default, skip_deserializing)]
+    threshold_defaults: BTreeMap<String, f32>,
+    /// Client name → short description, for the client question (NGR-157).
+    #[serde(default)]
+    clients: BTreeMap<String, String>,
 }
+
+/// Questions with a threshold the user can set (NGR-158).
+const QUESTIONS: [&str; 11] = [
+    "action",
+    "decision",
+    "unanswered",
+    "smalltalk",
+    "sensitive",
+    "due",
+    "owner",
+    "meeting_type",
+    "client",
+    "follow_up",
+    "coverage",
+];
 
 /// A shortcut the user can set: a valid accelerator with Cmd, Ctrl or Alt (Shift alone would
 /// eat capital letters while typing).
@@ -532,6 +778,18 @@ impl Settings {
             shortcut: cfg.shortcut.clone(),
             meetings_dir: paths.meetings.clone(),
             models_dir: paths.models.clone(),
+            classification: mirona_engine::stage(cfg, "classification", "jev"),
+            diarization: mirona_engine::stage(cfg, "diarization", "speakrs"),
+            thresholds: cfg.thresholds.clone(),
+            threshold_defaults: {
+                let local = cfg.privacy
+                    || mirona_engine::stage(cfg, "classification", "jev") == "local-llm";
+                QUESTIONS
+                    .iter()
+                    .map(|q| ((*q).to_string(), default_threshold(q, local)))
+                    .collect()
+            },
+            clients: cfg.clients.clone(),
         }
     }
 
@@ -571,6 +829,25 @@ impl Settings {
             return Err("pick a summary template".into());
         }
         parse_shortcut(&self.shortcut)?;
+        if !["jev", "local-llm", "off"].contains(&self.classification.as_str()) {
+            return Err(format!("unknown classifier {}", self.classification));
+        }
+        if !["speakrs", "speakrs-cpu", "off"].contains(&self.diarization.as_str()) {
+            return Err(format!("unknown speaker detection {}", self.diarization));
+        }
+        for (q, t) in &self.thresholds {
+            if !QUESTIONS.contains(&q.as_str()) || !(0.0..=1.0).contains(t) {
+                return Err(format!("a threshold for {q} must be between 0 and 1"));
+            }
+        }
+        let mut clients = BTreeMap::new();
+        for (name, about) in &self.clients {
+            let name = name.trim();
+            if name.is_empty() || name == NO_CLIENT {
+                return Err("Every client needs a name (and not “none”).".into());
+            }
+            clients.insert(name.to_string(), about.trim().to_string());
+        }
         let dir = |p: &Path, default: &Path| (p != default).then(|| p.to_path_buf());
         cfg.privacy = self.privacy;
         cfg.providers.insert("stt".into(), self.stt.clone());
@@ -582,6 +859,12 @@ impl Settings {
         cfg.shortcut = self.shortcut.trim().into();
         cfg.meetings_dir = dir(&self.meetings_dir, &defaults.meetings);
         cfg.models_dir = dir(&self.models_dir, &defaults.models);
+        cfg.providers
+            .insert("classification".into(), self.classification.clone());
+        cfg.providers
+            .insert("diarization".into(), self.diarization.clone());
+        cfg.thresholds.clone_from(&self.thresholds);
+        cfg.clients = clients;
         Ok(cfg)
     }
 }
@@ -757,6 +1040,11 @@ pub fn run() {
             delete_voiceprint,
             correct_answer,
             confirm_client,
+            review,
+            resolve_review,
+            set_owner,
+            rerun_diarization,
+            rerun_classification,
             rename_meeting,
             save_notes,
             edit_segment,
@@ -829,6 +1117,95 @@ mod tests {
         assert!(!cfg.mcp_enabled);
         let paths = Paths::resolve(&cfg, Path::new("/app"), Path::new("/home/me/Documents"));
         assert_eq!(Settings::of(&cfg, &paths), moved);
+    }
+
+    #[test]
+    fn classifier_diarization_thresholds_and_clients_are_settings() {
+        let d = defaults();
+        let mut s = Settings::of(&Config::default(), &d);
+        assert_eq!(
+            (s.classification.as_str(), s.diarization.as_str()),
+            ("jev", "speakrs")
+        );
+        // Privacy mode: the local fallback's stricter defaults.
+        assert!((s.threshold_defaults["action"] - 0.99).abs() < 1e-6);
+        s.classification = "local-llm".into();
+        s.diarization = "speakrs-cpu".into();
+        s.thresholds.insert("action".into(), 0.8);
+        s.clients
+            .insert(" Northwind Bank ".into(), " contact: Karen ".into());
+        let cfg = s.apply(Config::default(), &d).unwrap();
+        assert_eq!(cfg.providers["classification"], "local-llm");
+        assert_eq!(cfg.providers["diarization"], "speakrs-cpu");
+        assert!((cfg.threshold("action", true) - 0.8).abs() < 1e-6);
+        assert_eq!(cfg.clients["Northwind Bank"], "contact: Karen");
+        let back = Settings::of(&cfg, &d);
+        assert_eq!(back.thresholds, cfg.thresholds);
+
+        for bad in [
+            Settings {
+                classification: "kev".into(),
+                ..back.clone()
+            },
+            Settings {
+                diarization: "pyannote".into(),
+                ..back.clone()
+            },
+            Settings {
+                thresholds: [("action".into(), 1.5)].into(),
+                ..back.clone()
+            },
+            Settings {
+                thresholds: [("nope".into(), 0.5)].into(),
+                ..back.clone()
+            },
+            Settings {
+                clients: [(" ".into(), String::new())].into(),
+                ..back.clone()
+            },
+        ] {
+            assert!(bad.apply(cfg.clone(), &d).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn review_items_resolve_in_one_click() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path()).unwrap();
+        mirona_store::sample::seed(&mut s).unwrap();
+        let id = "claims-desk";
+        let r = |question: &str, value: &str| Review {
+            segment_id: None,
+            at_ms: None,
+            question: question.into(),
+            value: value.into(),
+            probability: 0.5,
+            threshold: 0.6,
+        };
+        assert!(!resolve(&mut s, id, &r("meeting_type", "standup"), true).unwrap());
+        let a = s.meeting(id).unwrap().answers.unwrap();
+        assert_eq!(a.meeting_type.value, "standup");
+        assert!(a.meeting_type.confirmed);
+
+        assert!(!resolve(&mut s, id, &r("client", "none"), true).unwrap());
+        assert_eq!(s.meeting(id).unwrap().client, "");
+        resolve(&mut s, id, &r("client", "Corvo"), true).unwrap();
+        assert_eq!(s.meeting(id).unwrap().client, "Corvo");
+
+        // Follow-up: a confirmed yes asks for a draft only when there is none.
+        assert!(
+            !resolve(&mut s, id, &r("follow_up", "yes"), true).unwrap(),
+            "sample has one"
+        );
+        resolve(&mut s, id, &r("follow_up", "yes"), false).unwrap();
+        assert!(!s.meeting(id).unwrap().answers.unwrap().follow_up);
+
+        // An action item waiting for review, confirmed through its segment.
+        let item = s.review(id).unwrap();
+        let item = item.iter().find(|x| x.question == "action_item").unwrap();
+        resolve(&mut s, id, item, true).unwrap();
+        assert!(!s.action_items().iter().any(|a| a.needs_review));
+        assert!(resolve(&mut s, id, &r("tone", ""), true).is_err());
     }
 
     #[test]

@@ -402,9 +402,19 @@ impl Store {
             if let Some(old) = e.items.iter().find(|o| o.id == a.id) {
                 a.done = old.done;
             }
+            // An owner the user set, for the task said on the same line.
+            let set = e
+                .items
+                .iter()
+                .find(|o| o.owner_confirmed && o.at_ms == a.at_ms);
+            if let Some(old) = set.filter(|_| a.at_ms.is_some()) {
+                a.owner.clone_from(&old.owner);
+                a.owner_confirmed = true;
+            }
         }
         e.meeting.summary = Some(summary);
         e.items = items;
+        classify::fill_items(e);
         self.save(i, false)
     }
 
@@ -456,6 +466,41 @@ impl Store {
         Ok(a)
     }
 
+    /// Keep (confirm) or drop an action item waiting for review (NGR-158).
+    pub fn resolve_action_item(&mut self, id: &str, keep: bool) -> Result<()> {
+        let i = self
+            .entries
+            .iter()
+            .position(|e| e.items.iter().any(|a| a.id == id))
+            .ok_or("no action item")?;
+        let items = &mut self.entries[i].items;
+        if keep {
+            items
+                .iter_mut()
+                .filter(|a| a.id == id)
+                .for_each(|a| a.needs_review = false);
+        } else {
+            items.retain(|a| a.id != id);
+        }
+        self.save(i, false)
+    }
+
+    /// The user sets who owns an action item; later summaries and speaker changes keep it.
+    pub fn set_action_owner(&mut self, id: &str, owner: &str) -> Result<ActionItem> {
+        let (i, j) = self
+            .entries
+            .iter()
+            .enumerate()
+            .find_map(|(i, e)| e.items.iter().position(|a| a.id == id).map(|j| (i, j)))
+            .ok_or("no action item")?;
+        let a = &mut self.entries[i].items[j];
+        a.owner = owner.trim().into();
+        a.owner_confirmed = true;
+        let a = a.clone();
+        self.save(i, false)?;
+        Ok(a)
+    }
+
     /// Fix a model answer. The fix is kept as a labelled example (`labels_path`, NGR-160) and
     /// retags the segment.
     #[allow(clippy::needless_pass_by_value)] // takes the correction as the UI sends it
@@ -484,10 +529,17 @@ impl Store {
         Self::retag(seg, &c.answer_id, c.value);
         let seg = seg.clone();
         let meeting_id = e.meeting.id.clone();
-        if c.answer_id == "action"
-            && let Some(a) = e.items.iter_mut().find(|a| a.at_ms == Some(seg.start_ms))
-        {
-            a.needs_review = false;
+        // The action items follow (NGR-159): a confirmed action is filed, a rejected one goes.
+        if c.answer_id == "action" {
+            let here = |a: &ActionItem| a.at_ms == Some(seg.start_ms);
+            if !c.value {
+                e.items.retain(|a| !here(a));
+            } else if let Some(a) = e.items.iter_mut().find(|a| here(a)) {
+                a.needs_review = false;
+            } else {
+                let item = classify::item_from(&e.meeting, &seg);
+                e.items.push(item);
+            }
         }
         self.save(i, true)?;
         self.append_label(&meeting_id, &seg, &c.answer_id, c.value, model_probability)?;

@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useStore, type Tab } from "../store";
-import { api, fmt } from "../lib/api";
+import { api, fmt, priorityLabel, sure, toneLabel, typeLabel } from "../lib/api";
 import { retime } from "../lib/notes";
 import { Avatar, Chip, Icon, Label, Logo, Mono } from "../components/ui";
 import { ImportProgress, RecordButton, useModelNames } from "../components/Shell";
@@ -100,19 +100,30 @@ function MeetingHeader({ m }: { m: Meeting }) {
   const live = useStore((s) => s.recording?.meetingId === m.id);
   const [title, setTitle] = useState(m.title);
   useEffect(() => setTitle(m.title), [m.title]);
+  const rerunning = useStore((s) => s.rerunning[m.id]);
   const a = m.answers;
+  const followSure = a && (a.followUpProbability >= a.followUpThreshold || a.followUpProbability === 0 || a.followUpProbability === 1);
   return (
     <header data-tauri-drag-region>
       <div className="flex flex-wrap items-center gap-2">
-        {a && <Chip kind="action">{a.meetingType.value} · {a.meetingType.probability.toFixed(2)}</Chip>}
-        {a &&
-          (a.client.confirmed ? (
+        {a && (
+          <Chip kind={sure(a.meetingType) ? "action" : "review"}>
+            {typeLabel(a.meetingType.value)}
+            {sure(a.meetingType) ? "" : "?"} · {a.meetingType.confirmed ? "confirmed" : a.meetingType.probability.toFixed(2)}
+          </Chip>
+        )}
+        {a?.client.value &&
+          (sure(a.client) ? (
             <Chip kind="action">{a.client.value}</Chip>
           ) : (
             <Chip kind="review">{a.client.value}? · {a.client.probability.toFixed(2)}</Chip>
           ))}
+        {a && <Chip kind="neutral">Priority · {priorityLabel(a.priority)}</Chip>}
+        {a && <Chip kind="neutral">Tone · {toneLabel(a.tone)}</Chip>}
+        {a?.followUp && <Chip kind={followSure ? "decision" : "review"}>Follow-up email{followSure ? "" : "?"}</Chip>}
         {m.sample && <span className="text-[12px] font-medium text-muted">Sample data</span>}
         {busy && <span className="mi-chip mi-chip--review mi-pulse">Writing the summary on this device…</span>}
+        {rerunning && <span className="mi-chip mi-chip--review mi-pulse">{rerunning}</span>}
       </div>
       <input
         aria-label="Meeting title"
@@ -282,16 +293,58 @@ type RowProps = {
   onPlay?: (ms: number) => void;
 };
 
+/** A speaker's name; click to name them (in this meeting, NGR-154). */
+function SpeakerName({ sp, onName }: { sp: Speaker; onName: (name: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  if (draft === null)
+    return (
+      <button
+        type="button"
+        title="Name this speaker"
+        aria-label={`Name ${sp.name}`}
+        className="rounded text-[15px] font-semibold hover:underline hover:decoration-dotted"
+        onClick={(e) => {
+          e.stopPropagation();
+          setDraft(sp.name);
+        }}
+      >
+        {sp.name}
+      </button>
+    );
+  const save = () => {
+    const n = draft.trim();
+    setDraft(null);
+    if (n && n !== sp.name) onName(n);
+  };
+  return (
+    <input
+      // biome-ignore lint/a11y/noAutofocus: opened by the user's own click on the name
+      autoFocus
+      aria-label={`New name for ${sp.name}`}
+      className="mi-field h-8 w-40 text-[14px]"
+      value={draft}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") setDraft(null);
+      }}
+    />
+  );
+}
+
 const SegmentRow = memo(function SegmentRow({ seg, speaker: sp, suggest, selected, showSensitive, query, onPlay }: RowProps) {
   const select = useStore((s) => s.selectSegment);
-  const enroll = useStore((s) => s.enroll);
+  const nameSpeaker = useStore((s) => s.nameSpeaker);
   const edit = useStore((s) => s.editSegment);
   const [draft, setDraft] = useState<string | null>(null);
   const save = () => {
     if (draft?.trim() && draft.trim() !== seg.text) void edit(seg.id, draft);
     setDraft(null);
   };
-  const hidden = seg.redacted && !showSensitive;
+  // Redacted lines and lines tagged sensitive stay hidden until "Show sensitive text".
+  const hidden = (seg.redacted || seg.tags.some((t) => t.kind === "sensitive")) && !showSensitive;
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: mouse shortcut; the Inspect button is the keyboard path
     // biome-ignore lint/a11y/useKeyWithClickEvents: same as above
@@ -299,7 +352,7 @@ const SegmentRow = memo(function SegmentRow({ seg, speaker: sp, suggest, selecte
       {sp && <Avatar tint={sp.tint} initial={sp.initial} />}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2.5">
-          <span className="text-[15px] font-semibold">{sp?.name ?? seg.speakerId}</span>
+          {sp ? <SpeakerName sp={sp} onName={(n) => nameSpeaker(sp.id, n)} /> : <span className="text-[15px] font-semibold">{seg.speakerId}</span>}
           {onPlay ? (
             <button
               type="button"
@@ -317,12 +370,19 @@ const SegmentRow = memo(function SegmentRow({ seg, speaker: sp, suggest, selecte
             <Mono>{fmt(seg.startMs)}</Mono>
           )}
           {suggest && sp?.suggestion && (
-            <Chip kind="review" onClick={() => sp.suggestion && enroll(sp.id, sp.suggestion.name)}>
-              {sp.suggestion.name}? {sp.suggestion.probability.toFixed(2)} from “{sp.suggestion.evidence}” · Confirm
+            <Chip
+              kind="review"
+              label={`Confirm ${sp.name} is ${sp.suggestion.name}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (sp.suggestion) nameSpeaker(sp.id, sp.suggestion.name);
+              }}
+            >
+              {sp.suggestion.name}? {sp.suggestion.probability.toFixed(2)} {sp.suggestion.evidence ? `from “${sp.suggestion.evidence}” ` : ""}· Confirm
             </Chip>
           )}
           {seg.tags.map((t) => (
-            <Chip key={t.label} kind={t.kind}>{t.label}</Chip>
+            <Chip key={t.label} kind={t.kind}>{t.kind === "action" && seg.due && !t.label.includes(seg.due) ? `${t.label} · ${seg.due}` : t.label}</Chip>
           ))}
         </div>
         {draft !== null ? (
@@ -345,7 +405,7 @@ const SegmentRow = memo(function SegmentRow({ seg, speaker: sp, suggest, selecte
             className="mi-field selectable mt-1 w-full resize-none text-[15px] leading-relaxed"
           />
         ) : hidden ? (
-          <p className="mt-1 text-[15px] italic text-sensitive">[Credentials redacted on this device]</p>
+          <p className="mt-1 text-[15px] italic text-sensitive">[Sensitive: hidden. Tick “Show sensitive text” to read it]</p>
         ) : (
           <p className="selectable mt-1 text-[15px] leading-relaxed text-ink-2" onDoubleClick={() => setDraft(seg.text)}>
             {highlight(seg.text, query)}
@@ -540,7 +600,12 @@ function SummaryTab({ m }: { m: Meeting }) {
         <section className={`mi-card mi-enter mt-5 p-6 ${busy ? "opacity-60" : ""}`}>
           <div className="flex flex-wrap items-baseline gap-x-3">
             <Label>Template: {sum.template}</Label>
-            <span className="text-[13px] text-muted">Written by {sum.writtenBy || "an unknown model"}</span>
+            <span className="text-[13px] text-muted">
+              {m.answers && sure(m.answers.meetingType) && m.answers.meetingType.value.toLowerCase().replace(/[ _]/g, "-") === current
+                ? `picked by classification (${typeLabel(m.answers.meetingType.value)} · ${m.answers.meetingType.confirmed ? "confirmed" : m.answers.meetingType.probability.toFixed(2)}) · `
+                : ""}
+              Written by {sum.writtenBy || "an unknown model"}
+            </span>
           </div>
           <p className="selectable mt-3 text-[15px] leading-relaxed">{sum.overview}</p>
 

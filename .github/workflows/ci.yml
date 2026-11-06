@@ -24,14 +24,15 @@ jobs:
           # build outputs, or a restored cache skips the script and linking fails.
           cache-directories: target/sherpa-onnx-prebuilt
           prefix-key: v1-sherpa
-      - name: sherpa-onnx native libs (macOS)
+      - name: sherpa-onnx native libs
         # Point every build at one download instead of the build script's cache in target/,
-        # which a restored Rust cache can leave half-present (the app build then fails to link).
-        if: runner.os == 'macOS'
+        # which a restored Rust cache can leave half-present (linking then fails).
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           v=$(awk '/name = "sherpa-onnx-sys"/{getline; print $3}' Cargo.lock | tr -d '"')
-          n="sherpa-onnx-v$v-osx-arm64-static-lib"
+          if [ "$RUNNER_OS" = macOS ]; then os=osx-arm64; else os=linux-x64; fi
+          n="sherpa-onnx-v$v-$os-static-lib"
           mkdir -p "$RUNNER_TEMP/sherpa" && cd "$RUNNER_TEMP/sherpa"
           curl -fsSL -o "$n.tar.bz2" "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$v/$n.tar.bz2"
           tar xjf "$n.tar.bz2"
@@ -78,14 +79,15 @@ jobs:
           # build outputs, or a restored cache skips the script and linking fails.
           cache-directories: target/sherpa-onnx-prebuilt
           prefix-key: v1-sherpa
-      - name: sherpa-onnx native libs (macOS)
+      - name: sherpa-onnx native libs
         # Point every build at one download instead of the build script's cache in target/,
-        # which a restored Rust cache can leave half-present (the app build then fails to link).
-        if: runner.os == 'macOS'
+        # which a restored Rust cache can leave half-present (linking then fails).
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           v=$(awk '/name = "sherpa-onnx-sys"/{getline; print $3}' Cargo.lock | tr -d '"')
-          n="sherpa-onnx-v$v-osx-arm64-static-lib"
+          if [ "$RUNNER_OS" = macOS ]; then os=osx-arm64; else os=linux-x64; fi
+          n="sherpa-onnx-v$v-$os-static-lib"
           mkdir -p "$RUNNER_TEMP/sherpa" && cd "$RUNNER_TEMP/sherpa"
           curl -fsSL -o "$n.tar.bz2" "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$v/$n.tar.bz2"
           tar xjf "$n.tar.bz2"

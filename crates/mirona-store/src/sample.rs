@@ -59,6 +59,7 @@ pub fn seg(
         id: id.into(),
         speaker_id: speaker.into(),
         start_ms: ms(at),
+        end_ms: 0,
         text: text.into(),
         redacted: false,
         tags,
@@ -70,6 +71,7 @@ pub fn seg(
                 probability: *p,
             })
             .collect(),
+        due: None,
     }
 }
 
@@ -369,6 +371,7 @@ pub fn action_items() -> Vec<ActionItem> {
         client: client.into(),
         done: false,
         needs_review: review,
+        owner_confirmed: false,
     };
     vec![
         item(
@@ -654,6 +657,7 @@ pub fn demo_finish(store: &mut Store, id: &str, elapsed_ms: u32, llm: &str) -> R
             client: String::new(),
             done: false,
             needs_review: false,
+            owner_confirmed: false,
         })
         .collect();
     let sample = meetings();

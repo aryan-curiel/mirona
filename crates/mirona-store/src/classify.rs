@@ -5,10 +5,44 @@
 //! `{"id", "meeting_id", "text", "labels": {"action": "yes"}, "model_probability", "at"}`.
 //! `mirona eval` reads it next to the public `eval/chunks.jsonl`.
 
+use crate::files::Entry;
 use crate::{Result, Store};
-use mirona_core::{Answer, Choice, Review, Segment, Tag, TagKind};
+use mirona_core::{ActionItem, Answer, Choice, Meeting, Review, Segment, Tag, TagKind};
+use mirona_providers::questions::NO_OWNER;
 use std::io::Write;
 use std::path::PathBuf;
+
+/// Who a segment's Action tag names: "Action · Inés" → Inés. The engine names an owner
+/// there only when the owner choice clears its threshold (and not on a "Needs review" action).
+fn tagged_owner(seg: &Segment) -> Option<&str> {
+    seg.tags
+        .iter()
+        .filter(|t| t.kind == TagKind::Action)
+        .find_map(|t| t.label.strip_prefix("Action · "))
+        .filter(|o| *o != "confirmed")
+}
+
+/// Action items follow the classifier on the line they cite (NGR-156): the owner its Action
+/// tag names, and the due date said there. Owners the user set stay.
+pub(crate) fn fill_items(e: &mut Entry) {
+    for a in &mut e.items {
+        let Some(seg) = e
+            .meeting
+            .segments
+            .iter()
+            .find(|s| Some(s.start_ms) == a.at_ms)
+        else {
+            continue;
+        };
+        if let Some(owner) = tagged_owner(seg).filter(|_| !a.owner_confirmed) {
+            a.owner = owner.into();
+            a.needs_review = false;
+        }
+        if seg.due.is_some() {
+            a.due.clone_from(&seg.due);
+        }
+    }
+}
 
 /// The tag for a model "yes" below its threshold: "Needs review · action? 0.48".
 pub fn review_tag(kind: TagKind, p_yes: f32) -> Tag {
@@ -37,6 +71,7 @@ impl Store {
         answers: Vec<Answer>,
         tags: Vec<Tag>,
         owners: Vec<Choice>,
+        due: Option<String>,
     ) -> Result<Segment> {
         let i = self.idx(meeting_id)?;
         let seg = self.entries[i]
@@ -57,7 +92,9 @@ impl Store {
             .collect();
         seg.tags = tags;
         seg.owners = owners;
+        seg.due = due;
         let seg = seg.clone();
+        fill_items(&mut self.entries[i]);
         // ponytail: rewrites the whole transcript per segment (O(n²) over a meeting); fine for
         // hours of speech, append-only patches if it ever shows up in a profile.
         self.save(i, true)?;
@@ -121,6 +158,47 @@ impl Store {
         Ok(out)
     }
 
+    /// The user picks who owns an action (NGR-159): the owner choice, the action tag and the
+    /// action items at that moment follow.
+    pub fn set_owner(
+        &mut self,
+        meeting_id: &str,
+        segment_id: &str,
+        owner: &str,
+    ) -> Result<Segment> {
+        let owner = owner.trim();
+        if owner.is_empty() {
+            return Err("An owner needs a name.".into());
+        }
+        let i = self.idx(meeting_id)?;
+        let e = &mut self.entries[i];
+        let seg = e
+            .meeting
+            .segments
+            .iter_mut()
+            .find(|s| s.id == segment_id)
+            .ok_or("no segment")?;
+        seg.owners.retain(|o| o.label != owner);
+        seg.owners.iter_mut().for_each(|o| o.probability = 0.0);
+        seg.owners.insert(
+            0,
+            Choice {
+                label: owner.into(),
+                probability: 1.0,
+            },
+        );
+        for t in seg.tags.iter_mut().filter(|t| t.kind == TagKind::Action) {
+            t.label = format!("Action · {owner}");
+        }
+        let seg = seg.clone();
+        for a in e.items.iter_mut().filter(|a| a.at_ms == Some(seg.start_ms)) {
+            a.owner = owner.into();
+            a.owner_confirmed = true;
+        }
+        self.save(i, true)?;
+        Ok(seg)
+    }
+
     /// Retag a corrected segment: its answer's tag follows the fix, and its review tag goes.
     pub(crate) fn retag(seg: &mut Segment, answer_id: &str, value: bool) {
         let Some(kind) = TagKind::for_answer(answer_id) else {
@@ -174,5 +252,30 @@ impl Store {
             .open(&path)
             .map_err(|e| format!("{}: {e}", path.display()))?;
         writeln!(f, "{row}").map_err(|e| format!("{}: {e}", path.display()))
+    }
+}
+
+/// An action item for a segment the user confirmed as an action and the summary missed.
+pub(crate) fn item_from(m: &Meeting, seg: &Segment) -> ActionItem {
+    let speaker = m.speakers.iter().find(|p| p.id == seg.speaker_id);
+    let owner = seg
+        .owners
+        .first()
+        .filter(|o| o.label != NO_OWNER)
+        .map(|o| o.label.clone())
+        .or_else(|| speaker.map(|p| p.name.clone()))
+        .unwrap_or_default();
+    ActionItem {
+        id: format!("{}-ai-{}", m.id, seg.id),
+        meeting_id: m.id.clone(),
+        meeting_title: m.title.clone(),
+        at_ms: Some(seg.start_ms),
+        text: seg.text.clone(),
+        owner,
+        due: seg.due.clone(),
+        client: m.client.clone(),
+        done: false,
+        needs_review: false,
+        owner_confirmed: false,
     }
 }

@@ -1,11 +1,11 @@
 import { create } from "zustand";
 import { listen } from "@tauri-apps/api/event";
-import { api, LLM_LOCAL, type RecState, type Settings, type Status, type Template } from "./lib/api";
+import { api, LLM_LOCAL, type Person, type RecState, type Settings, type Status, type Template } from "./lib/api";
 import type { ActionItem } from "./bindings/ActionItem";
 import type { Meeting } from "./bindings/Meeting";
 import type { MeetingSummary } from "./bindings/MeetingSummary";
 import type { PipelineEvent } from "./bindings/PipelineEvent";
-import type { Speaker } from "./bindings/Speaker";
+import type { Review } from "./bindings/Review";
 
 export type View = "meetings" | "actions" | "people" | "models" | "setup";
 export type Tab = "transcript" | "notes" | "summary";
@@ -38,7 +38,13 @@ type State = {
   status: Status | null;
   templates: Template[];
   actionItems: ActionItem[];
-  people: Speaker[];
+  people: Person[];
+  /** What in the open meeting waits for the user's confirmation (NGR-158). */
+  review: Review[];
+  /** Meetings whose speakers or tags are being redone, with what is running. */
+  rerunning: Record<string, string>;
+  /** Sidebar: only meetings for this client (null: all). */
+  clientFilter: string | null;
   corrections: number;
   recording: Recording | null;
   /** Meetings being summarized after their recording stopped. */
@@ -68,6 +74,14 @@ type State = {
   rename: (title: string) => Promise<void>;
   editSegment: (segmentId: string, text: string) => Promise<void>;
   enroll: (speakerId: string, name: string) => Promise<void>;
+  nameSpeaker: (speakerId: string, name: string) => Promise<void>;
+  merge: (from: string, into: string) => Promise<void>;
+  deleteVoiceprint: (personId: string) => Promise<void>;
+  resolve: (review: Review, accept: boolean) => Promise<void>;
+  setOwner: (segmentId: string, owner: string) => Promise<void>;
+  rerun: (what: "diarization" | "classification") => Promise<void>;
+  openAt: (meetingId: string, ms: number) => Promise<void>;
+  setClientFilter: (client: string | null) => void;
   regenerate: (template: string) => Promise<void>;
   addDemo: () => Promise<void>;
   importAudio: () => Promise<void>;
@@ -99,7 +113,16 @@ export const useStore = create<State>((set, get) => {
 
   const reloadMeeting = async (id?: string) => {
     const m = get().meeting;
-    if (m && (!id || id === m.id)) set({ meeting: await api.getMeeting(m.id) });
+    if (m && (!id || id === m.id)) {
+      const [meeting, review] = await Promise.all([api.getMeeting(m.id), api.review(m.id).catch(() => [])]);
+      set({ meeting, review });
+    }
+  };
+
+  /** After a correction: the meeting, its review list, action items and people. */
+  const afterFix = async () => {
+    await reloadMeeting();
+    await reloadLists();
   };
 
   const onRecording = async (r: RecState) => {
@@ -133,8 +156,12 @@ export const useStore = create<State>((set, get) => {
       case "classified":
         if (here && meeting) {
           const segments = meeting.segments.map((s) => (s.id === e.segmentId ? { ...s, tags: e.tags, answers: e.answers, owners: e.owners } : s));
-          set({ meeting: { ...meeting, segments } });
+          set({ meeting: { ...meeting, segments }, review: await api.review(meeting.id).catch(() => get().review) });
         }
+        break;
+      case "diarized":
+        await reloadLists();
+        await reloadMeeting(e.meetingId);
         break;
       case "importing":
         set({ importing: { meetingId: e.meetingId, file: e.file, fraction: e.fraction } });
@@ -157,7 +184,9 @@ export const useStore = create<State>((set, get) => {
         // "Imported …" carries the meeting; "Import failed" has none.
         if (imp && (e.meetingId === imp.meetingId || e.message.startsWith("Import failed"))) set({ importing: null });
         get().flash(e.message, e.error);
+        set({ rerunning: without(get().rerunning, e.meetingId) });
         await reloadLists(); // an import may have added a meeting
+        await reloadMeeting(e.meetingId); // a rerun or follow-up draft may have changed it
         break;
       }
     }
@@ -176,6 +205,9 @@ export const useStore = create<State>((set, get) => {
     templates: [],
     actionItems: [],
     people: [],
+    review: [],
+    rerunning: {},
+    clientFilter: null,
     corrections: 0,
     recording: null,
     processing: [],
@@ -216,9 +248,16 @@ export const useStore = create<State>((set, get) => {
     setTab: (tab) => set({ tab }),
 
     openMeeting: async (id) => {
-      const meeting = await api.getMeeting(id);
-      set({ meeting, view: "meetings", segmentId: null, scrollTo: null });
+      const [meeting, review] = await Promise.all([api.getMeeting(id), api.review(id).catch(() => [])]);
+      set({ meeting, review, view: "meetings", segmentId: null, scrollTo: null });
     },
+
+    openAt: async (id, ms) => {
+      await get().openMeeting(id);
+      get().jump(ms);
+    },
+
+    setClientFilter: (clientFilter) => set({ clientFilter }),
 
     selectSegment: (id) => set({ segmentId: id }),
 
@@ -271,8 +310,8 @@ export const useStore = create<State>((set, get) => {
     correct: (segmentId, answerId, value) =>
       run(async () => {
         const corrections = await api.correctAnswer({ segmentId, answerId, value });
-        set({ corrections, actionItems: await api.listActionItems() });
-        await reloadMeeting();
+        set({ corrections });
+        await afterFix();
         get().flash("Correction saved as a labelled example.");
       }),
 
@@ -280,7 +319,33 @@ export const useStore = create<State>((set, get) => {
       run(async () => {
         const m = get().meeting;
         if (!m) return;
-        set({ meeting: await api.confirmClient(m.id, client), meetings: await api.listMeetings() });
+        await api.confirmClient(m.id, client);
+        await afterFix();
+      }),
+
+    resolve: (review, accept) =>
+      run(async () => {
+        const m = get().meeting;
+        if (!m) return;
+        await api.resolveReview(m.id, review, accept);
+        await afterFix();
+      }),
+
+    setOwner: (segmentId, owner) =>
+      run(async () => {
+        const m = get().meeting;
+        if (!m) return;
+        await api.setOwner(m.id, segmentId, owner);
+        await afterFix();
+        get().flash(`Owner set to ${owner}.`);
+      }),
+
+    rerun: (what) =>
+      run(async () => {
+        const m = get().meeting;
+        if (!m) return;
+        await (what === "diarization" ? api.rerunDiarization(m.id) : api.rerunClassification(m.id));
+        set({ rerunning: { ...get().rerunning, [m.id]: what === "diarization" ? "Finding speakers…" : "Tagging again…" } });
       }),
 
     rename: (title) =>
@@ -306,6 +371,29 @@ export const useStore = create<State>((set, get) => {
         await reloadLists();
         await reloadMeeting();
         get().flash(`Voiceprint enrolled as ${name} in every meeting.`);
+      }),
+
+    nameSpeaker: (speakerId, name) =>
+      run(async () => {
+        const m = get().meeting;
+        if (!m) return;
+        const p = await api.nameSpeaker(m.id, speakerId, name);
+        await afterFix();
+        get().flash(`Named ${p.name}: transcript, summary and action items updated.`);
+      }),
+
+    merge: (from, into) =>
+      run(async () => {
+        const p = await api.mergePeople(from, into);
+        await afterFix();
+        get().flash(`Merged into ${p.name} in every meeting.`);
+      }),
+
+    deleteVoiceprint: (personId) =>
+      run(async () => {
+        await api.deleteVoiceprint(personId);
+        await afterFix();
+        get().flash("Voiceprint deleted. Meetings keep the name.");
       }),
 
     regenerate: (template) =>

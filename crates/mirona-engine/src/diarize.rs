@@ -6,15 +6,18 @@
 //! registry (`.mirona/voices.json`), never into `meeting.md`.
 
 use crate::{Engine, Result, block_on, stage};
-use mirona_core::{NameSuggestion, PipelineEvent, Segment, Speaker, Tint};
+use mirona_core::{Locality, NameSuggestion, PipelineEvent, Segment, Speaker, TagKind, Tint};
+use mirona_providers::questions::{self, NO_NAME, Reply};
 use mirona_providers::speakrs::{
     self, COREML_MODEL, CPU_MODEL, MIN_SPEAKER_SPEECH_MS, MODELS_DIR, Mode, Speakrs,
 };
-use mirona_providers::{Diarization, Diarizer};
+use mirona_providers::{Classifier, Diarization, Diarizer};
 use mirona_store::Cluster;
 use std::path::Path;
 use std::sync::mpsc::Sender;
 
+/// `NameSuggestion.evidence` of a guess made from the voice, not from what was said.
+const SIMILAR_VOICE: &str = "Similar voice";
 /// Segments are VAD chunks: never longer than 1.5 × 5 s (`VadConfig`).
 const MAX_SEGMENT_MS: u32 = 7_500;
 /// `CoreML` peaks at 7–13 GB, so it needs at least this much RAM (ADR 0001).
@@ -28,28 +31,32 @@ pub struct Span {
     pub mic: bool,
 }
 
-/// Spans of a transcript. `Segment` has no end time, so it is estimated: up to the next
-/// segment of the same source, at most `MAX_SEGMENT_MS`, and about 2 words a second.
-/// ponytail: estimated ends; store `end_ms` on `Segment` (core, additive) for exact overlap.
+/// Spans of a transcript: each segment's exact end, or for transcripts saved before segments
+/// kept one (`end_ms` 0), an estimate: up to the next segment of the same source, at most
+/// `MAX_SEGMENT_MS`, and about 2 words a second.
 pub fn spans(segs: &[Segment]) -> Vec<Span> {
     segs.iter()
         .enumerate()
         .map(|(i, s)| {
-            let next = segs[i + 1..]
-                .iter()
-                .filter(|n| n.speaker_id == s.speaker_id && n.start_ms >= s.start_ms)
-                .map(|n| n.start_ms)
-                .min()
-                .unwrap_or(u32::MAX);
-            let words = u32::try_from(s.text.split_whitespace().count()).unwrap_or(u32::MAX);
-            let by_words = 1_000u32.saturating_add(words.saturating_mul(500));
-            let end = s
-                .start_ms
-                .saturating_add(MAX_SEGMENT_MS.min(by_words))
-                .min(next);
+            let end = if s.end_ms > s.start_ms {
+                s.end_ms
+            } else {
+                let next = segs[i + 1..]
+                    .iter()
+                    .filter(|n| n.speaker_id == s.speaker_id && n.start_ms >= s.start_ms)
+                    .map(|n| n.start_ms)
+                    .min()
+                    .unwrap_or(u32::MAX);
+                let words = u32::try_from(s.text.split_whitespace().count()).unwrap_or(u32::MAX);
+                let by_words = 1_000u32.saturating_add(words.saturating_mul(500));
+                s.start_ms
+                    .saturating_add(MAX_SEGMENT_MS.min(by_words))
+                    .min(next)
+                    .max(s.start_ms + 1)
+            };
             Span {
                 start_ms: s.start_ms,
-                end_ms: end.max(s.start_ms + 1),
+                end_ms: end,
                 mic: s.speaker_id == "me",
             }
         })
@@ -102,9 +109,8 @@ pub fn assign(spans: &[Span], d: &Diarization) -> Vec<Option<usize>> {
 }
 
 /// A known person a speaker is addressed as nearby. "Inés, can you…" votes for the next other
-/// speaker, "Thanks, Inés." for the previous one.
-/// ponytail: text heuristic standing in for a classifier choice question over known people
-/// (+ "none") once WP-A's typed question API lands (NGR-153).
+/// speaker, "Thanks, Inés." for the previous one. The fallback for [`suggest_names`] when
+/// classification is off or fails.
 pub fn context_suggestion(
     segs: &[(&str, &str)],
     speaker: &str,
@@ -175,6 +181,117 @@ fn addressed(text: &str, name: &str) -> Vec<Dir> {
             }
         })
         .collect()
+}
+
+/// Lines on each side of an unknown speaker's turn sent with the name question.
+const NAME_CONTEXT: usize = 2;
+/// Most transcript characters sent per name question (~1.5k tokens).
+const NAME_CHARS: usize = 6_000;
+
+/// Names for the unknown voices of a diarized meeting from how the others address them
+/// (NGR-153): for each "Speaker N" without a voice-based guess, the classifier picks among
+/// known people not in this meeting, or [`NO_NAME`], over the lines around their turns. Its
+/// answer replaces the text heuristic's: a name at/above the `speaker_name` threshold that is
+/// said in those lines becomes the suggestion (quoting the line), anything else clears it.
+/// Sensitive lines stay off cloud classifiers, redacted ones off all. On an error the
+/// heuristic's suggestion stays. Returns how many speakers got a suggestion.
+pub fn suggest_names(
+    store: &crate::Shared,
+    cfg: &mirona_providers::config::Config,
+    id: &str,
+    c: &impl Classifier,
+) -> Result<usize> {
+    let (m, voices) = {
+        let s = store.lock().unwrap();
+        (s.meeting(id)?, s.voices())
+    };
+    let names: Vec<String> = voices
+        .people
+        .iter()
+        .filter(|p| !m.speakers.iter().any(|s| s.id == p.id))
+        .map(|p| p.name.clone())
+        .collect();
+    if names.is_empty() {
+        return Ok(0);
+    }
+    let cloud = c.locality() == Locality::Cloud;
+    let name_of = |s: &Segment| {
+        m.speakers
+            .iter()
+            .find(|p| p.id == s.speaker_id)
+            .map_or_else(|| s.speaker_id.clone(), |p| p.name.clone())
+    };
+    let unknown = m.speakers.iter().filter(|sp| {
+        !["me", "them", "speaker"].contains(&sp.id.as_str())
+            && voices.people.iter().all(|p| p.id != sp.id)
+            && sp
+                .suggestion
+                .as_ref()
+                .is_none_or(|g| g.evidence != SIMILAR_VOICE)
+    });
+    let mut suggested = 0;
+    for sp in unknown {
+        let near: Vec<usize> = m
+            .segments
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.speaker_id == sp.id)
+            .flat_map(|(i, _)| i.saturating_sub(NAME_CONTEXT)..=i + NAME_CONTEXT)
+            .filter(|&i| i < m.segments.len())
+            .collect();
+        let mut lines: Vec<(usize, String)> = vec![];
+        let mut chars = 0;
+        for i in near {
+            let s = &m.segments[i];
+            let sensitive = s.tags.iter().any(|t| t.kind == TagKind::Sensitive);
+            if lines.iter().any(|(j, _)| *j == i) || s.redacted || (cloud && sensitive) {
+                continue;
+            }
+            let line = format!("{}: {}", name_of(s), s.text);
+            chars += line.len() + 1;
+            if chars > NAME_CHARS {
+                break;
+            }
+            lines.push((i, line));
+        }
+        if lines.is_empty() {
+            continue;
+        }
+        let text: Vec<&str> = lines.iter().map(|(_, l)| l.as_str()).collect();
+        let q = questions::speaker_name_question(&sp.name, &names);
+        let replies = block_on(c.ask(&text.join("\n"), std::slice::from_ref(&q)))
+            .map_err(|e| e.to_string())?;
+        let threshold = cfg.threshold("speaker_name", !cloud);
+        let suggestion = replies.first().and_then(|r| {
+            let Reply::Choice { value, .. } = r else {
+                return None;
+            };
+            let probability = r.confidence();
+            if value == NO_NAME || probability < threshold {
+                return None;
+            }
+            // Only a name actually said here: quote the line (others' lines first).
+            let said = |(i, l): &&(usize, String)| {
+                m.segments[*i].speaker_id != sp.id && l.contains(value.as_str())
+            };
+            let evidence = lines
+                .iter()
+                .find(said)
+                .or_else(|| lines.iter().find(|(_, l)| l.contains(value.as_str())))?;
+            let quote = evidence.1.split_once(": ").map_or("", |(_, t)| t);
+            Some(NameSuggestion {
+                name: value.clone(),
+                probability,
+                evidence: quote.chars().take(80).collect(),
+            })
+        });
+        suggested += usize::from(suggestion.is_some());
+        store
+            .lock()
+            .unwrap()
+            .set_suggestion(id, &sp.id, suggestion)?;
+    }
+    Ok(suggested)
 }
 
 /// `CoreML` on macOS with ≥ 16 GB RAM and its models present; the CPU otherwise, or when the
@@ -302,7 +419,7 @@ impl Engine {
                     Some(NameSuggestion {
                         name: name_of(&pid)?.clone(),
                         probability: cos,
-                        evidence: "Similar voice".into(),
+                        evidence: SIMILAR_VOICE.into(),
                     })
                 });
                 sp
@@ -363,7 +480,7 @@ fn speaker(id: &str, name: &str, tint: Tint) -> Speaker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mirona_providers::{FoundSpeaker, Turn};
+    use mirona_providers::{FoundSpeaker, Provider, Turn};
 
     fn span(start_ms: u32, end_ms: u32, mic: bool) -> Span {
         Span {
@@ -452,27 +569,32 @@ mod tests {
     }
 
     #[test]
-    fn spans_are_estimated_per_source() {
-        let seg = |who: &str, start_ms: u32, text: &str| Segment {
+    fn spans_use_exact_ends_else_estimate_them() {
+        let seg = |who: &str, start_ms: u32, end_ms: u32, text: &str| Segment {
             id: String::new(),
             speaker_id: who.into(),
             start_ms,
+            end_ms,
             text: text.into(),
             redacted: false,
             tags: vec![],
             answers: vec![],
             owners: vec![],
+            due: None,
         };
+        // Old transcripts (end 0): estimated.
         let segs = [
             seg(
                 "them",
                 0,
+                0,
                 "one two three four five six seven eight nine ten eleven twelve",
             ),
-            seg("me", 1_000, "hi"),
+            seg("me", 1_000, 0, "hi"),
             seg(
                 "them",
                 4_000,
+                0,
                 "a b c d e f g h i j k l m n o p q r s t u v w x y z",
             ),
         ];
@@ -482,6 +604,20 @@ mod tests {
                 span(0, 4_000, false),      // cut at the next "them"
                 span(1_000, 2_500, true),   // 1 s + 1 word
                 span(4_000, 11_500, false), // capped at a VAD chunk
+            ]
+        );
+        // Ends kept by capture are used as they are, even past the next segment's start.
+        let exact = [
+            seg("them", 0, 4_800, "one two"),
+            seg("me", 1_000, 1_200, "hi"),
+            seg("them", 4_000, 6_000, "x"),
+        ];
+        assert_eq!(
+            spans(&exact),
+            [
+                span(0, 4_800, false),
+                span(1_000, 1_200, true),
+                span(4_000, 6_000, false),
             ]
         );
     }
@@ -525,20 +661,22 @@ mod tests {
         )
     }
 
-    /// A finished meeting: `(speaker id, start, text)` segments, plus `audio` copied in.
-    fn meeting(e: &Engine, id: &str, segs: &[(&str, u32, String)], audio: Option<&Path>) {
+    /// A finished meeting: `(speaker id, start, end, text)` segments, plus `audio` copied in.
+    fn meeting(e: &Engine, id: &str, segs: &[(&str, u32, u32, String)], audio: Option<&Path>) {
         let mut s = e.store.lock().unwrap();
         s.start_meeting(id).unwrap();
-        for (n, (who, start_ms, text)) in segs.iter().enumerate() {
+        for (n, (who, start_ms, end_ms, text)) in segs.iter().enumerate() {
             let seg = Segment {
                 id: format!("{id}-{n}"),
                 speaker_id: (*who).into(),
                 start_ms: *start_ms,
+                end_ms: *end_ms,
                 text: text.clone(),
                 redacted: false,
                 tags: vec![],
                 answers: vec![],
                 owners: vec![],
+                due: None,
             };
             s.push_segment(id, seg).unwrap();
         }
@@ -563,16 +701,17 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::many_single_char_names)]
     fn known_voices_are_named_in_the_next_meeting() {
         let dir = tempfile::tempdir().unwrap();
         let e = engine(dir.path(), dir.path());
         let segs = |extra: &str| {
             vec![
-                ("me", 1_000, "Hi both.".to_string()),
-                ("them", 26_000, "Hello.".to_string()),
-                ("them", 40_000, "Prices are up.".to_string()),
-                ("them", 61_000, "Agreed.".to_string()),
-                ("me", 80_000, extra.to_string()),
+                ("me", 1_000, 2_000, "Hi both.".to_string()),
+                ("them", 26_000, 27_000, "Hello.".to_string()),
+                ("them", 40_000, 42_000, "Prices are up.".to_string()),
+                ("them", 61_000, 62_000, "Agreed.".to_string()),
+                ("me", 80_000, 81_000, extra.to_string()),
             ]
         };
         let d = |a: Vec<f32>, b: Vec<f32>| Diarization {
@@ -630,260 +769,438 @@ mod tests {
             (hint.name.as_str(), hint.evidence.as_str()),
             ("Bo", "Thanks, Bo.")
         );
+
+        // With a classifier its answer replaces the heuristic's; a failure keeps it.
+        let cfg = mirona_providers::config::Config::default();
+        let hint = |e: &Engine| {
+            let m = e.store.lock().unwrap().meeting("m-b").unwrap();
+            let s = m.speakers.iter().find(|s| s.name == "Speaker 1").unwrap();
+            s.suggestion
+                .clone()
+                .map(|g| (g.name, g.probability, g.evidence))
+        };
+        assert!(suggest_names(&e.store, &cfg, "m-b", &Namer(None)).is_err());
+        assert_eq!(hint(&e).unwrap().1, 0.5, "the heuristic's");
+        assert_eq!(
+            suggest_names(&e.store, &cfg, "m-b", &Namer(Some(0.9))).unwrap(),
+            1
+        );
+        assert_eq!(hint(&e), Some(("Bo".into(), 0.9, "Thanks, Bo.".into())));
+        // Unsure (below the 0.6 default threshold): no suggestion.
+        assert_eq!(
+            suggest_names(&e.store, &cfg, "m-b", &Namer(Some(0.4))).unwrap(),
+            0
+        );
+        assert_eq!(hint(&e), None);
+    }
+
+    /// Picks the first option said in the text, with probability `.0`; `None` fails.
+    struct Namer(Option<f32>);
+
+    impl mirona_providers::Provider for Namer {
+        fn id(&self) -> &'static str {
+            "namer"
+        }
+        fn locality(&self) -> Locality {
+            Locality::Cloud
+        }
+    }
+
+    impl Classifier for Namer {
+        fn ask(
+            &self,
+            text: &str,
+            qs: &[questions::Question],
+        ) -> impl Future<Output = mirona_providers::Result<Vec<Reply>>> + Send {
+            let reply = self.0.map(|p| {
+                let opts = questions::options(&qs[0]);
+                let value = opts
+                    .iter()
+                    .find(|o| text.contains(o.as_str()))
+                    .unwrap_or(&opts[opts.len() - 1])
+                    .clone();
+                vec![Reply::Choice {
+                    probabilities: vec![(value.clone(), p)],
+                    value,
+                }]
+            });
+            std::future::ready(reply.ok_or(mirona_providers::Error::Provider("down".into())))
+        }
+    }
+
+    /// Unknown voices named from how they're addressed, by Jev and by qwen3:4b, where the text
+    /// heuristic misses one ("Over to you, Keiko, …" reads as said to the previous speaker,
+    /// and there is none) and a third known person is only mentioned.
+    #[test]
+    #[ignore = "needs TYPESAFE_API_KEY, network and Ollama serving qwen3:4b"]
+    #[allow(clippy::too_many_lines)]
+    fn live_names_from_context() {
+        let dir = tempfile::tempdir().unwrap();
+        let e = engine(dir.path(), dir.path());
+        let voice = |i: usize, speech_ms: u32| FoundSpeaker {
+            embedding: (0..6).map(|k| if k == i { 1.0 } else { 0.0 }).collect(),
+            speech_ms,
+        };
+        // Meeting A: three voices, named Keiko, Tom and Elena.
+        let segs_a = vec![
+            ("them", 1_000, 20_000, "Hello.".to_string()),
+            ("them", 26_000, 45_000, "Hi.".to_string()),
+            ("them", 51_000, 70_000, "Hey.".to_string()),
+        ];
+        meeting(&e, "m-a", &segs_a, None);
+        let d_a = Diarization {
+            turns: vec![
+                turn(0, 25_000, 0),
+                turn(25_000, 50_000, 1),
+                turn(50_000, 75_000, 2),
+            ],
+            speakers: vec![voice(0, 25_000), voice(1, 25_000), voice(2, 25_000)],
+        };
+        e.apply_diarization("m-a", &d_a).unwrap();
+        for (sid, name) in [("m-a-s1", "Keiko"), ("m-a-s2", "Tom"), ("m-a-s3", "Elena")] {
+            e.store
+                .lock()
+                .unwrap()
+                .name_speaker("m-a", sid, name)
+                .unwrap();
+        }
+        // Meeting B: two new voices.
+        let segs_b = vec![
+            (
+                "me",
+                0,
+                4_000,
+                "Okay, let's get started. Over to you, Keiko, for the numbers.".to_string(),
+            ),
+            (
+                "them",
+                6_000,
+                27_000,
+                "Sure. Revenue is up eight percent and churn is flat.".to_string(),
+            ),
+            (
+                "me",
+                28_000,
+                30_000,
+                "Great. Tom, where are we on hiring?".to_string(),
+            ),
+            (
+                "them",
+                31_000,
+                54_000,
+                "Two offers out, one accepted. Elena is helping with the second.".to_string(),
+            ),
+            (
+                "me",
+                55_000,
+                58_000,
+                "Thanks, Tom. Let's wrap up.".to_string(),
+            ),
+        ];
+        meeting(&e, "m-b", &segs_b, None);
+        let d_b = Diarization {
+            turns: vec![
+                turn(0, 5_000, 0),
+                turn(5_000, 28_000, 1),
+                turn(28_000, 30_000, 0),
+                turn(30_000, 55_000, 2),
+                turn(55_000, 60_000, 0),
+            ],
+            speakers: vec![voice(3, 12_000), voice(4, 23_000), voice(5, 25_000)],
+        };
+        e.apply_diarization("m-b", &d_b).unwrap();
+        let cfg = mirona_providers::config::Config::default();
+        let key = std::env::var("TYPESAFE_API_KEY").expect("TYPESAFE_API_KEY");
+        let jev = crate::classify::AnyClassifier::Jev(mirona_providers::jev::Jev::new(key));
+        let local =
+            crate::classify::AnyClassifier::Local(mirona_providers::ollama::Ollama::default());
+        for c in [jev, local] {
+            for sid in ["m-b-s1", "m-b-s2"] {
+                e.store
+                    .lock()
+                    .unwrap()
+                    .set_suggestion("m-b", sid, None)
+                    .unwrap();
+            }
+            let t = std::time::Instant::now();
+            let n = suggest_names(&e.store, &cfg, "m-b", &c).unwrap();
+            let m = e.store.lock().unwrap().meeting("m-b").unwrap();
+            let got: Vec<_> = m
+                .speakers
+                .iter()
+                .filter(|s| s.id.starts_with("m-b-s"))
+                .map(|s| (s.name.clone(), s.suggestion.clone()))
+                .collect();
+            println!(
+                "{}: {n} named in {:.1}s: {got:?}",
+                c.id(),
+                t.elapsed().as_secs_f64()
+            );
+            let name = |i: usize| got[i].1.as_ref().map(|g| g.name.as_str());
+            assert_eq!(
+                (name(0), name(1)),
+                (Some("Keiko"), Some("Tom")),
+                "{}",
+                c.id()
+            );
+        }
     }
 
     // --- Real models (spike data): `cargo test -p mirona-engine -- --ignored` ---
-    // (test bodies use short names: e = engine, m = meeting, t = timer, n = voices)
-
-    const SPIKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../spikes/speakrs");
-
-    /// A models dir holding `speakrs/` (`MIRONA_SPEAKRS_DIR`, else the spike's snapshot) and
-    /// the speech models (`MIRONA_MODELS_DIR`, else the Parakeet spike's), by symlink.
+    // Symlinked model dirs: Unix only.
     #[cfg(unix)]
-    fn models(dir: &Path) -> std::path::PathBuf {
-        let m = dir.join("models");
-        std::fs::create_dir_all(&m).unwrap();
-        let speakrs = std::env::var_os("MIRONA_SPEAKRS_DIR").map_or_else(
-            || {
-                let snaps = format!("{SPIKE}/models/hf/models--avencera--speakrs-models/snapshots");
-                std::fs::read_dir(snaps)
-                    .unwrap()
-                    .next()
-                    .unwrap()
-                    .unwrap()
-                    .path()
-            },
-            std::path::PathBuf::from,
-        );
-        std::os::unix::fs::symlink(speakrs, m.join(MODELS_DIR)).unwrap();
-        let speech = std::env::var_os("MIRONA_MODELS_DIR").map_or_else(
-            || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spikes/parakeet/models"),
-            std::path::PathBuf::from,
-        );
-        for f in std::fs::read_dir(speech).unwrap() {
-            let f = f.unwrap();
-            std::os::unix::fs::symlink(f.path(), m.join(f.file_name())).unwrap();
-        }
-        m
-    }
+    mod real {
+        use super::*;
 
-    /// RTTM rows as transcript segments of `who`, cut into ≤ 5 s chunks like the VAD. The text
-    /// is the reference speaker, then one word per 0.5 s: "o" where another reference speaker
-    /// talks at the same time (overlap: not scored), "w" elsewhere.
-    fn rttm_segments(path: &str, who: &'static str) -> Vec<(&'static str, u32, String)> {
-        let text = std::fs::read_to_string(format!("{SPIKE}/{path}")).unwrap();
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let rows: Vec<(u32, u32, &str)> = text
-            .lines()
-            .map(|l| {
-                let f: Vec<&str> = l.split_whitespace().collect();
-                let (start, dur): (f64, f64) = (f[3].parse().unwrap(), f[4].parse().unwrap());
-                (
-                    (start * 1000.0) as u32,
-                    ((start + dur) * 1000.0) as u32,
-                    f[7],
-                )
-            })
-            .collect();
-        let mut out = vec![];
-        for &(start, end, spk) in &rows {
-            let mut at = start;
-            while at < end {
-                let len = (end - at).min(5_000);
-                let crossed = rows
-                    .iter()
-                    .any(|r| r.2 != spk && overlap((at, at + len), (r.0, r.1)) > 0);
-                let fill = if crossed { "o" } else { "w" };
-                let words = (len / 500).max(1) as usize;
-                let text = std::iter::once(spk).chain(std::iter::repeat_n(fill, words - 1));
-                out.push((who, at, text.collect::<Vec<_>>().join(" ")));
-                at += len;
+        // (test bodies use short names: e = engine, m = meeting, t = timer, n = voices)
+
+        const SPIKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../spikes/speakrs");
+
+        /// A models dir holding `speakrs/` (`MIRONA_SPEAKRS_DIR`, else the spike's snapshot) and
+        /// the speech models (`MIRONA_MODELS_DIR`, else the Parakeet spike's), by symlink.
+        fn models(dir: &Path) -> std::path::PathBuf {
+            let m = dir.join("models");
+            std::fs::create_dir_all(&m).unwrap();
+            let speakrs = std::env::var_os("MIRONA_SPEAKRS_DIR").map_or_else(
+                || {
+                    let snaps =
+                        format!("{SPIKE}/models/hf/models--avencera--speakrs-models/snapshots");
+                    std::fs::read_dir(snaps)
+                        .unwrap()
+                        .next()
+                        .unwrap()
+                        .unwrap()
+                        .path()
+                },
+                std::path::PathBuf::from,
+            );
+            std::os::unix::fs::symlink(speakrs, m.join(MODELS_DIR)).unwrap();
+            let speech = std::env::var_os("MIRONA_MODELS_DIR").map_or_else(
+                || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spikes/parakeet/models"),
+                std::path::PathBuf::from,
+            );
+            for f in std::fs::read_dir(speech).unwrap() {
+                let f = f.unwrap();
+                std::os::unix::fs::symlink(f.path(), m.join(f.file_name())).unwrap();
+            }
+            m
+        }
+
+        /// RTTM rows as transcript segments of `who`, cut into ≤ 5 s chunks like the VAD. The text
+        /// is the reference speaker, then one word per 0.5 s: "o" where another reference speaker
+        /// talks at the same time (overlap: not scored), "w" elsewhere.
+        fn rttm_segments(path: &str, who: &'static str) -> Vec<(&'static str, u32, u32, String)> {
+            let text = std::fs::read_to_string(format!("{SPIKE}/{path}")).unwrap();
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let rows: Vec<(u32, u32, &str)> = text
+                .lines()
+                .map(|l| {
+                    let f: Vec<&str> = l.split_whitespace().collect();
+                    let (start, dur): (f64, f64) = (f[3].parse().unwrap(), f[4].parse().unwrap());
+                    (
+                        (start * 1000.0) as u32,
+                        ((start + dur) * 1000.0) as u32,
+                        f[7],
+                    )
+                })
+                .collect();
+            let mut out = vec![];
+            for &(start, end, spk) in &rows {
+                let mut at = start;
+                while at < end {
+                    let len = (end - at).min(5_000);
+                    let crossed = rows
+                        .iter()
+                        .any(|r| r.2 != spk && overlap((at, at + len), (r.0, r.1)) > 0);
+                    let fill = if crossed { "o" } else { "w" };
+                    let words = (len / 500).max(1) as usize;
+                    let text = std::iter::once(spk).chain(std::iter::repeat_n(fill, words - 1));
+                    out.push((who, at, at + len, text.collect::<Vec<_>>().join(" ")));
+                    at += len;
+                }
+            }
+            out.sort_by_key(|s| s.1);
+            out
+        }
+
+        /// Words of a test segment that count: none for overlapped speech.
+        fn scored(t: &str) -> usize {
+            if t.contains(" o") {
+                0
+            } else {
+                t.split_whitespace().count()
             }
         }
-        out.sort_by_key(|s| s.1);
-        out
-    }
 
-    /// Words of a test segment that count: none for overlapped speech.
-    fn scored(t: &str) -> usize {
-        if t.contains(" o") {
-            0
-        } else {
-            t.split_whitespace().count()
+        fn distinct(v: &[String]) -> usize {
+            let mut v = v.to_vec();
+            v.sort();
+            v.dedup();
+            v.len()
         }
-    }
 
-    fn distinct(v: &[String]) -> usize {
-        let mut v = v.to_vec();
-        v.sort();
-        v.dedup();
-        v.len()
-    }
+        #[test]
+        #[ignore = "needs the speakrs spike models and audio"]
+        #[allow(clippy::many_single_char_names)]
+        fn voxconverse_speaker_counts_and_purity() {
+            // Reference speakers with ≥ 20 s of speech (smaller voices are dropped by design).
+            for (clip, want) in [
+                ("crixb", 2),
+                ("qvtia", 2),
+                ("houcx", 2), // + 1 speaker with 16.9 s
+                ("bspxd", 2), // + 1 with 12.7 s
+                ("dhorc", 4),
+                ("qfdpp", 3), // + 1 with 8.9 s
+            ] {
+                let dir = tempfile::tempdir().unwrap();
+                let e = engine(dir.path(), &models(dir.path()));
+                let segs = rttm_segments(&format!("out/ref/{clip}.rttm"), "them");
+                let wav = format!("{SPIKE}/audio/vc/{clip}.wav");
+                meeting(&e, clip, &segs, Some(Path::new(&wav)));
+                let t = std::time::Instant::now();
+                let (tx, rx) = std::sync::mpsc::channel();
+                let n = e.diarize(clip, &tx).unwrap();
+                let got = names(&e, clip);
+                // Purity: share of non-overlapped speech (in words, ~ time) whose voice is its
+                // reference speaker's most common voice.
+                let m = e.store.lock().unwrap().meeting(clip).unwrap();
+                let refs: Vec<&str> = m.segments.iter().map(|s| first_word(&s.text)).collect();
+                let w: Vec<usize> = m.segments.iter().map(|s| scored(&s.text)).collect();
+                let mut right = 0;
+                for r in distinct_strs(&refs) {
+                    let mine = |v: &String| {
+                        (0..got.len())
+                            .filter(|&i| refs[i] == r && got[i] == *v)
+                            .map(|i| w[i])
+                            .sum::<usize>()
+                    };
+                    right += got.iter().map(mine).max().unwrap_or(0);
+                }
+                #[allow(clippy::cast_precision_loss)]
+                let purity = right as f64 / w.iter().sum::<usize>() as f64;
+                println!(
+                    "{clip}: {n} voices, {} speakers on segments (want {want}), purity {:.1}%, {:.1}s",
+                    distinct(&got),
+                    100.0 * purity,
+                    t.elapsed().as_secs_f64()
+                );
+                assert!(
+                    matches!(rx.try_recv(), Ok(PipelineEvent::Diarized { speakers, .. }) if speakers == n)
+                );
+                assert_eq!(distinct(&got), want, "{clip}");
+                assert!(purity > 0.9, "{clip} purity {purity}");
+            }
+        }
 
-    #[cfg(unix)]
-    #[test]
-    #[ignore = "needs the speakrs spike models and audio"]
-    #[allow(clippy::many_single_char_names)]
-    fn voxconverse_speaker_counts_and_purity() {
-        // Reference speakers with ≥ 20 s of speech (smaller voices are dropped by design).
-        for (clip, want) in [
-            ("crixb", 2),
-            ("qvtia", 2),
-            ("houcx", 2), // + 1 speaker with 16.9 s
-            ("bspxd", 2), // + 1 with 12.7 s
-            ("dhorc", 4),
-            ("qfdpp", 3), // + 1 with 8.9 s
-        ] {
+        fn first_word(t: &str) -> &str {
+            t.split(' ').next().unwrap_or_default()
+        }
+
+        fn distinct_strs<'a>(v: &[&'a str]) -> Vec<&'a str> {
+            let mut v = v.to_vec();
+            v.sort_unstable();
+            v.dedup();
+            v
+        }
+
+        #[test]
+        #[ignore = "needs the speakrs spike models and audio"]
+        fn ami_people_enrolled_in_one_meeting_are_named_in_the_next() {
             let dir = tempfile::tempdir().unwrap();
             let e = engine(dir.path(), &models(dir.path()));
-            let segs = rttm_segments(&format!("out/ref/{clip}.rttm"), "them");
-            let wav = format!("{SPIKE}/audio/vc/{clip}.wav");
-            meeting(&e, clip, &segs, Some(Path::new(&wav)));
-            let t = std::time::Instant::now();
-            let (tx, rx) = std::sync::mpsc::channel();
-            let n = e.diarize(clip, &tx).unwrap();
-            let got = names(&e, clip);
-            // Purity: share of non-overlapped speech (in words, ~ time) whose voice is its
-            // reference speaker's most common voice.
-            let m = e.store.lock().unwrap().meeting(clip).unwrap();
-            let refs: Vec<&str> = m.segments.iter().map(|s| first_word(&s.text)).collect();
-            let w: Vec<usize> = m.segments.iter().map(|s| scored(&s.text)).collect();
-            let mut right = 0;
-            for r in distinct_strs(&refs) {
-                let mine = |v: &String| {
-                    (0..got.len())
-                        .filter(|&i| refs[i] == r && got[i] == *v)
-                        .map(|i| w[i])
-                        .sum::<usize>()
-                };
-                right += got.iter().map(mine).max().unwrap_or(0);
+            let (tx, _rx) = std::sync::mpsc::channel();
+            for (id, enroll) in [("ES2004a", true), ("ES2004b", false)] {
+                let segs = rttm_segments(&format!("audio/ami/{id}.rttm"), "them");
+                let wav = format!("{SPIKE}/audio/ami/{id}.wav");
+                meeting(&e, id, &segs, Some(Path::new(&wav)));
+                let t = std::time::Instant::now();
+                e.diarize(id, &tx).unwrap();
+                let took = t.elapsed().as_secs_f64();
+                let m = e.store.lock().unwrap().meeting(id).unwrap();
+                let refs: Vec<String> = m
+                    .segments
+                    .iter()
+                    .map(|s| s.text.split(' ').next().unwrap().to_string())
+                    .collect();
+                if enroll {
+                    // Name each voice after the reference speaker most of its segments belong to.
+                    for sp in &m.speakers {
+                        let mine: Vec<&String> = m
+                            .segments
+                            .iter()
+                            .zip(&refs)
+                            .filter(|(s, _)| s.speaker_id == sp.id)
+                            .map(|(_, r)| r)
+                            .collect();
+                        let top = mine
+                            .iter()
+                            .max_by_key(|r| mine.iter().filter(|x| x == r).count())
+                            .unwrap();
+                        e.store
+                            .lock()
+                            .unwrap()
+                            .name_speaker(id, &sp.id, top)
+                            .unwrap();
+                    }
+                }
+                let got = names(&e, id);
+                // Share of non-overlapped speech (in words, ~ time) named as its reference speaker.
+                let w: Vec<usize> = m.segments.iter().map(|s| scored(&s.text)).collect();
+                let right: usize = (0..got.len())
+                    .filter(|&i| got[i] == refs[i])
+                    .map(|i| w[i])
+                    .sum();
+                #[allow(clippy::cast_precision_loss)]
+                let acc = right as f64 / w.iter().sum::<usize>() as f64;
+                let m = e.store.lock().unwrap().meeting(id).unwrap();
+                let who: Vec<String> = m
+                    .speakers
+                    .iter()
+                    .map(|s| format!("{} ({})", s.name, s.subtitle))
+                    .collect();
+                println!(
+                    "{id}: {:.1}s, speakers {who:?}, segments named right {:.1}%",
+                    took,
+                    100.0 * acc
+                );
+                if !enroll {
+                    for p in ["FEE013", "FEE016", "MEE014", "MEO015"] {
+                        let sp = m.speakers.iter().find(|s| s.name == p);
+                        assert!(
+                            sp.is_some_and(|s| s.subtitle == "Recognized by voice"),
+                            "{p} not named: {who:?}"
+                        );
+                    }
+                    assert!(acc > 0.85, "accuracy {acc}");
+                }
             }
-            #[allow(clippy::cast_precision_loss)]
-            let purity = right as f64 / w.iter().sum::<usize>() as f64;
+        }
+
+        #[test]
+        #[ignore = "needs the speech + speakrs models (spikes)"]
+        fn import_gives_segments_several_speakers() {
+            let dir = tempfile::tempdir().unwrap();
+            let e = engine(dir.path(), &models(dir.path()));
+            let (tx, rx) = std::sync::mpsc::channel();
+            let t = std::time::Instant::now();
+            let id = e
+                .import(Path::new(&format!("{SPIKE}/audio/vc/crixb.wav")), &tx)
+                .unwrap();
+            let got = names(&e, &id);
+            let events: Vec<_> = rx.try_iter().collect();
             println!(
-                "{clip}: {n} voices, {} speakers on segments (want {want}), purity {:.1}%, {:.1}s",
+                "crixb import: {} segments, {} speakers, {:.1}s",
+                got.len(),
                 distinct(&got),
-                100.0 * purity,
                 t.elapsed().as_secs_f64()
             );
             assert!(
-                matches!(rx.try_recv(), Ok(PipelineEvent::Diarized { speakers, .. }) if speakers == n)
+                events
+                    .iter()
+                    .any(|e| matches!(e, PipelineEvent::Diarized { speakers: 2, .. })),
+                "{events:?}"
             );
-            assert_eq!(distinct(&got), want, "{clip}");
-            assert!(purity > 0.9, "{clip} purity {purity}");
+            assert_eq!(distinct(&got), 2, "{got:?}");
         }
-    }
-
-    fn first_word(t: &str) -> &str {
-        t.split(' ').next().unwrap_or_default()
-    }
-
-    fn distinct_strs<'a>(v: &[&'a str]) -> Vec<&'a str> {
-        let mut v = v.to_vec();
-        v.sort_unstable();
-        v.dedup();
-        v
-    }
-
-    #[cfg(unix)]
-    #[test]
-    #[ignore = "needs the speakrs spike models and audio"]
-    fn ami_people_enrolled_in_one_meeting_are_named_in_the_next() {
-        let dir = tempfile::tempdir().unwrap();
-        let e = engine(dir.path(), &models(dir.path()));
-        let (tx, _rx) = std::sync::mpsc::channel();
-        for (id, enroll) in [("ES2004a", true), ("ES2004b", false)] {
-            let segs = rttm_segments(&format!("audio/ami/{id}.rttm"), "them");
-            let wav = format!("{SPIKE}/audio/ami/{id}.wav");
-            meeting(&e, id, &segs, Some(Path::new(&wav)));
-            let t = std::time::Instant::now();
-            e.diarize(id, &tx).unwrap();
-            let took = t.elapsed().as_secs_f64();
-            let m = e.store.lock().unwrap().meeting(id).unwrap();
-            let refs: Vec<String> = m
-                .segments
-                .iter()
-                .map(|s| s.text.split(' ').next().unwrap().to_string())
-                .collect();
-            if enroll {
-                // Name each voice after the reference speaker most of its segments belong to.
-                for sp in &m.speakers {
-                    let mine: Vec<&String> = m
-                        .segments
-                        .iter()
-                        .zip(&refs)
-                        .filter(|(s, _)| s.speaker_id == sp.id)
-                        .map(|(_, r)| r)
-                        .collect();
-                    let top = mine
-                        .iter()
-                        .max_by_key(|r| mine.iter().filter(|x| x == r).count())
-                        .unwrap();
-                    e.store
-                        .lock()
-                        .unwrap()
-                        .name_speaker(id, &sp.id, top)
-                        .unwrap();
-                }
-            }
-            let got = names(&e, id);
-            // Share of non-overlapped speech (in words, ~ time) named as its reference speaker.
-            let w: Vec<usize> = m.segments.iter().map(|s| scored(&s.text)).collect();
-            let right: usize = (0..got.len())
-                .filter(|&i| got[i] == refs[i])
-                .map(|i| w[i])
-                .sum();
-            #[allow(clippy::cast_precision_loss)]
-            let acc = right as f64 / w.iter().sum::<usize>() as f64;
-            let m = e.store.lock().unwrap().meeting(id).unwrap();
-            let who: Vec<String> = m
-                .speakers
-                .iter()
-                .map(|s| format!("{} ({})", s.name, s.subtitle))
-                .collect();
-            println!(
-                "{id}: {:.1}s, speakers {who:?}, segments named right {:.1}%",
-                took,
-                100.0 * acc
-            );
-            if !enroll {
-                for p in ["FEE013", "FEE016", "MEE014", "MEO015"] {
-                    let sp = m.speakers.iter().find(|s| s.name == p);
-                    assert!(
-                        sp.is_some_and(|s| s.subtitle == "Recognized by voice"),
-                        "{p} not named: {who:?}"
-                    );
-                }
-                assert!(acc > 0.85, "accuracy {acc}");
-            }
-        }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    #[ignore = "needs the speech + speakrs models (spikes)"]
-    fn import_gives_segments_several_speakers() {
-        let dir = tempfile::tempdir().unwrap();
-        let e = engine(dir.path(), &models(dir.path()));
-        let (tx, rx) = std::sync::mpsc::channel();
-        let t = std::time::Instant::now();
-        let id = e
-            .import(Path::new(&format!("{SPIKE}/audio/vc/crixb.wav")), &tx)
-            .unwrap();
-        let got = names(&e, &id);
-        let events: Vec<_> = rx.try_iter().collect();
-        println!(
-            "crixb import: {} segments, {} speakers, {:.1}s",
-            got.len(),
-            distinct(&got),
-            t.elapsed().as_secs_f64()
-        );
-        assert!(
-            events
-                .iter()
-                .any(|e| matches!(e, PipelineEvent::Diarized { speakers: 2, .. })),
-            "{events:?}"
-        );
-        assert_eq!(distinct(&got), 2, "{got:?}");
     }
 }
