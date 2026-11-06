@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useStore } from "../store";
 import { fmt, needsReview, priorityLabel, sure, toneLabel, typeLabel } from "../lib/api";
-import { Label, Mono } from "../components/ui";
+import { Label, Mono, Toggle } from "../components/ui";
 import type { Answer } from "../bindings/Answer";
 import type { ChoiceAnswer } from "../bindings/ChoiceAnswer";
 import type { Review } from "../bindings/Review";
+import type { Segment } from "../bindings/Segment";
 
 /** Answers stored before thresholds were kept have 0: show them against the ADR default. */
 const thresholdOf = (a: { threshold: number }) => a.threshold || 0.6;
@@ -20,7 +21,7 @@ function Bar({ p, threshold, color = "var(--mi-accent)" }: { p: number; threshol
 }
 
 function verdict(a: Answer) {
-  if (a.source === "user") return { text: a.answer ? "Yes · you" : "No · you", cls: "mi-chip--action" };
+  if (a.source === "user") return { text: a.answer ? "Yes (you)" : "No (you)", cls: "mi-chip--action" };
   if (needsReview({ ...a, threshold: thresholdOf(a) })) return { text: "Needs review", cls: "mi-chip--review" };
   if (a.answer) return { text: "Yes", cls: "mi-chip--action" };
   return { text: "No", cls: "mi-chip--neutral" };
@@ -30,21 +31,18 @@ const link = "min-h-6 rounded px-1 text-[13px] font-medium text-accent-strong un
 
 function AnswerRow({ a, segmentId }: { a: Answer; segmentId: string }) {
   const correct = useStore((s) => s.correct);
+  const details = useStore((s) => s.modelDetails);
   const t = thresholdOf(a);
   const v = verdict(a);
   const unsure = needsReview({ ...a, threshold: t });
   const color = a.source === "user" || (a.answer && !unsure) ? "var(--mi-accent)" : unsure ? "var(--mi-review-edge)" : "#B9B9B2";
   return (
-    <div className="py-2">
-      <div className="flex items-center justify-between gap-2 text-[14px]">
-        <span>{a.question}</span>
-        <span className={`mi-chip ${v.cls}`}>{v.text}</span>
-      </div>
-      <div className="mt-2 flex items-center gap-3">
-        <Bar p={a.probability} threshold={t} color={color} />
-        <Mono className="w-9 text-right text-ink-3!">{a.probability.toFixed(2)}</Mono>
+    <div className="py-1.5">
+      <div className="flex min-h-8 items-center gap-2 text-[14px]">
+        <span className="flex-1">{a.question}</span>
         {unsure ? (
-          <span className="flex gap-1">
+          <span className="flex items-center gap-1">
+            <span className="mr-1 text-[13px] text-muted">Not sure:</span>
             <button type="button" className={link} aria-label={`${a.question} Yes`} onClick={() => correct(segmentId, a.id, true)}>
               Yes
             </button>
@@ -53,11 +51,42 @@ function AnswerRow({ a, segmentId }: { a: Answer; segmentId: string }) {
             </button>
           </span>
         ) : (
-          <button type="button" className={link} aria-label={`Correct: ${a.question} ${a.answer ? "No" : "Yes"}`} onClick={() => correct(segmentId, a.id, !a.answer)}>
-            Correct
-          </button>
+          <>
+            <span className={`mi-chip ${v.cls}`}>{v.text}</span>
+            <button type="button" className={link} aria-label={`Change ${a.question} to ${a.answer ? "No" : "Yes"}`} onClick={() => correct(segmentId, a.id, !a.answer)}>
+              Change
+            </button>
+          </>
         )}
       </div>
+      {details && (
+        <div className="mt-1.5 flex items-center gap-3">
+          <Bar p={a.probability} threshold={t} color={color} />
+          <Mono className="w-9 text-right text-ink-3!">{a.probability.toFixed(2)}</Mono>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The yes and unsure answers; the "no"s fold away unless model details are on. */
+function Answers({ seg }: { seg: Segment }) {
+  const details = useStore((s) => s.modelDetails);
+  const [all, setAll] = useState(false);
+  const isNo = (a: Answer) => !a.answer && !needsReview({ ...a, threshold: thresholdOf(a) });
+  const shown = details || all ? seg.answers : seg.answers.filter((a) => !isNo(a));
+  const hidden = seg.answers.length - shown.length;
+  return (
+    <div className="mt-2">
+      {shown.map((x) => (
+        <AnswerRow key={x.id} a={x} segmentId={seg.id} />
+      ))}
+      {!shown.length && <p className="py-1.5 text-[14px] text-ink-3">Nothing to note on this line.</p>}
+      {hidden > 0 && (
+        <button type="button" className={`${link} mt-1`} onClick={() => setAll(true)}>
+          {hidden} more answered No
+        </button>
+      )}
     </div>
   );
 }
@@ -74,30 +103,31 @@ const review = (question: string, value: string, c?: ChoiceAnswer): Review => ({
 /** Meeting type or client: the answer, and option chips to confirm one when unsure. */
 function ChoiceRow({ question, title, c, label }: { question: "meeting_type" | "client"; title: string; c: ChoiceAnswer; label: (v: string) => string }) {
   const resolve = useStore((s) => s.resolve);
+  const details = useStore((s) => s.modelDetails);
   const [open, setOpen] = useState(false);
   const ok = sure(c);
-  const show = !ok || open;
+  // Unsure answers are settled in "To check" above; here they only open on "Change".
+  const show = open;
   return (
     <div className="mt-3">
-      <p className="text-[14px] text-muted">
-        {title} · choice · threshold {thresholdOf(c).toFixed(2)}
-      </p>
-      <p className="text-[15px] font-semibold">
-        {c.value ? label(c.value) : "None"}{" "}
-        {c.confirmed ? (
-          <span className="mi-chip mi-chip--action ml-1">Confirmed</span>
-        ) : (
-          <Mono>
-            {c.probability.toFixed(2)}
-            {ok ? "" : ", below threshold. Confirm:"}
-          </Mono>
-        )}
-        {ok && (
-          <button type="button" className={`${link} ml-2`} aria-expanded={open} onClick={() => setOpen(!open)}>
-            {open ? "Done" : "Correct"}
-          </button>
-        )}
-      </p>
+      <div className="flex min-h-8 items-center gap-2 text-[14px]">
+        {/* Long values (client names) are cut with "…"; the label, chip and link keep their size. */}
+        <span className="shrink-0 whitespace-nowrap text-muted">{title}</span>
+        <span className="min-w-0 flex-1 truncate text-right font-semibold" title={c.value && c.value !== "none" ? label(c.value) : undefined}>
+          {c.value && c.value !== "none" ? label(c.value) : "None"}
+          {ok ? "" : "?"}
+        </span>
+        {c.confirmed && <span className="mi-chip mi-chip--action shrink-0">You</span>}
+        <button type="button" className={`${link} shrink-0`} aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? "Done" : "Change"}
+        </button>
+      </div>
+      {details && !c.confirmed && (
+        <div className="mt-1.5 flex items-center gap-3">
+          <Bar p={c.probability} threshold={thresholdOf(c)} />
+          <Mono className="text-ink-3!">{c.probability.toFixed(2)}</Mono>
+        </div>
+      )}
       {show && c.options.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           {c.options.map((o) => (
@@ -124,6 +154,7 @@ function FollowUp() {
   const m = useStore((s) => s.meeting);
   const resolve = useStore((s) => s.resolve);
   const flash = useStore((s) => s.flash);
+  const details = useStore((s) => s.modelDetails);
   const [shown, setShown] = useState(true);
   const a = m?.answers;
   if (!a) return null;
@@ -140,25 +171,29 @@ function FollowUp() {
   };
   return (
     <>
-      <div className="mt-3 flex items-center justify-between gap-2 text-[14px]">
-        <span className="text-muted">Needs a follow-up email? · yes/no</span>
-        <span className={`mi-chip ${unsure ? "mi-chip--review" : a.followUp ? "mi-chip--action" : "mi-chip--neutral"}`}>
-          {unsure ? "Needs review" : a.followUp ? "Yes" : "No"} · {a.followUpProbability.toFixed(2)}
-        </span>
-      </div>
-      <div className="mt-2 flex items-center gap-3">
-        <Bar p={a.followUpProbability} threshold={t} />
+      <div className="mt-3 flex min-h-8 items-center gap-2 text-[14px]">
+        <span className="flex-1 whitespace-nowrap text-muted">Follow-up email</span>
         {unsure ? (
-          <span className="flex gap-1">
+          <span className="flex items-center gap-1">
+            <span className="mr-1 text-[13px] text-muted">Not sure:</span>
             <button type="button" className={link} aria-label="Follow-up email needed: Yes" onClick={() => resolve(r, true)}>Yes</button>
             <button type="button" className={link} aria-label="Follow-up email needed: No" onClick={() => resolve(r, false)}>No</button>
           </span>
         ) : (
-          <button type="button" className={link} aria-label={`Correct: follow-up email ${a.followUp ? "not needed" : "needed"}`} onClick={() => resolve(r, !a.followUp)}>
-            Correct
-          </button>
+          <>
+            <span className="font-semibold">{a.followUp ? "Needed" : "Not needed"}</span>
+            <button type="button" className={link} aria-label={`Change: follow-up email ${a.followUp ? "not needed" : "needed"}`} onClick={() => resolve(r, !a.followUp)}>
+              Change
+            </button>
+          </>
         )}
       </div>
+      {details && (
+        <div className="mt-1.5 flex items-center gap-3">
+          <Bar p={a.followUpProbability} threshold={t} />
+          <Mono className="text-ink-3!">{a.followUpProbability.toFixed(2)}</Mono>
+        </div>
+      )}
       {a.followUp && !unsure &&
         (a.followUpDraft ? (
           <>
@@ -204,6 +239,7 @@ function ReviewList() {
   const resolve = useStore((s) => s.resolve);
   const jump = useStore((s) => s.jump);
   const showSensitive = useStore((s) => s.filters.showSensitive);
+  const details = useStore((s) => s.modelDetails);
   if (!m || !items.length) return null;
   // The line a review is about; a sensitive one is quoted only with "Show sensitive text" on.
   const textAt = (r: Review) => {
@@ -212,19 +248,18 @@ function ReviewList() {
     return r.segmentId ? seg?.text : r.question === "action_item" ? r.value : null;
   };
   return (
-    <>
-      <hr className="my-6 border-line" />
+    <section className="mb-6 rounded-lg border border-dashed border-[var(--mi-review-edge)] bg-[var(--mi-review-tint)] p-4">
       <div className="flex items-center gap-2">
-        <Label>Needs review</Label>
+        <Label>To check</Label>
         <span className="mi-chip mi-chip--review">{items.length}</span>
       </div>
-      <p className="mt-2 text-[13px] text-muted">Below its threshold, nothing here is filed or sent to agents as fact until you confirm it.</p>
+      <p className="mt-1.5 text-[13px] text-ink-3">Mirona wasn't sure about these. Agents see them as unconfirmed until you answer.</p>
       <ul className="mt-2 flex flex-col">
         {items.map((r) => {
           const text = textAt(r);
           const choice = r.question === "meeting_type" ? m.answers?.meetingType : r.question === "client" ? m.answers?.client : undefined;
           return (
-            <li key={`${r.question}-${r.segmentId ?? r.value}-${r.atMs}`} className="border-t border-line-soft py-2.5 first:border-t-0">
+            <li key={`${r.question}-${r.segmentId ?? r.value}-${r.atMs}`} className="border-t border-[var(--mi-review-edge)]/40 py-2.5 first:border-t-0">
               <div className="flex items-center gap-2 text-[14px]">
                 <span className="flex-1 font-medium">{reviewLabel[r.question] ?? r.question}</span>
                 {r.atMs != null && (
@@ -232,7 +267,7 @@ function ReviewList() {
                     {fmt(r.atMs)}
                   </button>
                 )}
-                {r.probability > 0 && <Mono>{r.probability.toFixed(2)} / {r.threshold.toFixed(2)}</Mono>}
+                {details && r.probability > 0 && <Mono>{r.probability.toFixed(2)} / {r.threshold.toFixed(2)}</Mono>}
               </div>
               {text && <p className="mt-1 line-clamp-2 text-[13px] text-ink-3">“{text}”</p>}
               {choice ? (
@@ -246,10 +281,10 @@ function ReviewList() {
               ) : (
                 <div className="mt-2 flex gap-2">
                   <button type="button" className="mi-ghost text-[13px]" onClick={() => resolve(r, true)}>
-                    Confirm
+                    Yes
                   </button>
                   <button type="button" className="mi-ghost text-[13px]" onClick={() => resolve(r, false)}>
-                    Not this
+                    No
                   </button>
                 </div>
               )}
@@ -257,14 +292,15 @@ function ReviewList() {
           );
         })}
       </ul>
-    </>
+    </section>
   );
 }
 
-/** Who owns the action: the model's choice among speakers, and the user's pick (NGR-159). */
+/** Who owns the action: the model's pick among speakers, changed with one select (NGR-159). */
 function Owners({ segmentId }: { segmentId: string }) {
   const m = useStore((s) => s.meeting);
   const setOwner = useStore((s) => s.setOwner);
+  const details = useStore((s) => s.modelDetails);
   const seg = m?.segments.find((x) => x.id === segmentId);
   if (!m || !seg) return null;
   const isAction = seg.answers.some((a) => a.id === "action" && a.answer) || seg.tags.some((t) => t.kind === "action");
@@ -273,24 +309,27 @@ function Owners({ segmentId }: { segmentId: string }) {
   const rows = [...seg.owners, ...extra];
   const chosen = seg.owners[0]?.probability === 1 ? seg.owners[0].label : null;
   return (
-    <div className="mt-2" role="radiogroup" aria-label="Who owns it?">
-      <p className="text-[14px]">Who owns it? · choice among speakers</p>
-      {rows.map((o) => (
-        // biome-ignore lint/a11y/useSemanticElements: a row with a bar; role=radio on a button keeps it one tab stop per option
-        <button
-          type="button"
-          role="radio"
-          aria-checked={chosen === o.label}
-          key={o.label}
-          className="mi-nav mt-1 flex min-h-9 w-full items-center gap-3 px-1.5 text-left text-[14px]"
-          onClick={() => setOwner(segmentId, o.label)}
-        >
-          <span className="w-24 truncate">{o.label}</span>
-          <Bar p={o.probability} />
-          <Mono className="text-ink-3!">{chosen === o.label ? "you" : o.probability.toFixed(2)}</Mono>
-        </button>
-      ))}
-      <p className="mt-1 text-[12px] text-muted">Pick the owner to fix it; the tag and action item follow.</p>
+    <div className="mt-1.5">
+      <label className="flex min-h-8 items-center gap-2 text-[14px]">
+        <span className="flex-1">Who owns it?</span>
+        {chosen && <span className="mi-chip mi-chip--action">You</span>}
+        <select className="mi-field h-9 text-[14px]" value={seg.owners[0]?.label ?? ""} onChange={(e) => e.target.value && setOwner(segmentId, e.target.value)}>
+          {!seg.owners.length && <option value="">Nobody yet</option>}
+          {rows.map((o) => (
+            <option key={o.label} value={o.label}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {details &&
+        seg.owners.map((o) => (
+          <div key={o.label} className="mt-1 flex items-center gap-3 text-[13px]">
+            <span className="w-24 truncate">{o.label}</span>
+            <Bar p={o.probability} />
+            <Mono className="text-ink-3!">{o.probability.toFixed(2)}</Mono>
+          </div>
+        ))}
     </div>
   );
 }
@@ -303,9 +342,8 @@ export function Inspector() {
   const seg = m.segments.find((x) => x.id === s.segmentId);
   const sp = seg && m.speakers.find((p) => p.id === seg.speakerId);
   const st = s.settings;
-  const classifier = !st ? "" : st.classification === "off" ? "Off" : st.classification === "local-llm" || st.privacy ? "qwen3:4b · local" : "Jev";
+  const classifier = !st ? "" : st.classification === "off" ? "Off" : st.classification === "local-llm" || st.privacy ? "qwen3:4b on this device" : "Jev";
   const live = s.recording?.meetingId === m.id;
-  const busy = live || s.processing.includes(m.id) || !!s.rerunning[m.id];
   const hidden = seg && (seg.redacted || seg.tags.some((t) => t.kind === "sensitive")) && !s.filters.showSensitive;
 
   return (
@@ -316,107 +354,85 @@ export function Inspector() {
           el.scrollTo({ top: 0, behavior: "smooth" });
         }
       }}
-      className="mi-panel h-full w-[var(--mi-inspector-w)] shrink-0 overflow-y-auto border-l border-white/60 px-6 pt-6 pb-8"
+      className="mi-panel flex h-full w-[var(--mi-inspector-w)] shrink-0 flex-col overflow-y-auto border-l border-white/60 px-6 pt-6 pb-6"
       aria-label="Inspector"
     >
-      {/* The line you just inspected comes first, so its answers are right where you look. */}
-      {seg && (
-        <>
-      <div className="flex items-center justify-between">
-        <Label>Selected segment</Label>
-        {seg && (
-          <button type="button" className="text-[13px] text-accent-strong underline-offset-2 hover:underline" onClick={() => s.selectSegment("")}>
-            Close
-          </button>
-        )}
-      </div>
-      {seg && sp ? (
+      {/* What needs you comes first. */}
+      <ReviewList />
+
+      {seg && sp && (
         <div key={seg.id} className="mi-swap">
+          <div className="flex items-center justify-between">
+            <Label>This line</Label>
+            <button type="button" className="text-[13px] text-accent-strong underline-offset-2 hover:underline" onClick={() => s.selectSegment("")}>
+              Close
+            </button>
+          </div>
           <p className="mt-3 text-[15px] font-semibold">
             {sp.name} <Mono>{fmt(seg.startMs, true)}</Mono>
           </p>
-          <blockquote className="mt-3 rounded-lg bg-[rgba(255,250,240,0.7)] p-3 text-[14px]">“{hidden ? "[sensitive: hidden]" : seg.text}”</blockquote>
+          <blockquote className="mt-2 rounded-lg bg-[rgba(255,250,240,0.7)] p-3 text-[14px]">“{hidden ? "[sensitive: hidden]" : seg.text}”</blockquote>
           {seg.answers.length ? (
             <>
-              <p className="mt-3 text-[13px] text-muted">
-                {classifier} answered {seg.answers.length + (seg.owners.length ? 1 : 0)} typed questions in one call. The mark on each bar is its threshold; below it, you decide.
-              </p>
-              {seg.due && <p className="mt-2 text-[14px]">Due: <span className="font-medium">{seg.due}</span></p>}
-              <div className="mt-2">
-                {seg.answers.map((x) => (
-                  <AnswerRow key={x.id} a={x} segmentId={seg.id} />
-                ))}
-              </div>
+              {seg.due && (
+                <p className="mt-3 flex text-[14px]">
+                  <span className="flex-1">Due</span>
+                  <span className="font-medium">{seg.due}</span>
+                </p>
+              )}
+              <Answers seg={seg} />
               <Owners segmentId={seg.id} />
             </>
           ) : (
             <p className="mt-3 text-[13px] text-muted">{live ? "Being tagged; answers appear in a few seconds." : "Not classified yet."}</p>
           )}
-          <p className="mt-4 rounded-lg bg-accent-tint/70 p-3 text-[13px] text-accent-strong">
-            {s.corrections} correction{s.corrections === 1 ? "" : "s"} saved as labelled examples for evaluating the classifier.
-          </p>
-        </div>
-      ) : (
-        <p className="mt-3 text-[13px] text-muted">Pick a segment to see the typed questions behind its tags.</p>
-      )}
-
           <hr className="my-6 border-line" />
-        </>
+        </div>
       )}
-      <div className="flex items-center justify-between">
-        <Label>This meeting</Label>
-        <span className="rounded-md bg-[var(--mi-neutral-tint)] px-2 py-0.5 font-mono text-[12px] text-ink-3" title="Classifier">{classifier}</span>
-      </div>
 
+      <Label>This meeting</Label>
       {a ? (
         <div className="mi-enter">
           <ChoiceRow question="meeting_type" title="Meeting type" c={a.meetingType} label={typeLabel} />
           {(a.client.options.length > 0 || a.client.value) && <ChoiceRow question="client" title="Client" c={a.client} label={(v) => v} />}
-
-          <p className="mt-3 text-[14px] text-muted">Priority · score</p>
-          <div className="mt-2 flex items-center gap-3">
-            <Bar p={a.priority / 5} />
-            <Mono className="text-ink-3!">
-              {a.priority.toFixed(1)} / 5 · {priorityLabel(a.priority)}
-            </Mono>
-          </div>
-          <p className="mt-3 text-[14px] text-muted">Client tone · score</p>
-          <div className="mt-2 flex items-center gap-3">
-            <Bar p={a.tone / 4} />
-            <Mono className="text-ink-3!">{toneLabel(a.tone)}</Mono>
-          </div>
+          <Score label="Priority" value={priorityLabel(a.priority)} p={a.priority / 5} raw={`${a.priority.toFixed(1)} / 5`} />
+          <Score label="Client tone" value={toneLabel(a.tone)} p={a.tone / 4} raw={`${a.tone.toFixed(1)} / 4`} />
           <FollowUp />
         </div>
       ) : (
         <p className="mt-3 text-[13px] text-muted">Meeting type, client, priority, tone and follow-up are answered when you stop recording.</p>
       )}
 
-      <ReviewList />
+      {!seg && <p className="mt-6 text-[13px] text-muted">Click a line in the transcript to see what Mirona noted about it.</p>}
 
-      {!seg && <p className="mt-6 text-[13px] text-muted">Click Inspect on a line to see the typed questions behind its tags.</p>}
-
-      <hr className="my-6 border-line" />
-      <Label>Redo for this meeting</Label>
-      <div className="mt-3 flex flex-col gap-2">
-        <button type="button" className="mi-ghost min-h-11!" disabled={busy || st?.diarization === "off"} onClick={() => s.rerun("diarization")}>
-          Re-run speaker detection
-        </button>
-        <button type="button" className="mi-ghost min-h-11!" disabled={busy || st?.classification === "off"} onClick={() => s.rerun("classification")}>
-          Re-run classification
-        </button>
-        <p className="text-[12px] text-muted">
-          {s.rerunning[m.id] ?? "Uses the providers set in Models and MCP. Corrections are kept; named voices are matched again by voiceprint."}
-        </p>
+      <div className="mt-auto flex items-center gap-3 border-t border-line pt-4">
+        <Toggle on={s.modelDetails} onChange={s.setModelDetails} label="Show model details" />
+        {/* Label over the model name: side by side they wrap in a narrow inspector. */}
+        <span className="min-w-0 flex-1">
+          <span className="block whitespace-nowrap text-[13px] text-ink-3">Show model details</span>
+          <span className="block truncate font-mono text-[12px] text-muted" title={`Classifier: ${classifier}`}>{classifier}</span>
+        </span>
       </div>
-
-      <hr className="my-6 border-line" />
-      <div className="flex items-center gap-2">
-        <Label>Agents · MCP</Label>
-        <span className={`mi-chip ${st?.mcpEnabled ? "mi-chip--action" : "mi-chip--neutral"}`}>{st?.mcpEnabled ? "On" : "Off"}</span>
-      </div>
-      <p className="mt-2 text-[13px] text-muted">
-        {st?.mcpEnabled ? "Claude and other MCP clients can read this meeting through the mirona CLI. Items needing review are marked as unconfirmed." : "MCP clients can't read meetings. Turn it on in Models and MCP."}
-      </p>
+      {s.modelDetails && <p className="mt-2 text-[12px] text-muted">Bars show how sure the classifier was; the mark is the threshold. Below it, you decide. Change thresholds in Settings → Advanced.</p>}
     </aside>
+  );
+}
+
+/** Priority or tone: a word, with the score behind model details. */
+function Score({ label, value, p, raw }: { label: string; value: string; p: number; raw: string }) {
+  const details = useStore((s) => s.modelDetails);
+  return (
+    <div className="mt-3">
+      <div className="flex min-h-8 items-center gap-2 text-[14px]">
+        <span className="shrink-0 whitespace-nowrap text-muted">{label}</span>
+        <span className="min-w-0 flex-1 truncate text-right font-semibold" title={value}>{value}</span>
+      </div>
+      {details && (
+        <div className="mt-1.5 flex items-center gap-3">
+          <Bar p={p} />
+          <Mono className="text-ink-3!">{raw}</Mono>
+        </div>
+      )}
+    </div>
   );
 }

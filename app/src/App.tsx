@@ -1,26 +1,23 @@
 import { useEffect, useState } from "react";
 import { useStore } from "./store";
 import { applyPlatform, detected, type Platform } from "./lib/platform";
-import { CallBanner, ConsentSheet, RecordingBar, Sidebar, WindowsTitleBar } from "./components/Shell";
+import { CallBanner, ConsentSheet, RecordingBar, Sidebar, Toast, WindowsTitleBar } from "./components/Shell";
 import { MeetingView } from "./views/Meeting";
 import { Inspector } from "./views/Inspector";
-import { ActionItemsView, ModelsView, PeopleView } from "./views/Pages";
+import { ActionItemsView, AgentActivityView, AllMeetingsView, PeopleView } from "./views/Pages";
 import { SetupView } from "./views/Setup";
 
 export default function App() {
   const view = useStore((s) => s.view);
-  const toast = useStore((s) => s.toast);
-  // Keep the last toast mounted after it clears so it can fade out.
-  const [lastToast, setLastToast] = useState(toast);
-  if (toast && toast !== lastToast) setLastToast(toast);
   const hasMeeting = useStore((s) => !!s.meeting);
   const init = useStore((s) => s.init);
   const [platform, setPlatform] = useState<Platform>(detected);
   useEffect(() => void init(), [init]);
   useEffect(() => applyPlatform(platform), [platform]);
-  // Cmd/Ctrl+Shift+L previews the other platform's skin (demo only).
+  // Cmd/Ctrl+, opens Settings. Cmd/Ctrl+Shift+L previews the other platform's skin (demo only).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") useStore.getState().openSettings("general");
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "l") setPlatform((p) => (p === "windows" ? "macos" : "windows"));
     };
     window.addEventListener("keydown", onKey);
@@ -42,7 +39,8 @@ export default function App() {
               {view === "meetings" && <MeetingView />}
               {view === "actions" && <ActionItemsView />}
               {view === "people" && <PeopleView />}
-              {view === "models" && <ModelsView />}
+              {view === "activity" && <AgentActivityView />}
+              {view === "all" && <AllMeetingsView />}
               {view === "setup" && <SetupView />}
             </main>
             {view === "meetings" && hasMeeting && <Inspector />}
@@ -50,16 +48,7 @@ export default function App() {
         </div>
       </div>
       <ConsentSheet />
-      {lastToast && (
-        <div
-          role={lastToast.error ? "alert" : "status"}
-          data-open={!!toast}
-          aria-hidden={!toast}
-          className={`mi-card mi-toast fixed bottom-5 left-1/2 max-w-[640px] -translate-x-1/2 rounded-lg! px-4 py-2.5 text-[14px] font-medium ${lastToast.error ? "text-record-text" : ""}`}
-        >
-          {lastToast.msg}
-        </div>
-      )}
+      <Toast />
     </div>
   );
 }

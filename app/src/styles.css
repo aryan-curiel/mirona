@@ -153,4 +153,6 @@ input[type="checkbox"] { accent-color: var(--mi-accent); width: 15px; height: 15
 /* Text inputs and selects (settings, transcript search, inline edits) */
 .mi-field { min-height: var(--mi-control-h); border-radius: var(--mi-radius-sm); border: 1px solid var(--mi-control-line); background: rgba(255, 255, 255, 0.75); padding: 6px 10px; }
 .mi-field:focus-visible { outline: 2px solid var(--mi-accent); outline-offset: 1px; }
+/* Native selects ignore the field's height and border on macOS: draw them like the other fields, with our own chevron. */
+select.mi-field { appearance: none; -webkit-appearance: none; padding-right: 32px; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235E5E58' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
 .mi-btn-primary:disabled, .mi-ghost:disabled { opacity: 0.55; }

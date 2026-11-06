@@ -411,6 +411,33 @@ pub struct MeetingSummary {
     pub title: String,
     pub client: String,
     pub when: String,
+    /// RFC 3339 start time, for sorting and grouping by day.
+    pub created: String,
+    pub duration_min: u32,
+    /// The classifier's meeting type ("" until classified).
+    pub meeting_type: String,
+    pub open_actions: u32,
+    /// Answers below their threshold, waiting for the user (NGR-158).
+    pub needs_review: u32,
+    pub has_audio: bool,
+    pub has_summary: bool,
+    pub sample: bool,
+}
+
+/// What can be removed from a meeting while keeping its transcript and notes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum MeetingPart {
+    /// The recording; the transcript stays.
+    Audio,
+    /// Summary and its action items.
+    Summary,
+    /// Enhanced notes; the user's own notes stay.
+    Enhanced,
+    /// Tags, typed answers, owners and meeting answers. Sensitive tags and the user's own
+    /// corrections stay, so nothing hidden becomes visible.
+    Classification,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
