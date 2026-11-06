@@ -21,6 +21,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png", "protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-notification = "2"
 mirona-core.workspace = true
 mirona-providers = { workspace = true, features = ["openai", "keychain"] }
 mirona-store.workspace = true

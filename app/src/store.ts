@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { listen } from "@tauri-apps/api/event";
-import { api, LLM_LOCAL, type Person, type RecState, type Settings, type Status, type Template } from "./lib/api";
+import { api, type CallSuggestion, LLM_LOCAL, type Person, type RecState, type Settings, type Status, type Template } from "./lib/api";
 import type { ActionItem } from "./bindings/ActionItem";
 import type { Meeting } from "./bindings/Meeting";
 import type { MeetingSummary } from "./bindings/MeetingSummary";
@@ -56,6 +56,8 @@ type State = {
   /** The audio file being imported; `fraction` is null until its length is known. */
   importing: { meetingId: string | null; file: string; fraction: number | null } | null;
   toast: { msg: string; error: boolean } | null;
+  /** A call app just opened the mic: suggest recording it (NGR-170). */
+  call: CallSuggestion | null;
 
   init: () => Promise<void>;
   go: (view: View) => void;
@@ -87,6 +89,8 @@ type State = {
   importAudio: () => Promise<void>;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
+  recordCall: () => Promise<void>;
+  dismissCall: () => void;
   flash: (msg: string, error?: boolean) => void;
 };
 
@@ -129,7 +133,7 @@ export const useStore = create<State>((set, get) => {
     const was = get().recording;
     set({ processing: r.processing });
     if (r.recording && was?.meetingId !== r.recording) {
-      set({ recording: { meetingId: r.recording, elapsedMs: 0, levels: [] } });
+      set({ recording: { meetingId: r.recording, elapsedMs: 0, levels: [] }, call: null });
       await reloadLists();
       await get().openMeeting(r.recording);
       set({ tab: "transcript" });
@@ -215,12 +219,14 @@ export const useStore = create<State>((set, get) => {
     summarizing: {},
     importing: null,
     toast: null,
+    call: null,
 
     init: async () => {
       if (started) return;
       started = true;
       await listen<PipelineEvent>("pipeline", (ev) => void onEvent(ev.payload));
       await listen<RecState>("recording", (ev) => void onRecording(ev.payload));
+      await listen<CallSuggestion>("call", (ev) => set({ call: ev.payload }));
       const [settings, status, templates] = await Promise.all([api.getSettings(), api.status(), api.listTemplates().catch(() => [])]);
       set({ settings, status, templates });
       await reloadLists();
@@ -441,6 +447,19 @@ export const useStore = create<State>((set, get) => {
       }),
 
     stopRecording: () => run(() => api.stopRecording()),
+
+    recordCall: () =>
+      run(async () => {
+        const call = get().call;
+        if (!call) return;
+        set({ call: null });
+        await api.startCallRecording(call.title, call.client);
+        // Named after the calendar event once it started: show the new title.
+        await reloadLists();
+        await reloadMeeting();
+      }),
+
+    dismissCall: () => set({ call: null }),
 
     flash: (msg, error = false) => {
       const toast = { msg, error };

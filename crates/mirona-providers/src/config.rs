@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // independent on/off settings
 #[serde(default)]
 pub struct Config {
     /// Privacy mode: cloud providers are refused. On by default.
@@ -34,6 +35,12 @@ pub struct Config {
     /// The user's clients/projects: name → short description (contact, what they do). The
     /// classifier picks one per meeting (NGR-157).
     pub clients: BTreeMap<String, String>,
+    /// Suggest recording when a call app starts using the mic (NGR-170).
+    pub detect_calls: bool,
+    /// Read the title of the calendar event happening now to name the meeting (NGR-170).
+    pub calendar_titles: bool,
+    /// Clients whose calls (matched by calendar title) start recording without a click.
+    pub auto_record: Vec<String>,
 }
 
 /// Cmd+Shift+R is a browser's hard reload, so one more modifier keeps it out of other apps' way.
@@ -62,6 +69,9 @@ impl Default for Config {
             shortcut: DEFAULT_SHORTCUT.into(),
             thresholds: BTreeMap::new(),
             clients: BTreeMap::new(),
+            detect_calls: true,
+            calendar_titles: false,
+            auto_record: vec![],
         }
     }
 }
@@ -141,6 +151,16 @@ mod tests {
         assert!((back.threshold("action", true) - 0.8).abs() < 1e-6);
         assert!((back.threshold("decision", false) - 0.95).abs() < 1e-6);
         assert!((back.threshold("smalltalk", true) - 0.6).abs() < 1e-6);
+
+        // Call detection: on by default, calendar and auto-record opt in.
+        std::fs::write(&path, "privacy = false").unwrap();
+        let old = Config::load(&path).unwrap();
+        assert!(old.detect_calls && !old.calendar_titles && old.auto_record.is_empty());
+        cfg.detect_calls = false;
+        cfg.calendar_titles = true;
+        cfg.auto_record = vec!["Northwind Bank".into()];
+        cfg.save(&path).unwrap();
+        assert_eq!(Config::load(&path).unwrap(), cfg);
 
         std::fs::write(&path, "privacy = \"maybe\"").unwrap();
         assert!(Config::load(&path).is_err());

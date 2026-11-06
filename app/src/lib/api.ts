@@ -28,7 +28,16 @@ export type Settings = {
   thresholdDefaults: Record<string, number>;
   /** Client name → short description. */
   clients: Record<string, string>;
+  /** Suggest recording when a call app opens the mic (NGR-170). */
+  detectCalls: boolean;
+  /** Name meetings after the calendar event happening now. */
+  calendarTitles: boolean;
+  /** Clients whose calls start recording without a click. */
+  autoRecord: string[];
 };
+
+/** A call app started using the mic: the "call" event (NGR-170). */
+export type CallSuggestion = { app: string; title: string | null; client: string | null };
 
 /** A person as `list_people` returns them: the speaker plus where they were last heard. */
 export type Person = Speaker & { meetings: number; lastSeen: MeetingSummary | null };
@@ -85,9 +94,10 @@ export const api = {
   /** Opens the file picker; the file name, or null when cancelled. Errors while one runs. */
   importAudio: () => invoke<string | null>("import_audio"),
   startRecording: () => invoke<Meeting>("start_recording"),
+  startCallRecording: (title: string | null, client: string | null) => invoke<Meeting>("start_call_recording", { title, client }),
   stopRecording: () => invoke<string>("stop_recording"),
   recordingState: () => invoke<RecState>("recording_state"),
-  requestPermission: (kind: "mic" | "system") => invoke<boolean>("request_permission", { kind }),
+  requestPermission: (kind: "mic" | "system" | "calendar") => invoke<boolean>("request_permission", { kind }),
   status: (keys = false) => invoke<Status>("status", { keys }),
   setApiKey: (provider: string, key: string) => invoke<void>("set_api_key", { provider, key }),
   pickFolder: () => invoke<string | null>("pick_folder"),

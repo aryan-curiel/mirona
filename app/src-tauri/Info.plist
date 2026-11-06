@@ -6,5 +6,9 @@
   <string>Mirona transcribes your side of the call on this Mac. Audio never leaves your computer unless you choose a cloud model.</string>
   <key>NSAudioCaptureUsageDescription</key>
   <string>Mirona records the other side of the call from your Mac's system audio and transcribes it on this Mac. Audio never leaves your computer unless you choose a cloud model.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Mirona names a call after the calendar event happening now, when you turn this on in Settings. Your calendar never leaves your computer.</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>Mirona names a call after the calendar event happening now, when you turn this on in Settings. Your calendar never leaves your computer.</string>
 </dict>
 </plist>

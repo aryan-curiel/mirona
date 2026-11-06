@@ -2,6 +2,10 @@
 //! store at the configured folder, recording from the window, the tray and a global shortcut,
 //! and settings that read and write `config.toml`.
 //!
+//! Call detection (NGR-170): a worker polls which call app uses the mic and, when one starts,
+//! suggests recording on the "call" channel and in a system notification. It records on its
+//! own only for clients the user opted in (`auto_record`, matched by calendar title).
+//!
 //! Long work (stopping + summarizing, import, regenerate) runs on its own thread and reports
 //! on the "pipeline" event channel; "recording" carries the recorder state ([`RecState`]).
 
@@ -28,6 +32,7 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_notification::NotificationExt;
 
 type Res<T> = Result<T, String>;
 
@@ -550,6 +555,104 @@ fn stop(app: &AppHandle) -> Res<String> {
     Ok(id)
 }
 
+/// Start recording and name the meeting after the calendar event and its client (NGR-170).
+fn record_call(app: &AppHandle, title: Option<&str>, client: Option<&str>) -> Res<Meeting> {
+    let mut meeting = start(app)?;
+    let engine = app.state::<AppState>().engine();
+    let mut s = engine.store.lock().unwrap();
+    if let Some(t) = title.map(str::trim).filter(|t| !t.is_empty()) {
+        meeting = s.set_title(&meeting.id, t)?;
+    }
+    if let Some(c) = client {
+        meeting = s.confirm_client(&meeting.id, c)?;
+    }
+    Ok(meeting)
+}
+
+#[tauri::command]
+async fn start_call_recording(
+    app: AppHandle,
+    title: Option<String>,
+    client: Option<String>,
+) -> Res<Meeting> {
+    tauri::async_runtime::spawn_blocking(move || {
+        record_call(&app, title.as_deref(), client.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// A call app started using the mic; sent on the "call" channel.
+#[derive(Debug, Clone, Serialize)]
+struct CallSuggestion {
+    app: String,
+    /// The calendar event happening now, when calendar titles are on.
+    title: Option<String>,
+    /// The client named in that title.
+    client: Option<String>,
+}
+
+/// Every 3 s: when a call app newly opens the mic and nothing records, suggest recording, or
+/// record right away if the calendar names a client the user allowed to auto-record.
+fn watch_calls(app: AppHandle) {
+    std::thread::spawn(move || {
+        let mut seen: Vec<String> = vec![];
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            let cfg = app.state::<AppState>().engine().config();
+            if !cfg.detect_calls {
+                seen.clear();
+                continue;
+            }
+            let calls = mirona_capture::calls::calls_using_mic();
+            let new = calls.iter().find(|c| !seen.contains(&c.name)).cloned();
+            seen = calls.into_iter().map(|c| c.name).collect();
+            let Some(call) = new else { continue };
+            if app.state::<AppState>().session.lock().unwrap().is_some() {
+                continue;
+            }
+            let title = if cfg.calendar_titles {
+                mirona_capture::calls::current_event_title()
+            } else {
+                None
+            };
+            let client = title
+                .as_deref()
+                .and_then(|t| mirona_capture::calls::client_in_title(t, cfg.clients.keys()));
+            let notify = |title: &str, body: &str| {
+                if let Err(e) = app.notification().builder().title(title).body(body).show() {
+                    eprintln!("mirona: notification: {e}");
+                }
+            };
+            if let Some(c) = client.as_ref().filter(|c| cfg.auto_record.contains(c)) {
+                match record_call(&app, title.as_deref(), Some(c)) {
+                    Ok(m) => notify("Recording", &format!("{} ({}): {}", m.title, c, call.name)),
+                    Err(e) => {
+                        app.emit("pipeline", notice("", e, true)).ok();
+                    }
+                }
+                continue;
+            }
+            notify(
+                "Record this call?",
+                &format!(
+                    "{} is using the microphone. Open Mirona to record.",
+                    call.name
+                ),
+            );
+            app.emit(
+                "call",
+                CallSuggestion {
+                    app: call.name,
+                    title,
+                    client,
+                },
+            )
+            .ok();
+        }
+    });
+}
+
 /// Tray and shortcut entry point: never blocks the main thread, errors become notices.
 fn toggle(app: &AppHandle) {
     let app = app.clone();
@@ -611,12 +714,14 @@ fn permission(p: Permission) -> &'static str {
     }
 }
 
-/// Shows the OS prompt (blocks until answered, so off the main thread). `kind`: mic | system.
+/// Shows the OS prompt (blocks until answered, so off the main thread).
+/// `kind`: mic | system | calendar.
 #[tauri::command]
 async fn request_permission(kind: String) -> Res<bool> {
     tauri::async_runtime::spawn_blocking(move || match kind.as_str() {
         "mic" => Ok(mirona_capture::request_mic_permission()),
         "system" => Ok(mirona_capture::request_system_audio_permission()),
+        "calendar" => Ok(mirona_capture::calls::request_calendar_permission()),
         other => Err(format!("unknown permission {other}")),
     })
     .await
@@ -712,6 +817,7 @@ async fn pick_folder(app: AppHandle) -> Option<PathBuf> {
 /// Everything the Models and MCP screen edits. Mirrors `config.toml`; folders are shown
 /// resolved (the default when the config leaves them out).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // independent on/off settings
 #[serde(rename_all = "camelCase")]
 struct Settings {
     privacy: bool,
@@ -742,6 +848,15 @@ struct Settings {
     /// Client name → short description, for the client question (NGR-157).
     #[serde(default)]
     clients: BTreeMap<String, String>,
+    /// Suggest recording when a call app opens the mic (NGR-170).
+    #[serde(default)]
+    detect_calls: bool,
+    /// Name meetings after the calendar event happening now.
+    #[serde(default)]
+    calendar_titles: bool,
+    /// Clients whose calls start recording without a click (needs calendar titles).
+    #[serde(default)]
+    auto_record: Vec<String>,
 }
 
 /// Questions with a threshold the user can set (NGR-158).
@@ -802,6 +917,9 @@ impl Settings {
                     .collect()
             },
             clients: cfg.clients.clone(),
+            detect_calls: cfg.detect_calls,
+            calendar_titles: cfg.calendar_titles,
+            auto_record: cfg.auto_record.clone(),
         }
     }
 
@@ -876,7 +994,16 @@ impl Settings {
         cfg.providers
             .insert("diarization".into(), self.diarization.clone());
         cfg.thresholds.clone_from(&self.thresholds);
+        // A removed client stops auto-recording with it.
+        cfg.auto_record = self
+            .auto_record
+            .iter()
+            .map(|c| c.trim().to_string())
+            .filter(|c| clients.contains_key(c))
+            .collect();
         cfg.clients = clients;
+        cfg.detect_calls = self.detect_calls;
+        cfg.calendar_titles = self.calendar_titles;
         Ok(cfg)
     }
 }
@@ -995,6 +1122,7 @@ fn tray(app: &tauri::App, shortcut: &str) -> tauri::Result<()> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _, ev| {
@@ -1032,6 +1160,7 @@ pub fn run() {
                 importing: false.into(),
                 startup_errors: errors,
             });
+            watch_calls(app.handle().clone());
             // Recordings a crash left as WAV get compressed in the background.
             let engine = app.state::<AppState>().engine();
             std::thread::spawn(move || {
@@ -1068,6 +1197,7 @@ pub fn run() {
             regenerate,
             import_audio,
             start_recording,
+            start_call_recording,
             stop_recording,
             recording_state,
             request_permission,
@@ -1148,7 +1278,16 @@ mod tests {
         s.thresholds.insert("action".into(), 0.8);
         s.clients
             .insert(" Northwind Bank ".into(), " contact: Karen ".into());
+        assert!(s.detect_calls && !s.calendar_titles);
+        s.calendar_titles = true;
+        s.auto_record = vec!["Northwind Bank".into(), "Gone Client".into()];
         let cfg = s.apply(Config::default(), &d).unwrap();
+        assert!(cfg.calendar_titles);
+        assert_eq!(
+            cfg.auto_record,
+            ["Northwind Bank"],
+            "unknown clients are dropped"
+        );
         assert_eq!(cfg.providers["classification"], "local-llm");
         assert_eq!(cfg.providers["diarization"], "speakrs-cpu");
         assert!((cfg.threshold("action", true) - 0.8).abs() < 1e-6);
