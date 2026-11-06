@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     /// Privacy mode: cloud providers are refused. On by default.
@@ -29,6 +29,11 @@ pub struct Config {
     pub mcp_enabled: bool,
     /// Global start/stop-recording shortcut, as a Tauri accelerator ("CmdOrCtrl+Alt+Shift+R").
     pub shortcut: String,
+    /// Question id → threshold, overriding the defaults in [`default_threshold`] (NGR-158).
+    pub thresholds: BTreeMap<String, f32>,
+    /// The user's clients/projects: name → short description (contact, what they do). The
+    /// classifier picks one per meeting (NGR-157).
+    pub clients: BTreeMap<String, String>,
 }
 
 /// Cmd+Shift+R is a browser's hard reload, so one more modifier keeps it out of other apps' way.
@@ -55,11 +60,34 @@ impl Default for Config {
             llm: LlmSettings::default(),
             mcp_enabled: true,
             shortcut: DEFAULT_SHORTCUT.into(),
+            thresholds: BTreeMap::new(),
+            clients: BTreeMap::new(),
         }
     }
 }
 
+/// Thresholds from the NGR-130 eval (ADR 0001): 0.60, but 0.95 for `decision` (Jev over-calls
+/// it). The local fallback (`local`) is overconfident: 0.99 for `action`, 0.95 for `decision`
+/// and `unanswered`, and 0.50 for `sensitive` (no threshold fixes its misses, so any lean
+/// towards yes counts).
+pub fn default_threshold(question: &str, local: bool) -> f32 {
+    match (question, local) {
+        ("decision", _) | ("unanswered", true) => 0.95,
+        ("action", true) => 0.99,
+        ("sensitive", true) => 0.5,
+        _ => 0.6,
+    }
+}
+
 impl Config {
+    /// The threshold for a question: the user's, or the default for this classifier.
+    pub fn threshold(&self, question: &str, local: bool) -> f32 {
+        self.thresholds
+            .get(question)
+            .copied()
+            .unwrap_or_else(|| default_threshold(question, local))
+    }
+
     /// A missing file means defaults; a broken one is an error, never silently reset.
     pub fn load(path: &Path) -> Result<Self, String> {
         match std::fs::read_to_string(path) {
@@ -102,6 +130,17 @@ mod tests {
         cfg.shortcut = "CmdOrCtrl+Shift+F9".into();
         cfg.save(&path).unwrap();
         assert_eq!(Config::load(&path).unwrap(), cfg);
+
+        // Thresholds and clients round-trip; unset thresholds keep their defaults.
+        cfg.thresholds.insert("action".into(), 0.8);
+        cfg.clients
+            .insert("Northwind Bank".into(), "contact: Karen".into());
+        cfg.save(&path).unwrap();
+        let back = Config::load(&path).unwrap();
+        assert_eq!(back, cfg);
+        assert!((back.threshold("action", true) - 0.8).abs() < 1e-6);
+        assert!((back.threshold("decision", false) - 0.95).abs() < 1e-6);
+        assert!((back.threshold("smalltalk", true) - 0.6).abs() < 1e-6);
 
         std::fs::write(&path, "privacy = \"maybe\"").unwrap();
         assert!(Config::load(&path).is_err());

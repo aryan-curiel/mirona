@@ -5,10 +5,13 @@
 //! - The transcript goes to the model as numbered lines (`[12 03:45] Nadia: …`). The model cites
 //!   line numbers (or clock times), which map back to `at_ms`; items citing nothing real are
 //!   dropped (decisions, questions, notes) or flagged `needs_review` (action items).
+//! - Classified segments (NGR-156): small talk is dropped before summarizing, and sensitive
+//!   segments never reach a cloud model. An action item whose line the classifier didn't tag as
+//!   an action (at or above its threshold) is flagged `needs_review` (NGR-158).
 //! - Long meetings are cut into chunks of `CHUNK_CHARS` (map), and the partial overviews are
 //!   merged by one more call (reduce). Items keep their global line numbers, so citations hold.
 
-use mirona_core::{ActionItem, Decision, EnhancedNote, Meeting, Summary, TagKind};
+use mirona_core::{ActionItem, Decision, EnhancedNote, Locality, Meeting, Summary, TagKind};
 use mirona_providers::{Completion, LlmProvider, Prompt, Usage};
 use serde_json::Value;
 use std::io::Write;
@@ -131,18 +134,28 @@ fn parse_clock(s: &str) -> Option<u32> {
     secs.checked_mul(1000)
 }
 
-/// Numbered lines; redacted segments never reach the model.
-fn transcript_lines(m: &Meeting) -> Vec<String> {
+fn tagged(s: &mirona_core::Segment, kind: TagKind) -> bool {
+    s.tags.iter().any(|t| t.kind == kind)
+}
+
+/// Numbered lines; redacted segments never reach the model, sensitive ones never reach a cloud
+/// model, and small talk is left out (its line number stays unused, so citations hold).
+fn transcript_lines(m: &Meeting, cloud: bool) -> Vec<String> {
     m.segments
         .iter()
         .enumerate()
+        .filter(|(_, s)| !tagged(s, TagKind::SmallTalk))
         .map(|(i, s)| {
             let who = m
                 .speakers
                 .iter()
                 .find(|p| p.id == s.speaker_id)
                 .map_or(s.speaker_id.as_str(), |p| p.name.as_str());
-            let text = if s.redacted { "[redacted]" } else { &s.text };
+            let text = if s.redacted || (cloud && tagged(s, TagKind::Sensitive)) {
+                "[redacted]"
+            } else {
+                &s.text
+            };
             format!("[{i} {}] {who}: {text}", clock(s.start_ms))
         })
         .collect()
@@ -362,7 +375,10 @@ pub async fn summarize_streaming(
         return Err("nothing to summarize: the transcript is empty".into());
     }
     let system = summary_prompt(template);
-    let parts = chunks(&transcript_lines(meeting), CHUNK_CHARS);
+    let parts = chunks(
+        &transcript_lines(meeting, llm.locality() == Locality::Cloud),
+        CHUNK_CHARS,
+    );
     let (mut overviews, mut decisions, mut questions, mut actions) =
         (vec![], vec![], vec![], vec![]);
     let mut dropped = 0;
@@ -412,7 +428,9 @@ pub async fn summarize_streaming(
             meeting_id: meeting.id.clone(),
             meeting_title: meeting.title.clone(),
             at_ms: it.at_ms,
-            needs_review: it.at_ms.is_none() || it.owner.is_empty(),
+            needs_review: it.at_ms.is_none()
+                || it.owner.is_empty()
+                || !classified_action(meeting, it.at_ms),
             text: it.text,
             owner: it.owner,
             due: it.due,
@@ -442,6 +460,20 @@ pub async fn summarize_streaming(
         quality,
     };
     Ok((summary, actions))
+}
+
+/// Whether the classifier backs an action item cited at `at_ms`: true when the meeting wasn't
+/// classified, or the cited line or a neighbour carries an Action tag (models often cite the
+/// request while the "Sure" is the next line).
+fn classified_action(m: &Meeting, at_ms: Option<u32>) -> bool {
+    if m.segments.iter().all(|s| s.answers.is_empty()) {
+        return true;
+    }
+    let Some(i) = m.segments.iter().position(|s| Some(s.start_ms) == at_ms) else {
+        return false;
+    };
+    let near = &m.segments[i.saturating_sub(1)..(i + 2).min(m.segments.len())];
+    near.iter().any(|s| tagged(s, TagKind::Action))
 }
 
 // ---------- enhanced notes (NGR-147) ----------
@@ -490,7 +522,10 @@ pub async fn enhance_notes(meeting: &Meeting, llm: &impl LlmProvider) -> Result<
     } else {
         raw.join("\n")
     };
-    let parts = chunks(&transcript_lines(meeting), CHUNK_CHARS);
+    let parts = chunks(
+        &transcript_lines(meeting, llm.locality() == Locality::Cloud),
+        CHUNK_CHARS,
+    );
     let mut out = vec![];
     for (i, part) in parts.iter().enumerate() {
         let user = format!(

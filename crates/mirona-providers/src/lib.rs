@@ -16,12 +16,12 @@ pub mod ollama;
 pub mod openai;
 #[cfg(feature = "parakeet")]
 pub mod parakeet;
-#[cfg(feature = "speakrs")]
 pub mod speakrs;
 #[cfg(feature = "whisper")]
 pub mod whisper;
 
-use mirona_core::{Answer, Locality, ProviderOption, Segment};
+use mirona_core::{Locality, ProviderOption};
+use questions::{Question, Reply};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -94,9 +94,14 @@ pub trait Diarizer: Provider {
     fn voiceprint(&self, pcm: &[f32]) -> impl Future<Output = Result<Vec<f32>>> + Send;
 }
 
+/// Typed questions (yes/no, choice, score) about one text, all in one call (NGR-155).
 pub trait Classifier: Provider {
-    /// Answer every typed question about a segment in one call.
-    fn classify(&self, segment: &Segment) -> impl Future<Output = Result<Vec<Answer>>> + Send;
+    /// One reply per question, in question order.
+    fn ask(
+        &self,
+        text: &str,
+        questions: &[Question],
+    ) -> impl Future<Output = Result<Vec<Reply>>> + Send;
 }
 
 /// What an LLM is asked: a system prompt, the user content, and whether to answer in JSON.
@@ -139,10 +144,10 @@ pub trait Embedder: Provider {
 /// Deterministic fakes for the prototype and tests.
 pub mod fake {
     use super::{
-        Answer, Classifier, Completion, Diarization, Diarizer, Embedder, FoundSpeaker, LlmProvider,
-        Locality, Prompt, Provider, Result, Segment, SttProvider, Turn, Usage,
+        Classifier, Completion, Diarization, Diarizer, Embedder, FoundSpeaker, LlmProvider,
+        Locality, Prompt, Provider, Question, Reply, Result, SttProvider, Turn, Usage,
     };
-    use mirona_core::{AnswerSource, QuestionKind};
+    use crate::questions::{Kind, options};
 
     pub struct Fake(pub &'static str);
 
@@ -185,20 +190,63 @@ pub mod fake {
         }
     }
 
+    /// Keyword heuristics, so offline runs (CI's `mirona eval --with fake`, the demo) have
+    /// something deterministic. Not a classifier anyone should trust.
     impl Classifier for Fake {
-        fn classify(&self, segment: &Segment) -> impl Future<Output = Result<Vec<Answer>>> + Send {
-            // ponytail: keyword heuristic stands in for Jev until NGR-155.
-            let action = ["I'll", "I will", "can you", "send"]
+        fn ask(
+            &self,
+            text: &str,
+            questions: &[Question],
+        ) -> impl Future<Output = Result<Vec<Reply>>> + Send {
+            let has = |ks: &[&str]| ks.iter().any(|k| text.contains(k));
+            let replies = questions
                 .iter()
-                .any(|k| segment.text.contains(k));
-            ready(Ok(vec![Answer {
-                id: "action".into(),
-                question: "Is this an action item?".into(),
-                kind: QuestionKind::YesNo,
-                answer: action,
-                probability: if action { 0.82 } else { 0.08 },
-                source: AnswerSource::Model,
-            }]))
+                .map(|q| match &q.kind {
+                    Kind::YesNo { .. } => {
+                        let yes = match q.id.as_str() {
+                            "action" => has(&["I'll", "I will", "can you", "Can you", "send"]),
+                            "decision" => has(&["let's go with", "we go with", "decided"]),
+                            "unanswered" => has(&["?"]) && has(&["not sure", "don't know"]),
+                            "smalltalk" => has(&["weekend", "vacation", "weather"]),
+                            "sensitive" => has(&["password", "salary", "doctor"]),
+                            "due" => has(&["by ", "Monday", "Friday", "Thursday", "tomorrow"]),
+                            _ => false,
+                        };
+                        Reply::YesNo(if yes { 0.82 } else { 0.08 })
+                    }
+                    Kind::Choice(_) | Kind::Score(_) => {
+                        let opts = options(q);
+                        // The first option named in the text, else the first one.
+                        let pick = opts.iter().position(|o| text.contains(o.as_str()));
+                        let pick = pick.unwrap_or(0);
+                        #[allow(clippy::cast_precision_loss)]
+                        let rest = 0.3 / (opts.len().max(2) - 1) as f32;
+                        let probabilities: Vec<(String, f32)> = opts
+                            .iter()
+                            .enumerate()
+                            .map(|(i, o)| (o.clone(), if i == pick { 0.7 } else { rest }))
+                            .collect();
+                        if matches!(q.kind, Kind::Score(_)) {
+                            #[allow(clippy::cast_precision_loss)]
+                            let score = probabilities
+                                .iter()
+                                .enumerate()
+                                .map(|(i, (_, p))| i as f32 * p)
+                                .sum();
+                            Reply::Score {
+                                score,
+                                probabilities: probabilities.iter().map(|(_, p)| *p).collect(),
+                            }
+                        } else {
+                            Reply::Choice {
+                                value: opts[pick].clone(),
+                                probabilities,
+                            }
+                        }
+                    }
+                })
+                .collect();
+            ready(Ok(replies))
         }
     }
 

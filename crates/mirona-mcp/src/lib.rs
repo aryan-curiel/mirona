@@ -4,6 +4,9 @@
 //! Every call reloads `config.toml` and reads the meeting folders afresh into a private
 //! in-memory index ([`Store::open_snapshot`]), so the server sees what the app wrote a moment
 //! ago, works with the app closed, and never touches the app's `index.sqlite`.
+//! Classification (NGR-158): answers below their threshold are never served as fact. Action
+//! items carry `needs_review`, and `get_meeting` lists what is unconfirmed. Segments tagged
+//! sensitive are hidden from agents (transcript and search snippets).
 //! ponytail: a full re-read per call; fine for hundreds of meetings, cache by folder mtime
 //! past that.
 
@@ -108,7 +111,8 @@ impl Server {
     #[tool(
         description = "One meeting, compact: summary overview, decisions, action items, open \
         questions, the user's notes and enhanced notes, each with its timestamp. No transcript \
-        (use get_transcript).",
+        (use get_transcript). `unconfirmed` lists classifier guesses below their threshold \
+        (meeting type, client, tags, action items): never treat them as fact.",
         annotations(read_only_hint = true)
     )]
     fn get_meeting(&self, Parameters(a): Parameters<MeetingArgs>) -> Result<String, String> {
@@ -130,7 +134,8 @@ impl Server {
 
     #[tool(
         description = "Action items across all meetings, newest meeting first: text, owner, \
-        due date, done, client and the meeting it came from. Filter by client and/or open only.",
+        due date, done, client and the meeting it came from. Filter by client and/or open only. \
+        Items with needs_review: true are unconfirmed guesses: never treat them as fact.",
         annotations(read_only_hint = true)
     )]
     fn list_action_items(&self, Parameters(a): Parameters<ActionArgs>) -> Result<String, String> {
@@ -145,7 +150,7 @@ impl Server {
                 json!({
                     "id": i.id, "text": i.text, "owner": i.owner, "due": i.due, "done": i.done,
                     "client": i.client, "meeting_id": i.meeting_id, "meeting": i.meeting_title,
-                    "at": i.at_ms.map(at),
+                    "at": i.at_ms.map(at), "needs_review": i.needs_review,
                 })
             })
             .collect();
@@ -185,7 +190,14 @@ pub fn search(store: &Store, query: &str) -> Result<Value, String> {
     let hits = store.search_hits(query);
     let truncated = hits.len() > MAX_MOMENTS;
     let mut moments = vec![];
-    for h in hits.into_iter().take(MAX_MOMENTS) {
+    let hidden = |h: &mirona_store::Hit| {
+        store.meeting(&h.meeting_id).is_ok_and(|m| {
+            m.segments
+                .iter()
+                .any(|s| s.start_ms == h.start_ms && sensitive(s))
+        })
+    };
+    for h in hits.into_iter().filter(|h| !hidden(h)).take(MAX_MOMENTS) {
         let mut v = head(&h.meeting_id)?;
         v["at"] = at(h.start_ms).into();
         v["snippet"] = h.snippet.into();
@@ -212,7 +224,7 @@ pub fn meeting(store: &Store, id: &str) -> Result<Value, String> {
         .filter(|a| a.meeting_id == m.id)
         .map(|a| {
             json!({ "id": a.id, "text": a.text, "owner": a.owner, "due": a.due, "done": a.done,
-                    "at": a.at_ms.map(at) })
+                    "at": a.at_ms.map(at), "needs_review": a.needs_review })
         })
         .collect();
     let enhanced: Vec<Value> = m
@@ -236,6 +248,12 @@ pub fn meeting(store: &Store, id: &str) -> Result<Value, String> {
         "notes": m.notes.raw,
         "enhanced_notes": enhanced,
         "summary_by": s.map(|s| &s.written_by),
+        "meeting_type": m.answers.as_ref()
+            .filter(|a| a.meeting_type.confirmed || a.meeting_type.probability >= a.meeting_type.threshold)
+            .map(|a| &a.meeting_type.value),
+        "unconfirmed": store.review(id)?.iter().map(|r| json!({
+            "question": r.question, "value": r.value, "at": r.at_ms.map(at),
+        })).collect::<Vec<_>>(),
     }))
 }
 
@@ -251,10 +269,21 @@ pub fn transcript(m: &Meeting, from: Option<u32>, to: Option<u32>) -> String {
             .iter()
             .find(|p| p.id == s.speaker_id)
             .map_or(s.speaker_id.as_str(), |p| &p.name);
-        let text = if s.redacted { "[redacted]" } else { &s.text };
+        let text = if s.redacted || sensitive(s) {
+            "[redacted]"
+        } else {
+            &s.text
+        };
         writeln!(out, "[{}] {who}: {text}", at(s.start_ms)).ok();
     }
     out
+}
+
+/// Tagged sensitive (at/above threshold, or confirmed by the user): kept from agents.
+fn sensitive(s: &mirona_core::Segment) -> bool {
+    s.tags
+        .iter()
+        .any(|t| t.kind == mirona_core::TagKind::Sensitive)
 }
 
 /// Milliseconds → "m:ss" or "h:mm:ss".
@@ -282,6 +311,31 @@ pub fn parse_at(t: &str) -> Result<u32, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agents_never_get_sensitive_lines_or_unconfirmed_guesses_as_fact() {
+        let store = Store::sample();
+        let (m, seg) = store
+            .list_meetings()
+            .into_iter()
+            .find_map(|m| {
+                let m = store.meeting(&m.id).unwrap();
+                let s = m.segments.iter().find(|s| sensitive(s))?.clone();
+                Some((m, s))
+            })
+            .expect("the demo data has a sensitive line");
+        let t = transcript(&m, None, None);
+        assert!(!t.contains(&seg.text) && t.contains("[redacted]"), "{t}");
+        let v = meeting(&store, &m.id).unwrap();
+        assert!(v["unconfirmed"].is_array());
+        assert!(
+            v["action_items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|a| a["needs_review"].is_boolean())
+        );
+    }
 
     #[test]
     fn times_round_trip() {

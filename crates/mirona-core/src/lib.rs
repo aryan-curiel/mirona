@@ -97,6 +97,42 @@ pub struct Answer {
     pub answer: bool,
     pub probability: f32,
     pub source: AnswerSource,
+    /// The question's threshold when it was answered (NGR-158): a model "yes" with
+    /// `probability` below it needs review instead of being acted on.
+    #[serde(default)]
+    pub threshold: f32,
+}
+
+impl Answer {
+    /// A model "yes" below its threshold: shown as "Needs review", never acted on.
+    pub fn needs_review(&self) -> bool {
+        self.source == AnswerSource::Model && self.answer && self.probability < self.threshold
+    }
+}
+
+impl TagKind {
+    /// The tag a yes to segment question `answer_id` puts on a segment (none for "due").
+    pub fn for_answer(answer_id: &str) -> Option<Self> {
+        Some(match answer_id {
+            "action" => Self::Action,
+            "decision" => Self::Decision,
+            "unanswered" => Self::OpenQuestion,
+            "smalltalk" => Self::SmallTalk,
+            "sensitive" => Self::Sensitive,
+            _ => return None,
+        })
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Action => "Action",
+            Self::Decision => "Decision",
+            Self::OpenQuestion => "Open question",
+            Self::SmallTalk => "Small talk",
+            Self::Sensitive => "Sensitive",
+            Self::Review => "Needs review",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -145,6 +181,29 @@ pub struct MeetingAnswers {
     pub follow_up: bool,
     pub follow_up_probability: f32,
     pub follow_up_draft: String,
+    /// Client tone, 0..=4: very unhappy, concerned, neutral, positive, delighted.
+    #[serde(default)]
+    pub tone: f32,
+    /// Below it, `follow_up` needs review and no draft is written.
+    #[serde(default)]
+    pub follow_up_threshold: f32,
+}
+
+/// One answer below its threshold, collected per meeting (NGR-158): acted on only once the
+/// user confirms it.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Review {
+    /// The segment it is about; `None` for meeting-level answers and action items.
+    pub segment_id: Option<Id>,
+    pub at_ms: Option<u32>,
+    /// Answer id (`action`, `meeting_type`, `client`, `follow_up`) or `action_item`.
+    pub question: String,
+    /// What the model thinks: "yes", a choice, or the action item's text.
+    pub value: String,
+    pub probability: f32,
+    pub threshold: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -319,6 +378,10 @@ pub enum PipelineEvent {
         meeting_id: Id,
         segment_id: Id,
         tags: Vec<Tag>,
+        #[serde(default)]
+        answers: Vec<Answer>,
+        #[serde(default)]
+        owners: Vec<Choice>,
     },
     /// An audio file being transcribed into `meeting_id` (saved once transcription ends).
     /// `fraction` is 0..=1 of the file, `None` while the length is unknown.

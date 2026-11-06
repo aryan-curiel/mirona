@@ -5,22 +5,27 @@
 //! <root>/<YYYY-MM-DD-HHMM>-<slug>/transcript.jsonl  one Segment per line, appended while recording
 //! <root>/<YYYY-MM-DD-HHMM>-<slug>/audio.<ext>       written by capture; the store keeps its name
 //! <root>/.mirona/index.sqlite                       derived; `reindex` rebuilds it from the files
+//! <root>/.mirona/voices.json                        known people + voice embeddings (`people.rs`)
 //! ```
 //!
 //! The files are the source of truth and every write goes through to disk immediately.
 //! ponytail: all meetings live in memory and the index is rebuilt on every `open`; fine for
 //! hundreds of meetings, switch to lazy loading + mtime-based incremental reindex past that.
 
+mod classify;
 mod files;
 mod index;
+mod people;
 pub mod sample;
 
+pub use classify::review_tag;
 pub use index::Hit;
+pub use people::{Cluster, Person, Voices, replace_name};
 
 use files::Entry;
 use mirona_core::{
     ActionItem, AnswerSource, Choice, Correction, EnhancedNote, Id, Meeting, MeetingAnswers,
-    MeetingSummary, Note, Segment, Speaker, Summary, Tag, TagKind, Tint,
+    MeetingSummary, Note, Segment, Speaker, Summary, Tint,
 };
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
@@ -336,7 +341,7 @@ impl Store {
         std::fs::remove_dir_all(&e.dir).map_err(|err| format!("{}: {err}", e.dir.display()))?;
         index::remove_meeting(&mut self.db, id)?;
         self.refresh_people();
-        Ok(())
+        self.forget_meeting_voices(id)
     }
 
     /// Records the meeting length once recording stops. The summary comes from `set_summary`.
@@ -417,11 +422,15 @@ impl Store {
     }
 
     /// Meeting-level answers (type, client, priority, follow-up). The client answer becomes
-    /// the meeting's client.
+    /// the meeting's client only when confirmed or at/above its threshold (NGR-158).
     pub fn set_answers(&mut self, meeting_id: &str, answers: MeetingAnswers) -> Result<()> {
         let i = self.idx(meeting_id)?;
         let m = &mut self.entries[i].meeting;
-        m.client.clone_from(&answers.client.value);
+        let c = &answers.client;
+        if (c.confirmed || c.probability >= c.threshold) && !c.value.is_empty() && c.value != "none"
+        {
+            m.client.clone_from(&c.value);
+        }
         m.answers = Some(answers);
         self.save(i, false)
     }
@@ -447,7 +456,8 @@ impl Store {
         Ok(a)
     }
 
-    /// Fix a model answer. The fix is kept as a labelled example and retags the segment.
+    /// Fix a model answer. The fix is kept as a labelled example (`labels_path`, NGR-160) and
+    /// retags the segment.
     #[allow(clippy::needless_pass_by_value)] // takes the correction as the UI sends it
     pub fn correct(&mut self, c: Correction) -> Result<Segment> {
         let i = self
@@ -467,38 +477,20 @@ impl Store {
             .iter_mut()
             .find(|a| a.id == c.answer_id)
             .ok_or("no answer")?;
+        let model_probability = ans.probability;
         ans.answer = c.value;
         ans.probability = if c.value { 1.0 } else { 0.0 };
         ans.source = AnswerSource::User;
-        let kind = match c.answer_id.as_str() {
-            "action" => TagKind::Action,
-            "decision" => TagKind::Decision,
-            "unanswered" => TagKind::OpenQuestion,
-            "smalltalk" => TagKind::SmallTalk,
-            _ => TagKind::Sensitive,
-        };
-        seg.tags
-            .retain(|t| t.kind != kind && t.kind != TagKind::Review);
-        if c.value {
-            let label = match kind {
-                TagKind::Action => "Action · confirmed",
-                TagKind::Decision => "Decision",
-                TagKind::OpenQuestion => "Open question",
-                TagKind::SmallTalk => "Small talk",
-                _ => "Sensitive",
-            };
-            seg.tags.push(Tag {
-                kind,
-                label: label.into(),
-            });
-        }
+        Self::retag(seg, &c.answer_id, c.value);
         let seg = seg.clone();
+        let meeting_id = e.meeting.id.clone();
         if c.answer_id == "action"
             && let Some(a) = e.items.iter_mut().find(|a| a.at_ms == Some(seg.start_ms))
         {
             a.needs_review = false;
         }
         self.save(i, true)?;
+        self.append_label(&meeting_id, &seg, &c.answer_id, c.value, model_probability)?;
         Ok(seg)
     }
 
@@ -515,71 +507,10 @@ impl Store {
         Ok(labeled(&self.entries[i]))
     }
 
-    /// Name an unknown voice everywhere it appears.
-    pub fn enroll_speaker(&mut self, speaker_id: &str, name: &str) -> Result<Speaker> {
-        // The meetings this voice is in; entries are oldest first, so the last is the newest.
-        let seen: Vec<&str> = self
-            .entries
-            .iter()
-            .filter(|e| e.meeting.speakers.iter().any(|s| s.id == speaker_id))
-            .map(|e| e.meeting.title.as_str())
-            .collect();
-        let subtitle = match seen.as_slice() {
-            [] => String::new(),
-            [only] => format!("Named in {only}"),
-            [.., last] => format!("Named in {last} and {} more", seen.len() - 1),
-        };
-        let meetings = u32::try_from(seen.len()).unwrap_or(u32::MAX);
-        let rename = |s: &mut Speaker| {
-            s.name = name.into();
-            s.initial = name.chars().next().unwrap_or('?').to_string();
-            s.subtitle.clone_from(&subtitle);
-            s.suggestion = None;
-            s.voiceprint = Some(mirona_core::Voiceprint { meetings });
-        };
-        let person = self
-            .people
-            .iter_mut()
-            .find(|p| p.id == speaker_id)
-            .ok_or("no speaker")?;
-        let old = person.name.clone();
-        rename(person);
-        let person = person.clone();
-        for i in 0..self.entries.len() {
-            let e = &mut self.entries[i];
-            let touched = e.meeting.speakers.iter().any(|s| s.id == speaker_id)
-                || e.items.iter().any(|a| a.owner == old);
-            if !touched {
-                continue;
-            }
-            let m = &mut e.meeting;
-            m.speakers
-                .iter_mut()
-                .filter(|s| s.id == speaker_id)
-                .for_each(rename);
-            for seg in &mut m.segments {
-                for t in &mut seg.tags {
-                    t.label = t.label.replace(&old, name);
-                }
-                for o in &mut seg.owners {
-                    if o.label == old {
-                        o.label = name.into();
-                    }
-                }
-            }
-            for a in e.items.iter_mut().filter(|a| a.owner == old) {
-                a.owner = name.into();
-            }
-            self.save(i, true)?;
-        }
-        self.refresh_people();
-        Ok(person)
-    }
-
     // --- Internals ---
 
     /// People are whoever appears in a meeting, newest meeting first.
-    /// ponytail: no separate people registry yet; voiceprints get one with diarization (M2).
+    /// Known people and their voiceprints live in `people.rs` (`.mirona/voices.json`).
     fn refresh_people(&mut self) {
         self.people.clear();
         for sp in self.entries.iter().flat_map(|e| &e.meeting.speakers) {

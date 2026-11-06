@@ -5,4 +5,9 @@ import type { QuestionKind } from "./QuestionKind";
 /**
  * One typed question answered by the classifier, e.g. "Is this an action item?" -> yes, 0.89.
  */
-export type Answer = { id: string, question: string, kind: QuestionKind, answer: boolean, probability: number, source: AnswerSource, };
+export type Answer = { id: string, question: string, kind: QuestionKind, answer: boolean, probability: number, source: AnswerSource, 
+/**
+ * The question's threshold when it was answered (NGR-158): a model "yes" with
+ * `probability` below it needs review instead of being acted on.
+ */
+threshold: number, };

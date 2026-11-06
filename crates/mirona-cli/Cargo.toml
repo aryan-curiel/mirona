@@ -15,11 +15,12 @@ mirona-store.workspace = true
 mirona-engine.workspace = true
 mirona-capture.workspace = true
 mirona-mcp = { path = "../mirona-mcp" }
+mirona-providers.workspace = true
+serde_json.workspace = true
 clap = { version = "4.6", features = ["derive"] }
 ctrlc = "3.5"
 
 [dev-dependencies]
-mirona-providers.workspace = true
 tempfile = "3"
 
 [lints]

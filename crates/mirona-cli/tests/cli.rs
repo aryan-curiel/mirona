@@ -126,3 +126,29 @@ fn import_transcribes_and_summarizes() {
     let show = ok(tmp.path(), &["show", id]);
     assert!(show.contains("[0:0"), "{show}");
 }
+
+/// CI-safe: the fake classifier on the built-in public set, plus the user's corrections.
+#[test]
+fn eval_runs_offline_on_the_public_set_and_own_labels() {
+    let tmp = fixture();
+    let t = tmp.path();
+    let out = ok(t, &["eval", "--with", "fake"]);
+    assert!(out.starts_with("# Classifier eval: 50 examples"), "{out}");
+    assert!(out.contains("## fake (local)"), "{out}");
+    assert!(out.contains("| action | 50 |"), "{out}");
+    assert!(out.contains("| client | 50 |"), "{out}");
+    assert!(out.contains("p50"), "{out}");
+
+    let labels = t.join("meetings/.mirona/labels.jsonl");
+    std::fs::write(
+        &labels,
+        r#"{"id":"m-1-0","text":"Me: I'll send it Friday","labels":{"action":"yes"}}"#,
+    )
+    .unwrap();
+    let out = ok(t, &["eval", "--with", "fake", "--limit", "1000"]);
+    assert!(out.starts_with("# Classifier eval: 51 examples"), "{out}");
+    assert!(out.contains("| action | 51 |"), "{out}");
+    let out = ok(t, &["eval", "--with", "fake", "--no-labels", "--context"]);
+    assert!(out.starts_with("# Classifier eval: 50 examples"), "{out}");
+    assert!(!mirona(t, &["eval", "--with", "nope"]).status.success());
+}

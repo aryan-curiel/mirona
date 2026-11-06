@@ -1,0 +1,75 @@
+{
+  "answers": {
+    "client": {
+      "choice": "Northwind Bank",
+      "confidence": 0.83,
+      "probabilities": {
+        "Helio Health": 0.0,
+        "Northwind Bank": 0.89,
+        "none": 0.11
+      },
+      "type": "choice"
+    },
+    "follow_up": {
+      "noul": 0.89,
+      "type": "noul"
+    },
+    "meeting_type": {
+      "choice": "client_call",
+      "confidence": 0.44,
+      "probabilities": {
+        "client_call": 0.55,
+        "one_on_one": 0.02,
+        "other": 0.02,
+        "planning": 0.27,
+        "standup": 0.14
+      },
+      "type": "choice"
+    },
+    "priority": {
+      "confidence": 0.69,
+      "legend": {
+        "0": "Nothing to do",
+        "1": "Low: whenever there is time",
+        "2": "Normal",
+        "3": "High: this week",
+        "4": "Very high: in the next day or two",
+        "5": "Critical: drop everything"
+      },
+      "probabilities": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.47,
+        "4": 0.53,
+        "5": 0.0
+      },
+      "score": 3.53,
+      "type": "score"
+    },
+    "tone": {
+      "confidence": 1.0,
+      "legend": {
+        "0": "Very unhappy or angry",
+        "1": "Concerned or frustrated",
+        "2": "Neutral",
+        "3": "Positive",
+        "4": "Delighted"
+      },
+      "probabilities": {
+        "0": 0.0,
+        "1": 1.0,
+        "2": 0.0,
+        "3": 0.0,
+        "4": 0.0
+      },
+      "score": 1.0,
+      "type": "score"
+    }
+  },
+  "model": "jev-1.14.0",
+  "usage": {
+    "input_tokens": 825,
+    "output_tokens": 147
+  }
+}

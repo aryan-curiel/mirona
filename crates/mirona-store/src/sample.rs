@@ -41,6 +41,7 @@ fn answers(p: [f32; 5]) -> Vec<Answer> {
             answer: p >= THRESHOLD,
             probability: p,
             source: AnswerSource::Model,
+            threshold: THRESHOLD,
         })
         .collect()
 }
@@ -150,6 +151,8 @@ fn meeting_answers(
         follow_up: follow_up.0,
         follow_up_probability: follow_up.1,
         follow_up_draft: draft.into(),
+        tone: 2.5,
+        follow_up_threshold: THRESHOLD,
     }
 }
 

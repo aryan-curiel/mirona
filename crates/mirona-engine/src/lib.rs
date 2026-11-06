@@ -1,9 +1,12 @@
 //! The M1 pipeline in one place: record (or import) → transcribe → store → summary and
 //! enhanced notes → store. The app and the CLI both drive meetings through this crate.
 //!
-//! Speakers come from the audio source until diarization lands (M2): the mic is "me", the
-//! system audio is "them", an imported file is "speaker".
+//! While recording, the audio source says who speaks: the mic is "me", the system audio is
+//! "them", an imported file is "speaker". After the call, `diarize.rs` splits "them" (and
+//! "speaker") by voice and names known people.
 
+pub mod classify;
+mod diarize;
 mod llm;
 
 pub use llm::Llm;
@@ -95,6 +98,15 @@ pub fn missing_models(cfg: &Config, models: &Path) -> Vec<String> {
     } else if !models.join(PARAKEET_DIR).join("tokens.txt").is_file() {
         out.push(format!("{PARAKEET_DIR}/"));
     }
+    let speakrs = mirona_providers::speakrs::MODELS_DIR;
+    if stage(cfg, "diarization", "speakrs") != "off"
+        && !models
+            .join(speakrs)
+            .join(mirona_providers::speakrs::CPU_MODEL)
+            .is_file()
+    {
+        out.push(format!("{speakrs}/"));
+    }
     out
 }
 
@@ -185,14 +197,31 @@ impl Engine {
         })?;
         self.store.lock().unwrap().set_audio(&id, AUDIO_FILE)?;
         let started = Instant::now();
+        // Segments are tagged live on their own worker (NGR-156); capture never waits on it.
+        let cfg = self.config();
+        let (classifier, why) = classify::AnyClassifier::from_config(&cfg);
+        if let Some(why) = why {
+            events.send(notice(&id, why, false)).ok();
+        }
+        let (to_classify, classify) = match classifier {
+            Some(c) => {
+                let (tx, h) =
+                    classify::live(self.store.clone(), id.clone(), c, cfg, events.clone());
+                (tx, Some(h))
+            }
+            None => (channel().0, None),
+        };
         let forward = {
             let (store, id, lock) = (self.store.clone(), id.clone(), lock.clone());
-            std::thread::spawn(move || forward(&store, &id, started, &rx, &events, &lock))
+            std::thread::spawn(move || {
+                forward(&store, &id, started, &rx, &events, &lock, &to_classify);
+            })
         };
         Ok(Session {
             id,
             recorder,
             forward,
+            classify,
             started,
             lock,
         })
@@ -244,8 +273,8 @@ impl Engine {
         Ok(id)
     }
 
-    /// Summary + enhanced notes for a finished meeting, with the configured LLM. Failures are
-    /// reported as notices; the meeting itself is already saved.
+    /// Speakers, then summary + enhanced notes for a finished meeting, with the configured
+    /// LLM. Failures are reported as notices; the meeting itself is already saved.
     pub fn post_process(&self, id: &str, events: &Sender<PipelineEvent>) {
         let cfg = self.config();
         let notice = |message: String, error: bool| {
@@ -257,26 +286,25 @@ impl Engine {
                 })
                 .ok();
         };
-        match Llm::from_config(&cfg) {
-            Ok(llm) => match summarize_with(
-                &self.store,
-                &self.paths,
-                id,
-                &cfg.template,
-                &llm,
-                &mut preview(id, events),
-            ) {
-                Ok(()) => {
-                    events
-                        .send(PipelineEvent::Summarized {
-                            meeting_id: id.into(),
-                        })
-                        .ok();
-                }
-                Err(e) => notice(format!("Summary failed: {e}"), true),
-            },
-            Err(e) => notice(format!("No summary: {e}"), true),
+        if let Err(e) = self.diarize(id, events) {
+            notice(format!("Speakers not separated: {e}"), true);
         }
+        // Tags, meeting answers, summary (template picked by meeting type), quality check and
+        // follow-up draft (NGR-155..162).
+        let (classifier, why) = classify::AnyClassifier::from_config(&cfg);
+        if let Some(why) = why {
+            notice(why, false);
+        }
+        let llm = Llm::from_config(&cfg);
+        classify::after_call(
+            &self.store,
+            &self.paths,
+            &cfg,
+            id,
+            classifier.as_ref(),
+            llm.as_ref().map_err(Clone::clone),
+            events,
+        );
     }
 
     /// Compress recordings still kept as WAV: sessions that crashed (or were killed) before
@@ -356,8 +384,22 @@ pub fn summarize_with(
     llm: &(impl LlmProvider + Labelled),
     on_text: &mut (dyn FnMut(&str) + Send),
 ) -> Result<()> {
+    summarize_hinted(store, paths, id, template, "", llm, on_text)
+}
+
+/// [`summarize_with`], with `hint` added to the template (the quality check's rewrite).
+pub fn summarize_hinted(
+    store: &Shared,
+    paths: &Paths,
+    id: &str,
+    template: &str,
+    hint: &str,
+    llm: &(impl LlmProvider + Labelled),
+    on_text: &mut (dyn FnMut(&str) + Send),
+) -> Result<()> {
     let meeting = store.lock().unwrap().meeting(id)?;
-    let template = mirona_summary::template(&paths.templates, template)?;
+    let mut template = mirona_summary::template(&paths.templates, template)?;
+    template.body.push_str(hint);
     let (mut summary, items) = block_on(mirona_summary::summarize_streaming(
         &meeting, &template, llm, on_text,
     ))?;
@@ -383,6 +425,8 @@ pub struct Session {
     pub id: String,
     recorder: Recorder,
     forward: JoinHandle<()>,
+    /// The live classification worker; ends once `forward` has ended and its queue is empty.
+    classify: Option<JoinHandle<()>>,
     started: Instant,
     lock: Arc<RecordingLock>,
 }
@@ -398,6 +442,10 @@ impl Session {
         let stopped = self.recorder.stop();
         // The recorder dropped its sender: the forwarder drains the rest and ends.
         self.forward.join().ok();
+        // ponytail: waits for the tagging backlog (Ollama is ~2 s a segment, so a long
+        // privacy-mode meeting can queue up); the summary needs the tags. Skip the backlog
+        // and let `after_call` finish it if stopping ever feels slow.
+        self.classify.map(JoinHandle::join);
         // Capture is over: another recording may start while this one is summarized.
         drop(self.lock);
         engine
@@ -502,6 +550,7 @@ fn forward(
     rx: &std::sync::mpsc::Receiver<Event>,
     events: &Sender<PipelineEvent>,
     lock: &RecordingLock,
+    to_classify: &Sender<Segment>,
 ) {
     let mut n = 0;
     let mut beat = Instant::now();
@@ -519,7 +568,11 @@ fn forward(
             Event::Segment(seg) => {
                 let seg = segment(id, n, &seg);
                 n += 1;
-                match store.lock().unwrap().push_segment(id, seg.clone()) {
+                let pushed = store.lock().unwrap().push_segment(id, seg.clone());
+                if pushed.is_ok() {
+                    to_classify.send(seg.clone()).ok();
+                }
+                match pushed {
                     Ok(speaker) => PipelineEvent::Transcribed {
                         meeting_id: id.into(),
                         segment: seg,
@@ -553,7 +606,7 @@ fn source_label(s: Source) -> &'static str {
     }
 }
 
-/// Until diarization (M2) the source says who spoke.
+/// Who spoke, by source, until diarization runs after the call.
 pub fn speaker_id(s: Source) -> &'static str {
     match s {
         Source::Mic => "me",

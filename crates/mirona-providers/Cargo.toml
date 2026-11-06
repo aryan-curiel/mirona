@@ -24,7 +24,7 @@ toml.workspace = true
 serde_json = { workspace = true, optional = true }
 ureq = { version = "3", features = ["json"], optional = true }
 sherpa-onnx = { version = "2.0.1", optional = true }
-speakrs = { version = "=0.7.0", features = ["coreml", "cpu"], optional = true }
+speakrs = { version = "=0.7.0", features = ["cpu"], optional = true }
 whisper-rs = { version = "0.16.0", optional = true }
 # macOS Keychain, Windows Credential Manager, Linux Secret Service (pure-Rust zbus: no libdbus).
 keyring = { version = "3.6", features = ["apple-native", "windows-native", "async-secret-service", "crypto-rust", "async-io"], optional = true }
@@ -32,15 +32,12 @@ keyring = { version = "3.6", features = ["apple-native", "windows-native", "asyn
 # Whisper runs on the GPU through Metal on macOS (ADR 0001).
 [target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { version = "0.16.0", features = ["metal"], optional = true }
+# speakrs diarizes with CoreML on macOS (≥ 16 GB RAM, ADR 0001); the CPU set runs everywhere.
+speakrs = { version = "=0.7.0", features = ["coreml", "cpu"], optional = true }
 
 [dev-dependencies]
 hound = "3.5"
 serde_json.workspace = true
-
-# The NGR-130 eval, run through the real Rust classifiers (ignored: needs a key and Ollama).
-[[test]]
-name = "classifier_eval"
-required-features = ["jev", "ollama"]
 
 [lints]
 workspace = true

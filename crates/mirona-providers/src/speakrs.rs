@@ -1,10 +1,17 @@
 //! speakrs (pyannote community-1 in Rust): diarization and voiceprints (ADR 0001, NGR-152/153).
+//!
+//! The matching rules (`cosine`, `match_voiceprint`, `closest`) are always built, so the store
+//! can match voiceprints without the models; the `Speakrs` provider needs the `speakrs` feature.
 
+#[cfg(feature = "speakrs")]
 use std::path::Path;
+#[cfg(feature = "speakrs")]
 use std::sync::Mutex;
 
+#[cfg(feature = "speakrs")]
 use speakrs::{DiarizationResult, ExecutionMode, OwnedDiarizationPipeline, PipelineBuilder};
 
+#[cfg(feature = "speakrs")]
 use crate::{Diarization, Diarizer, Error, FoundSpeaker, Locality, Provider, Result, Turn};
 
 /// Clusters with less speech than this are spurious "extra speakers" and are dropped (ADR 0001).
@@ -15,6 +22,14 @@ pub const MIN_ENROLL_MS: u32 = 30_000;
 pub const MATCH_COSINE: f32 = 0.55;
 /// …and only if it beats the second-best person by this much.
 pub const MATCH_MARGIN: f32 = 0.15;
+/// Below an auto-match but at least this close: suggest the name, don't assign it.
+pub const SUGGEST_COSINE: f32 = 0.45;
+/// The model set's folder inside the models dir (`scripts/fetch-models.sh`).
+pub const MODELS_DIR: &str = "speakrs";
+/// A file of the CPU set (always needed: voiceprints run on the CPU).
+pub const CPU_MODEL: &str = "wespeaker-multimask-tail.safetensors";
+/// A file of the `CoreML` set (macOS only; without it diarization runs on the CPU).
+pub const COREML_MODEL: &str = "wespeaker-chunk-emb-p1s-w111.mlmodelc/weights/weight.bin";
 
 /// Which backend diarizes. `CoreML` peaks at 7–13 GB, so callers pick it only with ≥ 16 GB RAM.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +38,7 @@ pub enum Mode {
     Cpu,
 }
 
+#[cfg(feature = "speakrs")]
 pub struct Speakrs {
     diarize: Mutex<OwnedDiarizationPipeline>,
     /// Voiceprints always run on the CPU (`CoreML` embeddings are wrong on short clips).
@@ -30,6 +46,7 @@ pub struct Speakrs {
     cpu: Option<Mutex<OwnedDiarizationPipeline>>,
 }
 
+#[cfg(feature = "speakrs")]
 fn build(dir: &Path, mode: ExecutionMode) -> Result<Mutex<OwnedDiarizationPipeline>> {
     PipelineBuilder::from_dir(dir, mode)
         .and_then(PipelineBuilder::build)
@@ -37,17 +54,20 @@ fn build(dir: &Path, mode: ExecutionMode) -> Result<Mutex<OwnedDiarizationPipeli
         .map_err(|e| Error::Provider(format!("speakrs {mode:?} models in {}: {e}", dir.display())))
 }
 
+#[cfg(feature = "speakrs")]
 impl Speakrs {
     /// `models_dir` holds the speakrs model set (the HF `avencera/speakrs-models` snapshot).
+    /// `CoreML` exists only on macOS; elsewhere `Mode::CoreMl` runs on the CPU.
     pub fn new(models_dir: &Path, mode: Mode) -> Result<Self> {
         Ok(match mode {
-            Mode::Cpu => Self {
-                diarize: build(models_dir, ExecutionMode::Cpu)?,
-                cpu: None,
-            },
+            #[cfg(target_os = "macos")]
             Mode::CoreMl => Self {
                 diarize: build(models_dir, ExecutionMode::CoreMl)?,
                 cpu: Some(build(models_dir, ExecutionMode::Cpu)?),
+            },
+            _ => Self {
+                diarize: build(models_dir, ExecutionMode::Cpu)?,
+                cpu: None,
             },
         })
     }
@@ -78,6 +98,7 @@ impl Speakrs {
     }
 }
 
+#[cfg(feature = "speakrs")]
 /// All clusters of a speakrs result: non-overlapping turns + one centroid per cluster.
 fn found(res: &DiarizationResult) -> Diarization {
     let mut turns: Vec<Turn> = res
@@ -136,6 +157,7 @@ fn found(res: &DiarizationResult) -> Diarization {
     Diarization { turns, speakers }
 }
 
+#[cfg(feature = "speakrs")]
 /// Drop speakers with less than `min_ms` of speech and renumber the turns that remain.
 fn drop_small(d: Diarization, min_ms: u32) -> Diarization {
     let mut new_index = vec![None; d.speakers.len()];
@@ -159,11 +181,13 @@ fn drop_small(d: Diarization, min_ms: u32) -> Diarization {
     Diarization { turns, speakers }
 }
 
+#[cfg(feature = "speakrs")]
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn ms(secs: f64) -> u32 {
     (secs * 1000.0).round() as u32
 }
 
+#[cfg(feature = "speakrs")]
 fn normalize(mut v: Vec<f32>) -> Vec<f32> {
     let n = v.iter().map(|x| x * x).sum::<f32>().sqrt();
     if n > 0.0 {
@@ -194,6 +218,18 @@ pub fn match_voiceprint<Id: Clone>(candidate: &[f32], enrolled: &[(Id, Vec<f32>)
     (best >= MATCH_COSINE && best - second >= MATCH_MARGIN).then(|| id.clone())
 }
 
+/// The closest enrolled voice and its cosine, if at least `SUGGEST_COSINE`: a suggestion when
+/// `match_voiceprint` says no.
+pub fn closest<Id: Clone>(candidate: &[f32], enrolled: &[(Id, Vec<f32>)]) -> Option<(Id, f32)> {
+    enrolled
+        .iter()
+        .map(|(id, v)| (id, cosine(candidate, v)))
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .filter(|(_, c)| *c >= SUGGEST_COSINE)
+        .map(|(id, c)| (id.clone(), c))
+}
+
+#[cfg(feature = "speakrs")]
 impl Provider for Speakrs {
     fn id(&self) -> &'static str {
         "speakrs"
@@ -203,16 +239,17 @@ impl Provider for Speakrs {
     }
 }
 
+#[cfg(feature = "speakrs")]
 impl Diarizer for Speakrs {
     fn diarize(&self, pcm: &[f32]) -> impl Future<Output = Result<Diarization>> + Send {
-        // ponytail: runs right here, blocking, and hands back a ready future; callers must call
-        // it in spawn_blocking (once, after the call, ADR 0001). Move that in here with NGR-152.
+        // Runs right here, blocking, and hands back a ready future: the engine calls it once,
+        // after the call, on its worker thread (ADR 0001).
         let d = Self::run(&self.diarize, pcm).map(|d| drop_small(d, MIN_SPEAKER_SPEECH_MS));
         std::future::ready(d)
     }
 
     fn voiceprint(&self, pcm: &[f32]) -> impl Future<Output = Result<Vec<f32>>> + Send {
-        // ponytail: blocking, same as `diarize`; NGR-153.
+        // Blocking, same as `diarize`.
         std::future::ready(self.voiceprint_now(pcm))
     }
 }
@@ -221,12 +258,14 @@ impl Diarizer for Speakrs {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "speakrs")]
     fn spk(embedding: Vec<f32>, speech_ms: u32) -> FoundSpeaker {
         FoundSpeaker {
             embedding,
             speech_ms,
         }
     }
+    #[cfg(feature = "speakrs")]
     fn turn(start_ms: u32, end_ms: u32, speaker: usize) -> Turn {
         Turn {
             start_ms,
@@ -261,8 +300,14 @@ mod tests {
             None
         );
         assert_eq!(match_voiceprint::<&str>(&probe, &[]), None);
+        // Suggestions: closest at ≥ 0.45, whatever the margin.
+        let near = closest(&probe, &[("ana", at(0.5)), ("bo", at(0.2))]).unwrap();
+        assert_eq!(near.0, "ana");
+        assert!((near.1 - 0.5).abs() < 1e-4);
+        assert_eq!(closest(&probe, &[("ana", at(0.4))]), None);
     }
 
+    #[cfg(feature = "speakrs")]
     #[test]
     fn small_clusters_dropped_and_turns_reindexed() {
         let d = Diarization {
@@ -285,6 +330,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "speakrs")]
     #[test]
     fn missing_models_is_a_provider_error() {
         assert!(matches!(
@@ -295,7 +341,7 @@ mod tests {
 }
 
 /// Needs the model set: `MIRONA_SPEAKRS_DIR=spikes/speakrs/models/hf/.../snapshots/<rev>`.
-#[cfg(test)]
+#[cfg(all(test, feature = "speakrs"))]
 mod model_tests {
     use super::*;
 

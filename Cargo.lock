@@ -3137,6 +3137,7 @@ dependencies = [
  "mirona-mcp",
  "mirona-providers",
  "mirona-store",
+ "serde_json",
  "tempfile",
 ]
 

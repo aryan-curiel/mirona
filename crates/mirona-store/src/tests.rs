@@ -1,4 +1,5 @@
 use super::*;
+use mirona_core::{Tag, TagKind};
 use std::fs;
 use tempfile::TempDir;
 
@@ -29,7 +30,7 @@ fn md(s: &Store, id: &str) -> PathBuf {
     s.meeting_dir(id).unwrap().join(files::MEETING)
 }
 
-fn live_seg(id: &str, who: &str, at_ms: u32, text: &str) -> Segment {
+pub(crate) fn live_seg(id: &str, who: &str, at_ms: u32, text: &str) -> Segment {
     let mut s = sample::seg(
         id,
         who,
@@ -425,7 +426,8 @@ fn enrolling_names_the_real_meetings() {
     s.push_segment(&id_a, a).unwrap();
     let p = s.enroll_speaker("them", "Nadia").unwrap();
     assert_eq!(p.subtitle, "Named in Design review");
-    assert_eq!(p.voiceprint.unwrap().meetings, 1);
+    // Named, but no voice heard yet (not diarized): no voiceprint.
+    assert!(p.voiceprint.is_none());
 
     let id_b = new_meeting("Budget sync", &mut s);
     s.push_segment(&id_b, live_seg(&format!("{id_b}-0"), "them", 0, "hi"))
@@ -436,7 +438,6 @@ fn enrolling_names_the_real_meetings() {
         "{}",
         p.subtitle
     );
-    assert_eq!(p.voiceprint.unwrap().meetings, 2);
 }
 
 fn new_meeting(title: &str, s: &mut Store) -> String {
@@ -444,4 +445,74 @@ fn new_meeting(title: &str, s: &mut Store) -> String {
     s.start_meeting(&id).unwrap();
     s.set_title(&id, title).unwrap();
     id
+}
+
+#[test]
+fn classification_review_list_and_labels() {
+    let (_d, mut s) = seeded();
+    let m = s.meeting("claims-desk").unwrap();
+    let seg = m.segments[0].clone();
+    let mut answers = seg.answers.clone();
+    answers[0].answer = true;
+    answers[0].probability = 0.7;
+    answers[0].threshold = 0.99;
+    let tags = vec![review_tag(TagKind::Action, 0.7)];
+    let back = s
+        .set_classification("claims-desk", &seg.id, answers, tags, vec![])
+        .unwrap();
+    assert_eq!(back.text, seg.text, "text left alone");
+    assert_eq!(back.tags[0].label, "Needs review · action? 0.70");
+    let review = s.review("claims-desk").unwrap();
+    assert!(
+        review
+            .iter()
+            .any(|r| r.segment_id.as_deref() == Some(seg.id.as_str()) && r.question == "action"),
+        "{review:?}"
+    );
+
+    // The fix clears the review, tags the segment and becomes a labelled example.
+    let fixed = s
+        .correct(Correction {
+            segment_id: seg.id.clone(),
+            answer_id: "action".into(),
+            value: true,
+        })
+        .unwrap();
+    assert!(fixed.tags.iter().any(|t| t.kind == TagKind::Action));
+    assert!(!fixed.tags.iter().any(|t| t.kind == TagKind::Review));
+    let labels = fs::read_to_string(s.labels_path()).unwrap();
+    let row: serde_json::Value = serde_json::from_str(labels.lines().last().unwrap()).unwrap();
+    assert_eq!(row["labels"]["action"], "yes");
+    assert!(row["text"].as_str().unwrap().ends_with(&seg.text));
+    assert!((row["model_probability"].as_f64().unwrap() - 0.7).abs() < 1e-6);
+
+    // A later classification keeps the user's fix.
+    let mut again = fixed.answers.clone();
+    again[0].source = mirona_core::AnswerSource::Model;
+    again[0].probability = 0.1;
+    let kept = s
+        .set_classification("claims-desk", &seg.id, again, fixed.tags, vec![])
+        .unwrap();
+    assert!((kept.answers[0].probability - 1.0).abs() < 1e-6);
+}
+
+#[test]
+fn clients_below_threshold_are_not_filed() {
+    let (_d, mut s) = seeded();
+    let mut a = s.meeting("claims-desk").unwrap().answers.unwrap();
+    let before = s.meeting("claims-desk").unwrap().client;
+    a.client.value = "Elsewhere".into();
+    a.client.probability = 0.3;
+    a.client.confirmed = false;
+    s.set_answers("claims-desk", a.clone()).unwrap();
+    assert_eq!(s.meeting("claims-desk").unwrap().client, before);
+    assert!(
+        s.review("claims-desk")
+            .unwrap()
+            .iter()
+            .any(|r| r.question == "client" && r.value == "Elsewhere")
+    );
+    a.client.probability = 0.9;
+    s.set_answers("claims-desk", a).unwrap();
+    assert_eq!(s.meeting("claims-desk").unwrap().client, "Elsewhere");
 }

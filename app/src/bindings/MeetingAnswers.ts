@@ -5,4 +5,12 @@ export type MeetingAnswers = { meetingType: ChoiceAnswer, client: ChoiceAnswer,
 /**
  * 0..=5
  */
-priority: number, followUp: boolean, followUpProbability: number, followUpDraft: string, };
+priority: number, followUp: boolean, followUpProbability: number, followUpDraft: string, 
+/**
+ * Client tone, 0..=4: very unhappy, concerned, neutral, positive, delighted.
+ */
+tone: number, 
+/**
+ * Below it, `follow_up` needs review and no draft is written.
+ */
+followUpThreshold: number, };

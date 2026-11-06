@@ -1,6 +1,8 @@
 //! `mirona` CLI (NGR-149): the same engine and meeting folders as the app.
 //! `MIRONA_APP_DIR` overrides the app folder (where `config.toml` lives).
 
+mod eval;
+
 use clap::{Parser, Subcommand};
 use mirona_capture::Permission;
 use mirona_core::{ActionItem, Meeting, PipelineEvent};
@@ -47,6 +49,26 @@ enum Cmd {
     Compress,
     /// Run the MCP server on stdio (for Claude Code / Claude Desktop)
     Mcp,
+    /// Score the classifiers on labelled examples: the public synthetic set plus your own
+    /// corrections. Accuracy, precision/recall per question, latency
+    Eval {
+        /// Labelled JSONL (`{"id", "text", "labels": {...}}`) instead of the built-in public set
+        #[arg(long)]
+        set: Option<PathBuf>,
+        /// Classifier to score: jev, local-llm or fake (offline). Repeatable. Default: the
+        /// configured one plus the local baseline
+        #[arg(long = "with")]
+        with: Vec<String>,
+        /// Leave out your own corrections (`<meetings>/.mirona/labels.jsonl`)
+        #[arg(long)]
+        no_labels: bool,
+        /// Ask each example with the previous one's last two lines in front (context bleed)
+        #[arg(long)]
+        context: bool,
+        /// Only the first N examples
+        #[arg(long)]
+        limit: Option<usize>,
+    },
 }
 
 fn main() {
@@ -62,6 +84,13 @@ fn main() {
         Cmd::Reindex => reindex(&app_dir),
         Cmd::Compress => compress(&app_dir),
         Cmd::Mcp => mirona_mcp::serve(),
+        Cmd::Eval {
+            set,
+            with,
+            no_labels,
+            context,
+            limit,
+        } => run_eval(&app_dir, set.as_deref(), with, no_labels, context, limit),
     };
     if let Err(e) = res {
         eprintln!("mirona: {e}");
@@ -158,6 +187,70 @@ fn actions(app_dir: &Path, client: Option<&str>, open: bool) -> Result {
         if a.client.to_lowercase().contains(&client) && !(open && a.done) {
             print_item(&a);
         }
+    }
+    Ok(())
+}
+
+fn run_eval(
+    app_dir: &Path,
+    set: Option<&Path>,
+    mut with: Vec<String>,
+    no_labels: bool,
+    context: bool,
+    limit: Option<usize>,
+) -> Result {
+    use mirona_engine::classify::AnyClassifier;
+    use mirona_providers::{fake::Fake, jev::Jev, ollama::Ollama};
+    let (cfg, paths) = mirona_mcp::load(app_dir)?;
+    let labels = (!no_labels).then(|| paths.meetings.join(".mirona").join("labels.jsonl"));
+    let mut examples = eval::load(set, labels.as_deref())?;
+    examples.truncate(limit.unwrap_or(usize::MAX));
+    if with.is_empty() {
+        // The configured classifier (without reading the keychain yet) and the local baseline.
+        let configured = mirona_engine::stage(&cfg, "classification", "jev");
+        if configured == "jev" && !cfg.privacy {
+            with.push("jev".into());
+        }
+        with.push("local-llm".into());
+    }
+    println!(
+        "# Classifier eval: {} examples
+",
+        examples.len()
+    );
+    for id in &with {
+        let report = match id.as_str() {
+            "jev" => {
+                // The keychain key (Settings → API keys), or TYPESAFE_API_KEY for dev and CI.
+                let key = mirona_providers::keychain::api_key("jev")
+                    .ok()
+                    .flatten()
+                    .or_else(|| std::env::var("TYPESAFE_API_KEY").ok())
+                    .ok_or("no Jev key: add it in Settings → API keys or set TYPESAFE_API_KEY")?;
+                let c = AnyClassifier::Jev(Jev::new(key));
+                (
+                    eval::name(&c) + " " + mirona_providers::jev::MODEL,
+                    eval::run(&c, &examples, context),
+                )
+            }
+            "local-llm" => {
+                let c = Ollama::default();
+                (
+                    eval::name(&c) + " " + mirona_providers::ollama::MODEL,
+                    eval::run(&c, &examples, context),
+                )
+            }
+            "fake" => {
+                let c = Fake("fake");
+                (eval::name(&c), eval::run(&c, &examples, context))
+            }
+            other => {
+                return Err(format!(
+                    "unknown classifier {other}: use jev, local-llm or fake"
+                ));
+            }
+        };
+        println!("{}", report.1.markdown(&report.0));
     }
     Ok(())
 }

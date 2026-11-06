@@ -1,11 +1,12 @@
 //! Local LLM `Classifier` through Ollama: the privacy-mode fallback for Jev (ADR 0001).
 //!
-//! Same questions as Jev, answered in one call as JSON constrained by a schema. An LLM has no
-//! calibrated probability, so P(yes) comes from the logprobs of each answer's first token.
+//! The same typed questions as Jev, answered in one call as JSON constrained by a schema: each
+//! answer is a string enum (yes/no, the choice's options, or the score's level numbers). An LLM
+//! has no calibrated probability, so each answer's distribution comes from the logprobs of its
+//! first token, renormalised over the allowed values.
 
-use crate::questions::{SEGMENT_QUESTIONS, answer};
+use crate::questions::{Kind, Question, Reply, options};
 use crate::{Classifier, Error, Locality, Provider, Result};
-use mirona_core::{Answer, Segment};
 use serde_json::{Value, json};
 
 pub const URL: &str = "http://localhost:11434/api/chat";
@@ -34,21 +35,37 @@ impl Default for Ollama {
     }
 }
 
-pub fn request(model: &str, text: &str) -> Value {
-    let ids: Vec<&str> = SEGMENT_QUESTIONS.iter().map(|q| q.id).collect();
-    let props: serde_json::Map<String, Value> = ids
+/// One line per question in the system prompt (the NGR-130 wording for yes/no and choices).
+fn definition(q: &Question) -> String {
+    match &q.kind {
+        Kind::YesNo { yes, no } => format!("- {}: yes/no. YES if: {yes} NO if: {no}", q.id),
+        Kind::Choice(opts) => {
+            let o: Vec<String> = opts.iter().map(|(k, d)| format!("{k} = {d}")).collect();
+            format!("- {}: {} One of: {}", q.id, q.instructions, o.join("; "))
+        }
+        Kind::Score(levels) => {
+            let o: Vec<String> = levels
+                .iter()
+                .enumerate()
+                .map(|(i, l)| format!("{i} = {l}"))
+                .collect();
+            format!("- {}: {} One of: {}", q.id, q.instructions, o.join("; "))
+        }
+    }
+}
+
+pub fn request(model: &str, text: &str, questions: &[Question]) -> Value {
+    let ids: Vec<&str> = questions.iter().map(|q| q.id.as_str()).collect();
+    let props: serde_json::Map<String, Value> = questions
         .iter()
-        .map(|id| {
+        .map(|q| {
             (
-                id.to_string(),
-                json!({ "type": "string", "enum": ["yes", "no"] }),
+                q.id.clone(),
+                json!({ "type": "string", "enum": options(q) }),
             )
         })
         .collect();
-    let defs: Vec<String> = SEGMENT_QUESTIONS
-        .iter()
-        .map(|q| format!("- {}: yes/no. YES if: {} NO if: {}", q.id, q.yes, q.no))
-        .collect();
+    let defs: Vec<String> = questions.iter().map(definition).collect();
     json!({
         "model": model,
         "stream": false,
@@ -56,7 +73,8 @@ pub fn request(model: &str, text: &str) -> Value {
         "format": { "type": "object", "required": ids, "additionalProperties": false, "properties": props },
         "logprobs": true,
         "top_logprobs": 10,
-        "options": { "temperature": 0, "seed": 0 },
+        // A whole meeting goes through here too: Ollama's default context (4k) would cut it.
+        "options": { "temperature": 0, "seed": 0, "num_ctx": LLM_NUM_CTX },
         "messages": [
             { "role": "system", "content": format!("You classify meeting transcript chunks. Answer every field.\n{}", defs.join("\n")) },
             { "role": "user", "content": text },
@@ -64,22 +82,41 @@ pub fn request(model: &str, text: &str) -> Value {
     })
 }
 
-pub fn parse(resp: &Value) -> Result<Vec<Answer>> {
+pub fn parse(resp: &Value, questions: &[Question]) -> Result<Vec<Reply>> {
     let content = resp["message"]["content"].as_str().unwrap_or_default();
     let values: Value = serde_json::from_str(content)
         .map_err(|e| Error::Provider(format!("ollama: bad JSON answer: {e}")))?;
     let tokens = resp["logprobs"].as_array().map_or(&[][..], Vec::as_slice);
-    SEGMENT_QUESTIONS
+    questions
         .iter()
         .map(|q| {
-            let yes = match values[q.id].as_str() {
-                Some("yes") => true,
-                Some("no") => false,
-                _ => return Err(Error::Provider(format!("ollama: no answer for {}", q.id))),
-            };
-            // ponytail: without logprobs (older Ollama) the answer counts as fully confident.
-            let p_chosen = value_alternatives(tokens, q.id).map_or(1.0, |alts| p_yes_no(alts, yes));
-            Ok(answer(q, if yes { p_chosen } else { 1.0 - p_chosen }))
+            let opts = options(q);
+            let chosen = values[&q.id]
+                .as_str()
+                .and_then(|v| opts.iter().position(|o| o == v))
+                .ok_or_else(|| Error::Provider(format!("ollama: no answer for {}", q.id)))?;
+            let mass = value_alternatives(tokens, &q.id)
+                .map(|alts| distribution(alts, &opts))
+                .filter(|m| m[chosen] > 0.0)
+                // ponytail: without logprobs (older Ollama), or when the chosen value's first
+                // token is missing from the top 10, the answer counts as fully confident.
+                .unwrap_or_else(|| {
+                    let mut m = vec![0.0; opts.len()];
+                    m[chosen] = 1.0;
+                    m
+                });
+            Ok(match &q.kind {
+                Kind::YesNo { .. } => Reply::YesNo(mass[0]),
+                Kind::Choice(_) => Reply::Choice {
+                    value: opts[chosen].clone(),
+                    probabilities: opts.into_iter().zip(mass).collect(),
+                },
+                Kind::Score(_) => Reply::Score {
+                    #[allow(clippy::cast_precision_loss)]
+                    score: mass.iter().enumerate().map(|(i, p)| i as f32 * p).sum(),
+                    probabilities: mass,
+                },
+            })
         })
         .collect()
 }
@@ -106,29 +143,34 @@ fn value_alternatives<'a>(tokens: &'a [Value], key: &str) -> Option<&'a [Value]>
     None
 }
 
-/// P(chosen) renormalised over alternatives that start "yes" or "no".
-fn p_yes_no(alts: &[Value], chosen_yes: bool) -> f32 {
-    let (mut yes, mut no) = (0.0_f64, 0.0_f64);
+/// Each option's probability: the top alternatives' mass, given to the options the token is a
+/// prefix of (split evenly when it starts several), renormalised to sum to 1.
+fn distribution(alts: &[Value], options: &[String]) -> Vec<f32> {
+    let mut mass = vec![0.0_f64; options.len()];
     for a in alts {
         let tok = a["token"]
             .as_str()
             .unwrap_or_default()
             .trim()
             .trim_matches('"');
+        if tok.is_empty() {
+            continue;
+        }
         let p = a["logprob"].as_f64().unwrap_or(f64::NEG_INFINITY).exp();
-        if !tok.is_empty() && "yes".starts_with(tok) {
-            yes += p;
-        } else if !tok.is_empty() && "no".starts_with(tok) {
-            no += p;
+        let hits: Vec<usize> = (0..options.len())
+            .filter(|&i| options[i].starts_with(tok))
+            .collect();
+        for &i in &hits {
+            #[allow(clippy::cast_precision_loss)]
+            let share = p / hits.len() as f64;
+            mass[i] += share;
         }
     }
-    let total = yes + no;
+    let total: f64 = mass.iter().sum();
     #[allow(clippy::cast_possible_truncation)]
-    if total > 0.0 {
-        (if chosen_yes { yes } else { no } / total) as f32
-    } else {
-        1.0
-    }
+    mass.iter()
+        .map(|m| if total > 0.0 { (m / total) as f32 } else { 0.0 })
+        .collect()
 }
 
 impl Provider for Ollama {
@@ -141,9 +183,13 @@ impl Provider for Ollama {
 }
 
 impl Classifier for Ollama {
-    fn classify(&self, segment: &Segment) -> impl Future<Output = Result<Vec<Answer>>> + Send {
-        let body = request(&self.model, &segment.text);
-        // ponytail: blocking HTTP inside the future, same as Jev (worker thread in NGR-155).
+    fn ask(
+        &self,
+        text: &str,
+        questions: &[Question],
+    ) -> impl Future<Output = Result<Vec<Reply>>> + Send {
+        let body = request(&self.model, text, questions);
+        // ponytail: blocking HTTP inside the future, same as Jev (the engine's worker thread).
         async move {
             let resp: Value = self
                 .http
@@ -151,7 +197,7 @@ impl Classifier for Ollama {
                 .send_json(&body)
                 .and_then(|mut r| r.body_mut().read_json())
                 .map_err(|e| Error::Provider(format!("ollama ({}): {e}", self.model)))?;
-            parse(&resp)
+            parse(&resp, questions)
         }
     }
 }
@@ -322,71 +368,155 @@ mod llm_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::questions::{meeting_questions, segment_questions};
 
-    fn fixture() -> Value {
-        serde_json::from_str(include_str!("../tests/fixtures/ollama-response.json")).unwrap()
+    fn fixture(name: &str) -> Value {
+        let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    fn speakers() -> Vec<String> {
+        vec!["Marco".into(), "Keiko".into()]
+    }
+
+    const SEGMENT: &str = "Marco: Can you send Karen the revised SOW by Thursday?\nPriya: Sure, I'll do it.\nMarco: Great, then we go with fixed-price.";
+    const MEETING: &str = "Karen: Thanks for joining. Our compliance audit is in two weeks and the export still drops rows.\nMarco: We found the bug, the fix ships Friday. I'll send you a written plan today.\nKaren: Please do, my director is not happy about the delay. Also, can you add the audit log to the export?\nPriya: Yes, we'll scope that and get back to you by Monday.";
+
+    fn clients() -> [(&'static str, &'static str); 2] {
+        [
+            ("Northwind Bank", "contact: Karen, compliance"),
+            ("Helio Health", "clinics, contact: Dr. Osei"),
+        ]
     }
 
     #[test]
-    fn request_constrains_every_answer_to_yes_or_no() {
-        let body = request(MODEL, "hi");
+    fn request_constrains_every_answer_to_its_options() {
+        let qs = segment_questions(&speakers());
+        let body = request(MODEL, "hi", &qs);
         let props = body["format"]["properties"].as_object().unwrap();
-        assert_eq!(props.len(), SEGMENT_QUESTIONS.len());
+        assert_eq!(props.len(), qs.len());
         assert_eq!(props["sensitive"]["enum"], json!(["yes", "no"]));
+        assert_eq!(
+            props["owner"]["enum"],
+            json!(["Marco", "Keiko", "nobody here"])
+        );
         assert_eq!(body["logprobs"], true);
         assert_eq!(body["messages"][1]["content"], "hi");
+        let body = request(MODEL, "hi", &meeting_questions(clients()));
+        let props = &body["format"]["properties"];
+        assert_eq!(props["tone"]["enum"], json!(["0", "1", "2", "3", "4"]));
     }
 
     #[test]
-    fn parses_a_recorded_response_with_logprobs() {
-        // Recorded from qwen3:4b: "I'll send the revised SOW… then we go with fixed-price."
-        let answers = parse(&fixture()).unwrap();
-        let get = |id: &str| answers.iter().find(|a| a.id == id).unwrap();
-        assert!(get("action").answer && get("decision").answer);
-        assert!(!get("smalltalk").answer && !get("sensitive").answer);
-        for a in &answers {
-            assert!((0.0..=1.0).contains(&a.probability), "{a:?}");
-            // The probability comes from logprobs and agrees with the answer.
-            assert_eq!(a.answer, a.probability >= 0.5, "{a:?}");
+    fn parses_a_recorded_segment_response_with_logprobs() {
+        // Recorded from qwen3:4b (`live_records_fixtures`).
+        let qs = segment_questions(&speakers());
+        let replies = parse(&fixture("ollama-segment.json"), &qs).unwrap();
+        assert!(replies[0].p_yes().unwrap() >= 0.5, "action: {replies:?}");
+        assert!(replies[4].p_yes().unwrap() < 0.5, "not sensitive");
+        for r in &replies {
+            assert!((0.0..=1.0).contains(&r.confidence()), "{r:?}");
         }
+        let Reply::Choice {
+            value,
+            probabilities,
+        } = &replies[6]
+        else {
+            panic!("owner is a choice")
+        };
+        assert_eq!(value, "Keiko");
+        let total: f32 = probabilities.iter().map(|(_, p)| p).sum();
+        assert!((total - 1.0).abs() < 1e-4, "{probabilities:?}");
     }
 
     #[test]
-    fn logprob_mass_is_renormalised_over_yes_and_no() {
+    fn parses_a_recorded_meeting_response_with_scores() {
+        let qs = meeting_questions(clients());
+        let replies = parse(&fixture("ollama-meeting.json"), &qs).unwrap();
+        let Reply::Choice { value, .. } = &replies[1] else {
+            panic!("client is a choice")
+        };
+        assert_eq!(value, "Northwind Bank");
+        let Reply::Score {
+            score,
+            probabilities,
+        } = &replies[2]
+        else {
+            panic!("priority is a score")
+        };
+        assert_eq!(probabilities.len(), 6);
+        assert!((0.0..=5.0).contains(score), "{score}");
+    }
+
+    #[test]
+    fn logprob_mass_is_renormalised_and_shared_prefixes_split() {
         let alts = json!([
             { "token": "yes", "logprob": (0.6_f64).ln() },
             { "token": "no", "logprob": (0.2_f64).ln() },
             { "token": "maybe", "logprob": (0.2_f64).ln() },
         ]);
-        let p = p_yes_no(alts.as_array().unwrap(), true);
-        assert!((p - 0.75).abs() < 1e-6, "{p}");
+        let opts = ["yes".to_string(), "no".to_string()];
+        let m = distribution(alts.as_array().unwrap(), &opts);
+        assert!((m[0] - 0.75).abs() < 1e-6, "{m:?}");
+        // "Ma" starts both Marco and Ines: its mass is split between them.
+        let alts = json!([
+            { "token": "Ma", "logprob": (0.8_f64).ln() },
+            { "token": "Pri", "logprob": (0.2_f64).ln() },
+        ]);
+        let opts = [
+            "Marco".to_string(),
+            "Ines".to_string(),
+            "Keiko".to_string(),
+        ];
+        let m = distribution(alts.as_array().unwrap(), &opts);
+        assert!(
+            (m[0] - 0.4).abs() < 1e-6 && (m[2] - 0.2).abs() < 1e-6,
+            "{m:?}"
+        );
     }
 
     #[test]
     fn bad_content_is_an_error() {
-        let mut resp = fixture();
+        let qs = segment_questions(&speakers());
+        let mut resp = fixture("ollama-segment.json");
         resp["message"]["content"] = json!("not json");
-        assert!(matches!(parse(&resp), Err(Error::Provider(_))));
+        assert!(matches!(parse(&resp, &qs), Err(Error::Provider(_))));
     }
 
     /// `ollama serve` + `ollama pull qwen3:4b`, then
-    /// `cargo test -p mirona-providers --features ollama -- --ignored`
+    /// `cargo test -p mirona-providers --features ollama -- --ignored`. Rewrites the fixtures.
+    #[test]
+    #[ignore = "needs a running Ollama with qwen3:4b"]
+    fn live_records_fixtures() {
+        let o = Ollama::default();
+        for (name, text, qs) in [
+            (
+                "ollama-segment.json",
+                SEGMENT,
+                segment_questions(&speakers()),
+            ),
+            ("ollama-meeting.json", MEETING, meeting_questions(clients())),
+        ] {
+            let resp: Value = o
+                .http
+                .post(URL)
+                .send_json(request(MODEL, text, &qs))
+                .unwrap()
+                .body_mut()
+                .read_json()
+                .unwrap();
+            assert!(parse(&resp, &qs).is_ok(), "{resp}");
+            let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
+            std::fs::write(path, serde_json::to_string_pretty(&resp).unwrap()).unwrap();
+        }
+    }
+
     #[test]
     #[ignore = "needs a running Ollama with qwen3:4b"]
     fn live_classifies_sensitive_content() {
-        let seg = Segment {
-            id: "s".into(),
-            speaker_id: "p".into(),
-            start_ms: 0,
-            text: "Nadia: The admin password for the staging VPN is Tulip-4471, don't share it."
-                .into(),
-            redacted: false,
-            tags: vec![],
-            answers: vec![],
-            owners: vec![],
-        };
-        let answers = crate::tests::now(Ollama::default().classify(&seg)).unwrap();
-        let sensitive = answers.iter().find(|a| a.id == "sensitive").unwrap();
-        assert!(sensitive.answer, "{sensitive:?}");
+        let qs = segment_questions(&[]);
+        let text = "Nadia: The admin password for the staging VPN is Tulip-4471, don't share it.";
+        let replies = crate::tests::now(Ollama::default().ask(text, &qs)).unwrap();
+        assert!(replies[4].p_yes().unwrap() >= 0.5, "{replies:?}");
     }
 }

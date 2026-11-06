@@ -1,15 +1,16 @@
 //! Jev (`TypeSafe`'s hosted "System One" model) as the default `Classifier` (ADR 0001, NGR-155).
 //!
-//! One `POST /v1/systemone` per segment carries every yes/no question. Jev is a cloud provider,
-//! so privacy mode refuses it through `check_privacy`; the local fallback is `ollama::Ollama`.
+//! One `POST /v1/systemone` carries every typed question: yes/no as `noul`, `choice` and
+//! `score`, evaluated in parallel against one `state`. Jev is a cloud provider, so privacy mode
+//! refuses it through `check_privacy`; the local fallback is `ollama::Ollama`.
 //!
 //! Each user brings their own key: Settings → API keys stores it in the OS keychain under the
 //! account `jev` (`keychain::api_key("jev")`), never in `config.toml`.
 
-use crate::questions::{SEGMENT_QUESTIONS, answer};
+use crate::questions::{Kind, Question, Reply, options};
 use crate::{Classifier, Error, Locality, Provider, Result};
-use mirona_core::{Answer, Segment};
 use serde_json::{Value, json};
+use std::time::Duration;
 
 pub const URL: &str = "https://api.typesafe.ai/v1/systemone";
 /// Pinned: `jev-latest` moves, and the thresholds were tuned on this version.
@@ -24,41 +25,80 @@ pub struct Jev {
 
 impl Jev {
     pub fn new(api_key: impl Into<String>) -> Self {
+        let http = ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(30)))
+            .http_status_as_error(false)
+            .build()
+            .into();
         Self {
             key: api_key.into(),
             model: MODEL.into(),
             url: URL.into(),
-            http: ureq::Agent::new_with_defaults(),
+            http,
         }
     }
 }
 
-/// The request body for one segment.
-pub fn request(model: &str, text: &str) -> Value {
-    let questions: serde_json::Map<String, Value> = SEGMENT_QUESTIONS
+/// The request body: every question about `text` in one call.
+pub fn request(model: &str, text: &str, questions: &[Question]) -> Value {
+    let qs: serde_json::Map<String, Value> = questions
         .iter()
         .map(|q| {
-            let spec = json!({
-                "type": "noul",
-                "instructions": q.instructions,
-                "criteria": { "true": q.yes, "false": q.no },
-            });
-            (q.id.to_string(), spec)
+            let spec = match &q.kind {
+                Kind::YesNo { yes, no } => json!({
+                    "type": "noul",
+                    "instructions": q.instructions,
+                    "criteria": { "true": yes, "false": no },
+                }),
+                Kind::Choice(opts) => {
+                    let criteria: serde_json::Map<String, Value> = opts
+                        .iter()
+                        .map(|(o, d)| (o.clone(), Value::from(d.as_str())))
+                        .collect();
+                    json!({ "type": "choice", "instructions": q.instructions, "criteria": criteria })
+                }
+                Kind::Score(levels) => {
+                    json!({ "type": "score", "instructions": q.instructions, "criteria": levels })
+                }
+            };
+            (q.id.clone(), spec)
         })
         .collect();
-    json!({ "model": model, "state": text, "questions": questions })
+    json!({ "model": model, "state": text, "questions": qs })
 }
 
-/// Turn a Jev response into one `Answer` per question, in `SEGMENT_QUESTIONS` order.
-pub fn parse(resp: &Value) -> Result<Vec<Answer>> {
-    SEGMENT_QUESTIONS
+#[allow(clippy::cast_possible_truncation)]
+fn f(v: &Value) -> Option<f32> {
+    v.as_f64().map(|x| x as f32)
+}
+
+/// One `Reply` per question, in question order.
+pub fn parse(resp: &Value, questions: &[Question]) -> Result<Vec<Reply>> {
+    questions
         .iter()
         .map(|q| {
-            #[allow(clippy::cast_possible_truncation)]
-            resp["answers"][q.id]["noul"]
-                .as_f64()
-                .map(|p| answer(q, p as f32))
-                .ok_or_else(|| Error::Provider(format!("jev: no answer for {}", q.id)))
+            let a = &resp["answers"][&q.id];
+            let missing = || Error::Provider(format!("jev: no answer for {}", q.id));
+            let probs = |keys: Vec<String>| -> Option<Vec<(String, f32)>> {
+                keys.into_iter()
+                    .map(|k| Some((k.clone(), f(&a["probabilities"][&k])?)))
+                    .collect()
+            };
+            let reply = || match &q.kind {
+                Kind::YesNo { .. } => f(&a["noul"]).map(Reply::YesNo),
+                Kind::Choice(_) => {
+                    let value = a["choice"].as_str()?.to_string();
+                    Some(Reply::Choice {
+                        value,
+                        probabilities: probs(options(q))?,
+                    })
+                }
+                Kind::Score(_) => Some(Reply::Score {
+                    score: f(&a["score"])?,
+                    probabilities: probs(options(q))?.into_iter().map(|(_, p)| p).collect(),
+                }),
+            };
+            reply().ok_or_else(missing)
         })
         .collect()
 }
@@ -73,19 +113,37 @@ impl Provider for Jev {
 }
 
 impl Classifier for Jev {
-    fn classify(&self, segment: &Segment) -> impl Future<Output = Result<Vec<Answer>>> + Send {
-        let body = request(&self.model, &segment.text);
-        // ponytail: blocking HTTP inside the future; run classifiers on a worker thread
-        // (NGR-155), or switch to an async client if they ever share the UI executor.
+    fn ask(
+        &self,
+        text: &str,
+        questions: &[Question],
+    ) -> impl Future<Output = Result<Vec<Reply>>> + Send {
+        let body = request(&self.model, text, questions);
+        // ponytail: blocking HTTP inside the future; the engine classifies on its own worker
+        // thread. Switch to an async client if classifiers ever share the UI executor.
         async move {
-            let resp: Value = self
-                .http
-                .post(&self.url)
-                .header("Authorization", &format!("Bearer {}", self.key))
-                .send_json(&body)
-                .and_then(|mut r| r.body_mut().read_json())
-                .map_err(|e| Error::Provider(format!("jev: {e}")))?;
-            parse(&resp)
+            let err = |e: &dyn std::fmt::Display| Error::Provider(format!("jev: {e}"));
+            for attempt in 0..4 {
+                let mut r = self
+                    .http
+                    .post(&self.url)
+                    .header("Authorization", &format!("Bearer {}", self.key))
+                    .send_json(&body)
+                    .map_err(|e| err(&e))?;
+                let status = r.status().as_u16();
+                // Rate limited or overloaded: back off and retry (docs: 429, 529).
+                if matches!(status, 429 | 529) && attempt < 3 {
+                    std::thread::sleep(Duration::from_millis(500 << attempt));
+                    continue;
+                }
+                if status != 200 {
+                    let msg = r.body_mut().read_to_string().unwrap_or_default();
+                    return Err(err(&format!("HTTP {status} {msg}")));
+                }
+                let resp: Value = r.body_mut().read_json().map_err(|e| err(&e))?;
+                return parse(&resp, questions);
+            }
+            unreachable!("the last attempt returns")
         }
     }
 }
@@ -93,38 +151,86 @@ impl Classifier for Jev {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::questions::{NO_OWNER, meeting_questions, segment_questions};
 
-    fn fixture() -> Value {
-        serde_json::from_str(include_str!("../tests/fixtures/jev-response.json")).unwrap()
+    fn fixture(name: &str) -> Value {
+        let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    fn speakers() -> Vec<String> {
+        vec!["Marco".into(), "Keiko".into()]
     }
 
     #[test]
-    fn request_asks_every_question_once() {
-        let body = request(MODEL, "hello");
+    fn request_sends_each_question_type() {
+        let qs = segment_questions(&speakers());
+        let body = request(MODEL, "hello", &qs);
         assert_eq!(body["model"], MODEL);
         assert_eq!(body["state"], "hello");
-        let qs = body["questions"].as_object().unwrap();
-        assert_eq!(qs.len(), SEGMENT_QUESTIONS.len());
-        assert_eq!(qs["action"]["type"], "noul");
-        assert!(qs["sensitive"]["criteria"]["true"].is_string());
+        let sent = body["questions"].as_object().unwrap();
+        assert_eq!(sent.len(), qs.len());
+        assert_eq!(sent["action"]["type"], "noul");
+        assert!(sent["sensitive"]["criteria"]["true"].is_string());
+        assert_eq!(sent["owner"]["type"], "choice");
+        assert!(sent["owner"]["criteria"][NO_OWNER].is_string());
+        let mq = meeting_questions([("Northwind Bank", "contact: Karen")]);
+        let body = request(MODEL, "x", &mq);
+        assert_eq!(body["questions"]["priority"]["type"], "score");
+        assert_eq!(
+            body["questions"]["priority"]["criteria"][5],
+            "Critical: drop everything"
+        );
     }
 
     #[test]
-    fn parses_a_recorded_response() {
-        // Recorded from jev-1.14.0: "I'll send the revised SOW… then we go with fixed-price."
-        let answers = parse(&fixture()).unwrap();
-        let get = |id: &str| answers.iter().find(|a| a.id == id).unwrap();
-        assert!(get("action").answer && (get("action").probability - 0.96).abs() < 1e-6);
-        assert!(get("decision").answer);
-        assert!(!get("smalltalk").answer && !get("sensitive").answer);
-        assert_eq!(answers.len(), 5);
+    fn parses_a_recorded_segment_response() {
+        // Recorded from jev-1.14.0 (`live_records_fixtures`): Marco asks for the SOW by
+        // Thursday, Keiko takes it, then they settle on fixed price.
+        let qs = segment_questions(&speakers());
+        let replies = parse(&fixture("jev-segment.json"), &qs).unwrap();
+        let p = |i: usize| replies[i].p_yes().unwrap();
+        assert!(p(0) >= 0.9, "action {}", p(0));
+        assert!(p(3) < 0.5 && p(4) < 0.5, "not small talk or sensitive");
+        assert!(p(5) >= 0.5, "due date said");
+        let Reply::Choice { value, .. } = &replies[6] else {
+            panic!("owner is a choice")
+        };
+        assert_eq!(value, "Keiko");
+    }
+
+    #[test]
+    fn parses_a_recorded_meeting_response() {
+        let qs = meeting_questions([
+            ("Northwind Bank", "contact: Karen, compliance"),
+            ("Helio Health", "clinics, contact: Dr. Osei"),
+        ]);
+        let replies = parse(&fixture("jev-meeting.json"), &qs).unwrap();
+        let Reply::Choice { value, .. } = &replies[1] else {
+            panic!("client is a choice")
+        };
+        assert_eq!(value, "Northwind Bank");
+        let Reply::Score {
+            score,
+            probabilities,
+        } = &replies[2]
+        else {
+            panic!("priority is a score")
+        };
+        assert_eq!(probabilities.len(), 6);
+        assert!((0.0..=5.0).contains(score));
+        assert!(
+            replies[4].p_yes().unwrap() >= 0.5,
+            "client call wants a follow-up"
+        );
     }
 
     #[test]
     fn missing_answer_is_an_error() {
-        let mut resp = fixture();
-        resp["answers"].as_object_mut().unwrap().remove("sensitive");
-        assert!(matches!(parse(&resp), Err(Error::Provider(_))));
+        let qs = segment_questions(&speakers());
+        let mut resp = fixture("jev-segment.json");
+        resp["answers"].as_object_mut().unwrap().remove("owner");
+        assert!(matches!(parse(&resp, &qs), Err(Error::Provider(_))));
     }
 
     #[test]
@@ -138,26 +244,43 @@ mod tests {
         assert!(crate::check_privacy(&opt, true).is_err());
     }
 
-    /// Hits the real API. `TYPESAFE_API_KEY=… cargo test -p mirona-providers --features jev -- --ignored`
+    pub(crate) const SEGMENT: &str = "Marco: Can you send Karen the revised SOW by Thursday?\nPriya: Sure, I'll do it.\nMarco: Great, then we go with fixed-price.";
+    pub(crate) const MEETING: &str = "Karen: Thanks for joining. Our compliance audit is in two weeks and the export still drops rows.\nMarco: We found the bug, the fix ships Friday. I'll send you a written plan today.\nKaren: Please do, my director is not happy about the delay. Also, can you add the audit log to the export?\nPriya: Yes, we'll scope that and get back to you by Monday.";
+
+    /// Hits the real API and (re)records the fixtures.
+    /// `TYPESAFE_API_KEY=… cargo test -p mirona-providers --features jev -- --ignored`
     #[test]
     #[ignore = "needs TYPESAFE_API_KEY and network"]
-    fn live_classifies_an_action_item() {
-        let key = std::env::var("TYPESAFE_API_KEY").expect("TYPESAFE_API_KEY");
-        let seg = Segment {
-            id: "s".into(),
-            speaker_id: "p".into(),
-            start_ms: 0,
-            text: "Marco: Can you send Karen the revised SOW by Thursday? Keiko: Sure, I'll do it."
-                .into(),
-            redacted: false,
-            tags: vec![],
-            answers: vec![],
-            owners: vec![],
-        };
-        let answers = crate::tests::now(Jev::new(key).classify(&seg)).unwrap();
-        let action = answers.iter().find(|a| a.id == "action").unwrap();
-        assert!(action.answer && action.probability >= 0.6, "{action:?}");
-        let small = answers.iter().find(|a| a.id == "smalltalk").unwrap();
-        assert!(!small.answer, "{small:?}");
+    fn live_records_fixtures() {
+        let jev = Jev::new(std::env::var("TYPESAFE_API_KEY").expect("TYPESAFE_API_KEY"));
+        for (name, text, qs) in [
+            ("jev-segment.json", SEGMENT, segment_questions(&speakers())),
+            (
+                "jev-meeting.json",
+                MEETING,
+                meeting_questions([
+                    ("Northwind Bank", "contact: Karen, compliance"),
+                    ("Helio Health", "clinics, contact: Dr. Osei"),
+                ]),
+            ),
+        ] {
+            let body = request(MODEL, text, &qs);
+            let resp: Value = jev
+                .http
+                .post(URL)
+                .header("Authorization", &format!("Bearer {}", jev.key))
+                .send_json(&body)
+                .unwrap()
+                .body_mut()
+                .read_json()
+                .unwrap();
+            assert!(parse(&resp, &qs).is_ok(), "{resp}");
+            let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
+            std::fs::write(path, serde_json::to_string_pretty(&resp).unwrap()).unwrap();
+        }
+        // And through the trait, as the engine calls it.
+        let qs = segment_questions(&speakers());
+        let replies = crate::tests::now(jev.ask(SEGMENT, &qs)).unwrap();
+        assert!(replies[0].p_yes().unwrap() >= 0.6, "{replies:?}");
     }
 }

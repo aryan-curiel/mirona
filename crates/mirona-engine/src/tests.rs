@@ -170,6 +170,7 @@ fn a_failed_summary_keeps_the_meeting_and_says_why() {
     let id = recorded(&e);
     let mut cfg = e.config();
     cfg.providers.insert("llm".into(), "nope".into());
+    cfg.providers.insert("classification".into(), "off".into());
     e.set_config(cfg);
 
     let (tx, rx) = channel();
@@ -314,13 +315,21 @@ fn missing_models_follow_the_configured_stt() {
         missing_models(&cfg, m),
         [
             "silero_vad.onnx".to_string(),
-            format!("{}/", mirona_capture::PARAKEET_DIR)
+            format!("{}/", mirona_capture::PARAKEET_DIR),
+            "speakrs/".to_string(),
         ]
     );
     std::fs::write(m.join(mirona_capture::VAD_MODEL), "").unwrap();
     let p = m.join(mirona_capture::PARAKEET_DIR);
     std::fs::create_dir(&p).unwrap();
     std::fs::write(p.join("tokens.txt"), "").unwrap();
+    assert_eq!(missing_models(&cfg, m), ["speakrs/"]);
+    cfg.providers.insert("diarization".into(), "off".into());
+    assert_eq!(missing_models(&cfg, m), Vec::<String>::new());
+    cfg.providers.remove("diarization");
+    let sp = m.join("speakrs");
+    std::fs::create_dir(&sp).unwrap();
+    std::fs::write(sp.join("wespeaker-multimask-tail.safetensors"), "").unwrap();
     assert_eq!(missing_models(&cfg, m), Vec::<String>::new());
     cfg.providers.insert("stt".into(), "whisper".into());
     assert_eq!(missing_models(&cfg, m), ["ggml-small.en.bin"]);

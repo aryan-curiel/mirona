@@ -1,0 +1,43 @@
+{
+  "answers": {
+    "action": {
+      "noul": 0.98,
+      "type": "noul"
+    },
+    "decision": {
+      "noul": 0.94,
+      "type": "noul"
+    },
+    "due": {
+      "noul": 0.99,
+      "type": "noul"
+    },
+    "owner": {
+      "choice": "Keiko",
+      "confidence": 1.0,
+      "probabilities": {
+        "Marco": 0.0,
+        "Keiko": 1.0,
+        "nobody here": 0.0
+      },
+      "type": "choice"
+    },
+    "sensitive": {
+      "noul": 0.06,
+      "type": "noul"
+    },
+    "smalltalk": {
+      "noul": 0.02,
+      "type": "noul"
+    },
+    "unanswered": {
+      "noul": 0.16,
+      "type": "noul"
+    }
+  },
+  "model": "jev-1.14.0",
+  "usage": {
+    "input_tokens": 826,
+    "output_tokens": 145
+  }
+}

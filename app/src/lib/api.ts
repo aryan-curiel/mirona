@@ -48,6 +48,10 @@ export const api = {
   toggleActionItem: (id: string) => invoke<ActionItem>("toggle_action_item", { id }),
   listPeople: () => invoke<Speaker[]>("list_people"),
   enrollSpeaker: (speakerId: string, name: string) => invoke<Speaker>("enroll_speaker", { speakerId, name }),
+  nameSpeaker: (meetingId: string, speakerId: string, name: string) =>
+    invoke<Speaker>("name_speaker", { meetingId, speakerId, name }),
+  mergePeople: (from: string, into: string) => invoke<Speaker>("merge_people", { from, into }),
+  deleteVoiceprint: (personId: string) => invoke<void>("delete_voiceprint", { personId }),
   correctAnswer: (correction: Correction) => invoke<number>("correct_answer", { correction }),
   confirmClient: (meetingId: string, client: string) => invoke<Meeting>("confirm_client", { meetingId, client }),
   renameMeeting: (meetingId: string, title: string) => invoke<Meeting>("rename_meeting", { meetingId, title }),

@@ -102,6 +102,30 @@ fn enroll_speaker(st: St, speaker_id: String, name: String) -> Res<Speaker> {
         .enroll_speaker(&speaker_id, &name)
 }
 
+/// Name a speaker in one meeting; fixes a wrong voice match (NGR-153/154).
+#[tauri::command]
+fn name_speaker(st: St, meeting_id: String, speaker_id: String, name: String) -> Res<Speaker> {
+    st.engine()
+        .store
+        .lock()
+        .unwrap()
+        .name_speaker(&meeting_id, &speaker_id, &name)
+}
+
+#[tauri::command]
+fn merge_people(st: St, from: String, into: String) -> Res<Speaker> {
+    st.engine().store.lock().unwrap().merge_people(&from, &into)
+}
+
+#[tauri::command]
+fn delete_voiceprint(st: St, person_id: String) -> Res<()> {
+    st.engine()
+        .store
+        .lock()
+        .unwrap()
+        .delete_voiceprint(&person_id)
+}
+
 #[tauri::command]
 fn correct_answer(st: St, correction: Correction) -> Res<usize> {
     let engine = st.engine();
@@ -728,6 +752,9 @@ pub fn run() {
             toggle_action_item,
             list_people,
             enroll_speaker,
+            name_speaker,
+            merge_people,
+            delete_voiceprint,
             correct_answer,
             confirm_client,
             rename_meeting,

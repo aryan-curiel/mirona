@@ -28,6 +28,7 @@ yet). From a checkout: `brew install --HEAD --formula ./packaging/homebrew/miron
 | `mirona reindex` | Rebuilds `<meetings>/.mirona/index.sqlite` from the files |
 | `mirona compress` | Compresses recordings still kept as `audio.wav` (older meetings, crashed sessions) to `audio.caf` (Opus); the app does this at start |
 | `mirona mcp` | The MCP server on stdio |
+| `mirona eval [--with jev\|local-llm\|fake] [--set file] [--no-labels] [--context] [--limit N]` | Scores the classifiers on the public synthetic set (`eval/chunks.jsonl`) plus your own corrections (`<meetings>/.mirona/labels.jsonl`, local only): accuracy and precision/recall per question, latency per call. Default: the configured classifier plus the local baseline. `--with fake` needs no network (CI). Jev uses the keychain key, or `TYPESAFE_API_KEY` |
 
 Read commands and the MCP server index into memory and never write the app's index, so they are
 safe to run while the app is open.

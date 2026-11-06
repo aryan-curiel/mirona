@@ -132,7 +132,7 @@ export const useStore = create<State>((set, get) => {
         break;
       case "classified":
         if (here && meeting) {
-          const segments = meeting.segments.map((s) => (s.id === e.segmentId ? { ...s, tags: e.tags } : s));
+          const segments = meeting.segments.map((s) => (s.id === e.segmentId ? { ...s, tags: e.tags, answers: e.answers, owners: e.owners } : s));
           set({ meeting: { ...meeting, segments } });
         }
         break;

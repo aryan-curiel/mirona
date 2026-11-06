@@ -509,3 +509,41 @@ fn partial_overview_reads_an_unfinished_json_string() {
         "tw"
     );
 }
+
+fn tag(m: &mut Meeting, i: usize, kind: TagKind) {
+    m.segments[i].tags.push(mirona_core::Tag {
+        kind,
+        label: kind.label().into(),
+    });
+    m.segments[i].answers =
+        vec![serde_json::from_value(json!({
+        "id": "action", "question": "", "kind": "yesNo", "answer": false, "probability": 0.1,
+        "source": "model"
+    }))
+    .unwrap()];
+}
+
+#[test]
+fn small_talk_is_dropped_and_sensitive_stays_off_cloud() {
+    let mut m = meeting(
+        &[
+            ("nadia", "00:01", "How was the weekend?"),
+            ("aryan", "00:05", "The VPN password is Tulip-4471."),
+            ("aryan", "00:09", "I'll send the SOW."),
+        ],
+        &[],
+    );
+    tag(&mut m, 0, TagKind::SmallTalk);
+    tag(&mut m, 1, TagKind::Sensitive);
+    tag(&mut m, 2, TagKind::Action);
+    let local = transcript_lines(&m, false);
+    assert_eq!(local.len(), 2, "{local:?}");
+    assert!(local[0].starts_with("[1 ") && local[0].contains("Tulip"));
+    let cloud = transcript_lines(&m, true);
+    assert!(cloud[0].contains("[redacted]"), "{cloud:?}");
+
+    // Line 2 is a classified action; line 1 isn't, so an item citing only it needs review.
+    assert!(classified_action(&m, Some(9000)));
+    m.segments[2].tags.clear();
+    assert!(!classified_action(&m, Some(1000)));
+}
