@@ -36,6 +36,9 @@ pub struct Config {
     pub mcp_tokens: BTreeMap<String, String>,
     /// Let MCP clients change meetings: mark action items done, rename speakers.
     pub mcp_write: bool,
+    /// Let MCP clients read sensitive lines when they ask (`include_sensitive`). Off, they
+    /// always read `[redacted]`.
+    pub mcp_sensitive: bool,
     /// Global start/stop-recording shortcut, as a Tauri accelerator ("CmdOrCtrl+Alt+Shift+R").
     pub shortcut: String,
     /// Question id → threshold, overriding the defaults in [`default_threshold`] (NGR-158).
@@ -105,11 +108,13 @@ impl Default for Config {
             models_dir: None,
             template: "client-call".into(),
             llm: LlmSettings::default(),
-            mcp_enabled: true,
+            // Off until the user lets agents in (onboarding or Settings).
+            mcp_enabled: false,
             mcp_http: false,
             mcp_port: DEFAULT_MCP_PORT,
             mcp_tokens: BTreeMap::new(),
             mcp_write: false,
+            mcp_sensitive: false,
             shortcut: DEFAULT_SHORTCUT.into(),
             thresholds: BTreeMap::new(),
             clients: BTreeMap::new(),

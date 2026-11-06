@@ -396,10 +396,7 @@ fn live_summary_and_notes_with_qwen3() {
             .chain(&s.open_questions)
             .all(|d| starts.contains(&d.at_ms))
     );
-    assert!(
-        actions.len() >= 2,
-        "Inés's announcement and Aryan's filter"
-    );
+    assert!(actions.len() >= 2, "Inés's announcement and Aryan's filter");
     assert!(
         actions
             .iter()

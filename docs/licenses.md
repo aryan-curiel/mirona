@@ -34,5 +34,5 @@ Nothing is bundled. The app downloads the models the configured providers need (
 
 - **Trademark:** a web search found no "Mirona" registration for software. Similar marks exist (MIRA, MIRIXA in class 42). This isn't a legal search; check USPTO, EUIPO and WIPO before launch.
 - **Domains:** `mirona.com` (since 2000) and `mirona.ai` (since 2025) are taken. `mirona.app`, `mirona.dev` and `getmirona.com` were unregistered when checked.
-- **GitHub:** the repo is `aryan-curiel/mirona` (private). Package names stay under Nagare Studio: app id `com.nagare.mirona`, Homebrew tap `nagare-studio/tap`.
+- **GitHub:** the repo is `aryan-curiel/mirona`. Package names stay under Nagare Studio: app id `com.nagare.mirona`, Homebrew tap `nagare-studio/tap`.
 - **Credits:** `NOTICE` (shipped inside the app bundle) and Settings › About.

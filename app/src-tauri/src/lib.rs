@@ -1069,6 +1069,8 @@ struct Settings {
     mcp_port: u16,
     #[serde(default)]
     mcp_write: bool,
+    #[serde(default)]
+    mcp_sensitive: bool,
     /// Names of the HTTP clients holding a token; read-only (tokens never leave the backend
     /// after they're created).
     #[serde(default, skip_deserializing)]
@@ -1166,6 +1168,7 @@ impl Settings {
             mcp_http: cfg.mcp_http,
             mcp_port: cfg.mcp_port,
             mcp_write: cfg.mcp_write,
+            mcp_sensitive: cfg.mcp_sensitive,
             mcp_clients: cfg.mcp_tokens.keys().cloned().collect(),
             shortcut: cfg.shortcut.clone(),
             meetings_dir: paths.meetings.clone(),
@@ -1263,6 +1266,7 @@ impl Settings {
         cfg.mcp_http = self.mcp_http;
         cfg.mcp_port = self.mcp_port;
         cfg.mcp_write = self.mcp_write;
+        cfg.mcp_sensitive = self.mcp_sensitive;
         cfg.shortcut = self.shortcut.trim().into();
         cfg.meetings_dir = dir(&self.meetings_dir, &defaults.meetings);
         cfg.models_dir = dir(&self.models_dir, &defaults.models);

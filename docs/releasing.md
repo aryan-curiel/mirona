@@ -18,10 +18,10 @@ attaches the `.app` and `.dmg` to a **draft** GitHub release.
 | --- | --- |
 | `APPLE_CERTIFICATE` | The Developer ID Application certificate and key as a `.p12`, base64 |
 | `APPLE_CERTIFICATE_PASSWORD` | The password chosen when exporting the `.p12` |
-| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: ARYAN CURIELPARDO (89WU3N3C8U)` |
+| `APPLE_SIGNING_IDENTITY` | The certificate's full name, `Developer ID Application: <Name> (<Team ID>)`. `security find-identity -v -p codesigning` lists it |
 | `APPLE_ID` | The Apple ID email of the developer account |
 | `APPLE_PASSWORD` | An app-specific password for that Apple ID (not the account password) |
-| `APPLE_TEAM_ID` | `89WU3N3C8U` |
+| `APPLE_TEAM_ID` | The 10-character Team ID shown in the certificate name |
 
 - **Certificate:** Keychain Access › login › My Certificates, right-click
   "Developer ID Application: …" › Export as `.p12` with a password, then
@@ -32,7 +32,7 @@ attaches the `.app` and `.dmg` to a **draft** GitHub release.
 
 ```bash
 cd app
-APPLE_SIGNING_IDENTITY="Developer ID Application: ARYAN CURIELPARDO (89WU3N3C8U)" \
+APPLE_SIGNING_IDENTITY="Developer ID Application: <Name> (<Team ID>)" \
   pnpm tauri build --bundles app,dmg
 ```
 

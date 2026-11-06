@@ -11,12 +11,7 @@ use mirona_providers::questions::SEGMENT_QUESTIONS;
 use crate::{Result, Store};
 
 pub const THRESHOLD: f32 = 0.6;
-pub const CLIENTS: [&str; 4] = [
-    "Alder Restoration",
-    "Juniper Apparel",
-    "Corvo",
-    "Lumenix",
-];
+pub const CLIENTS: [&str; 4] = ["Alder Restoration", "Juniper Apparel", "Corvo", "Lumenix"];
 
 pub fn ms(mmss: &str) -> u32 {
     let (m, s) = mmss.split_once(':').expect("mm:ss");

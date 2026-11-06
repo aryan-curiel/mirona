@@ -24,6 +24,8 @@ export type Settings = {
   mcpPort: number;
   /** Let agents mark action items done and rename speakers. */
   mcpWrite: boolean;
+  /** Let agents read sensitive lines when they ask (`include_sensitive`). */
+  mcpSensitive: boolean;
   /** HTTP clients holding a token (read-only; tokens are shown once, on creation). */
   mcpClients: string[];
   /** Global record shortcut, a Tauri accelerator like "CmdOrCtrl+Alt+Shift+R". */

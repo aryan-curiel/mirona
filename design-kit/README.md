@@ -12,7 +12,7 @@ Everything needed to start implementing the Mirona desktop app UI: the interacti
 | `design-system/` | `index.html`: logo, colors, classification tags, glass surfaces, type scale and core components. |
 | `tokens/` | `tokens.css` (CSS variables + ready-made `.mi-*` surface classes) and `tokens.json` (same values, for Tailwind or TS). |
 | `brand/` | `app-icon.svg` (64 px and up), `mark-small.svg` (under 64 px), `mark-mono.svg` (uses `currentColor`), `tray-template.svg` (black, for the macOS menu bar), `png/icon-16…1024.png` (full bleed, Windows) and `png/icon-macos-1024.png` (with Apple's margin, macOS). |
-| `screenshots/` | Retina screenshots for reference. `01`–`08` are from the original prototype: the sidebar still has the old in-window "Models and MCP" page (`07-models-and-mcp.png`), and the classifier is Kev-0.8B / Kev-4B (the app uses Jev, or qwen3:4b via Ollama in privacy mode; there is no pyannote-rs option). `09-settings-window.png` and `10-onboarding-*.png` are taken from the current app. |
+| `screenshots/` | Retina screenshots of the current app: `09-settings-window.png` and `10-onboarding-*.png`. The prototype in `prototype/` shows the other screens. |
 | `source/` | The original `.dc.html` design files the pages were built from (`Main`, `DesignSystem`). |
 
 ## Screens in the prototype

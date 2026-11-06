@@ -388,6 +388,12 @@ function McpHttp({ st, save }: { st: Settings; save: (patch: Partial<Settings>) 
           <span className="text-[14px] text-ink-3">{st.mcpWrite ? "On: agents can change your meetings" : "Off: agents can only read"}</span>
         </div>
       </Row>
+      <Row title="Sensitive lines" sub="Passwords, salaries, account numbers, health. Agents see [redacted] unless you allow them">
+        <div className="flex items-center gap-3">
+          <Toggle on={st.mcpSensitive} onChange={(mcpSensitive) => save({ mcpSensitive })} label="Let MCP clients read sensitive lines" />
+          <span className="text-[14px] text-ink-3">{st.mcpSensitive ? "On: agents can read them when they ask" : "Off: always redacted"}</span>
+        </div>
+      </Row>
     </section>
   );
 }

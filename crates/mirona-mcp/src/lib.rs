@@ -115,7 +115,8 @@ pub struct SearchArgs {
     pub speaker: Option<String>,
     /// Only lines tagged: `action`, `decision`, `open_question`, `small_talk` or `sensitive`.
     pub tag: Option<String>,
-    /// Include lines tagged sensitive. Only when the user asked for that content.
+    /// Include lines tagged sensitive. Only when the user asked for that content, and only
+    /// works if they allowed it in Mirona's settings; otherwise they stay `[redacted]`.
     pub include_sensitive: Option<bool>,
 }
 
@@ -190,7 +191,8 @@ pub struct TranscriptArgs {
     /// End of the range (exclusive), same format. Default: the end.
     pub to: Option<String>,
     /// Include lines tagged sensitive (passwords, salaries, health). Only when the user asked
-    /// for that content. Redacted lines stay hidden regardless.
+    /// for that content, and only works if they allowed it in Mirona's settings. Redacted lines
+    /// stay hidden regardless.
     pub include_sensitive: Option<bool>,
 }
 
@@ -215,6 +217,10 @@ impl Server {
         let store = self.store()?;
         let (cfg, _) = load(&self.app_dir)?;
         let emb = mirona_engine::search::embedder(&cfg);
+        let a = SearchArgs {
+            include_sensitive: a.include_sensitive.filter(|_| cfg.mcp_sensitive),
+            ..a
+        };
         Ok(search(&store, emb.as_ref(), &a)?.to_string())
     }
 
@@ -262,7 +268,8 @@ impl Server {
         let store = self.store()?;
         let from = a.from.as_deref().map(parse_at).transpose()?;
         let to = a.to.as_deref().map(parse_at).transpose()?;
-        let all = a.include_sensitive.unwrap_or(false);
+        // Only if the user allows it (Settings › Agents (MCP) › Sensitive lines).
+        let all = a.include_sensitive.unwrap_or(false) && load(&self.app_dir)?.0.mcp_sensitive;
         Ok(transcript(&store.meeting(&a.id)?, from, to, all))
     }
 
@@ -637,6 +644,58 @@ mod tests {
         }
         let asked = transcript(&m, None, None, true);
         assert!(SECRETS.iter().all(|s| asked.contains(s)), "{asked}");
+    }
+
+    /// Asking for sensitive lines only works once the user allows it in Settings.
+    #[test]
+    fn sensitive_lines_need_the_users_permission() {
+        use mirona_core::{Segment, Tag, TagKind};
+        let dir = tempfile::tempdir().unwrap();
+        let meetings = dir.path().join("meetings");
+        let mut store = Store::open(&meetings).unwrap();
+        let id = store.start_meeting("m-1").unwrap().id;
+        store
+            .push_segment(
+                &id,
+                Segment {
+                    id: "s-1".into(),
+                    speaker_id: "them".into(),
+                    start_ms: 0,
+                    end_ms: 4000,
+                    text: "The staging password is Tulip-4471.".into(),
+                    redacted: false,
+                    tags: vec![Tag {
+                        kind: TagKind::Sensitive,
+                        label: "Sensitive".into(),
+                    }],
+                    answers: vec![],
+                    owners: vec![],
+                    due: None,
+                },
+            )
+            .unwrap();
+        drop(store);
+        let mut cfg = Config {
+            mcp_enabled: true,
+            meetings_dir: Some(meetings),
+            ..Config::default()
+        };
+        let config = mirona_engine::config_path(dir.path());
+        let server = Server::new(dir.path().into());
+        let read = || {
+            let args = TranscriptArgs {
+                id: id.clone(),
+                from: None,
+                to: None,
+                include_sensitive: Some(true),
+            };
+            server.get_transcript(Parameters(args)).unwrap()
+        };
+        cfg.save(&config).unwrap();
+        assert!(!read().contains("Tulip"), "read without permission");
+        cfg.mcp_sensitive = true;
+        cfg.save(&config).unwrap();
+        assert!(read().contains("Tulip"));
     }
 
     const NO_EMB: Option<&mirona_providers::ollama::OllamaEmbedder> = None;

@@ -19,8 +19,11 @@ content said in the call never appears in a summary or an MCP result**.
 - **Sensitive lines** (`Segment::is_sensitive`): tagged by the classifier, or naming a password,
   a salary, an account or card number or health details. They never reach any model (summaries,
   notes, follow-up drafts, `ask_meeting`), are never embedded, and MCP shows them as
-  `[redacted]` unless the agent passes `include_sensitive`. Covered by
-  `a_password_and_a_salary_never_leak` and `open_questions_never_see_sensitive_lines`.
+  `[redacted]` unless the agent passes `include_sensitive` and the user allowed it
+  (`mcp_sensitive`, off by default). A line the keyword check flags never goes to a cloud
+  classifier. Covered by `a_password_and_a_salary_never_leak`,
+  `open_questions_never_see_sensitive_lines`, `sensitive_lines_need_the_users_permission` and
+  `obvious_secrets_never_reach_a_cloud_classifier`.
 
 ## 1. Automated run (CLI + MCP)
 
