@@ -86,8 +86,9 @@ For each call: record the whole call, then check the transcript has both "Me" an
 
 ## 5. Settings (AI models)
 
-- [ ] **Speech-to-text:** switch to Whisper, record 20 s, switch back to Parakeet.
-  (Whisper's model downloads from Settings › AI models › Models folder after you pick it, about 490 MB.)
+- [ ] **Speech-to-text:** only Parakeet is offered (release builds don't include Whisper).
+  In a build with the `whisper` feature: switch to Whisper, download its model (Settings › AI
+  models › Models folder, about 490 MB), record 20 s, switch back to Parakeet.
 - [ ] **Model download from Settings:** with a model missing, Settings › AI models › Models folder
   lists it and offers the download, with progress and cancel. In privacy mode it still downloads
   (the one exception, `net::allow_model`); nothing else reaches the network.

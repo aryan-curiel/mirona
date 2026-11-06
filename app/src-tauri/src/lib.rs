@@ -928,6 +928,8 @@ struct Status {
     cli: String,
     /// The record shortcut, as in config.toml.
     shortcut: String,
+    /// This build includes Whisper (the `whisper` feature).
+    whisper: bool,
     errors: Vec<String>,
 }
 
@@ -961,6 +963,7 @@ fn status(st: St, keys: bool) -> Status {
         config_path: mirona_engine::config_path(&st.app_dir),
         cli: cli_path(),
         shortcut: engine.config().shortcut,
+        whisper: mirona_capture::WHISPER_BUILT,
         errors,
     }
 }
