@@ -46,6 +46,9 @@ struct AppState {
     processing: Mutex<Vec<String>>,
     /// An audio file is being imported (one at a time).
     importing: std::sync::atomic::AtomicBool,
+    /// Models are downloading (one run at a time), and the flag that stops it (NGR-174).
+    downloading: std::sync::atomic::AtomicBool,
+    cancel_download: std::sync::atomic::AtomicBool,
     /// Problems found at start (bad config, unreadable meetings, shortcut taken).
     startup_errors: Vec<String>,
     /// MCP over localhost HTTP, while `mcp_enabled` and `mcp_http` are on (NGR-168).
@@ -667,9 +670,8 @@ fn start(app: &AppHandle) -> Res<Meeting> {
     let missing = mirona_engine::missing_models(&engine.config(), &engine.paths.models);
     if !missing.is_empty() {
         return Err(format!(
-            "Speech models are missing ({}). Run: {}",
-            missing.join(", "),
-            fetch_command(&engine)
+            "Speech models are missing ({}). Download them in Settings › Models.",
+            missing.join(", ")
         ));
     }
     let mut slot = st.session.lock().unwrap();
@@ -917,7 +919,8 @@ struct Status {
     system_audio: &'static str,
     /// Model files the configured STT needs and the models folder lacks.
     missing_models: Vec<String>,
-    fetch_command: String,
+    /// Bytes the downloader would fetch for them.
+    download_size: u64,
     /// Providers with an API key in the keychain.
     keys: Vec<String>,
     config_path: PathBuf,
@@ -941,7 +944,10 @@ fn status(st: St, keys: bool) -> Status {
         mic: permission(mirona_capture::mic_permission()),
         system_audio: permission(mirona_capture::system_audio_permission()),
         missing_models: mirona_engine::missing_models(&engine.config(), &engine.paths.models),
-        fetch_command: fetch_command(&engine),
+        download_size: mirona_engine::models::needed(&engine.config(), &engine.paths.models)
+            .iter()
+            .map(|f| f.size)
+            .sum(),
         // Only when asked: reading the keychain can prompt on unsigned dev builds.
         keys: if keys {
             KEY_PROVIDERS
@@ -959,13 +965,55 @@ fn status(st: St, keys: bool) -> Status {
     }
 }
 
-fn fetch_command(engine: &Engine) -> String {
-    let whisper = mirona_engine::stage(&engine.config(), "stt", "parakeet") == "whisper";
-    format!(
-        "scripts/fetch-models.sh \"{}\"{}",
-        engine.paths.models.display(),
-        if whisper { " --whisper" } else { "" }
-    )
+/// Download progress in bytes, on the "models" channel; `null` when a run ends.
+#[derive(Clone, Serialize)]
+struct ModelProgress {
+    done: u64,
+    total: u64,
+}
+
+/// Downloads the models the configured providers need (NGR-174), progress on "models".
+/// Resolves when done; a cancelled or failed run keeps its partial files and resumes next time.
+#[tauri::command]
+async fn download_models(app: AppHandle) -> Res<()> {
+    use std::sync::atomic::Ordering;
+    let st = app.state::<AppState>();
+    if st.downloading.swap(true, Ordering::SeqCst) {
+        return Err("Already downloading.".into());
+    }
+    st.cancel_download.store(false, Ordering::SeqCst);
+    let engine = st.engine();
+    let worker = app.clone();
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        let st = worker.state::<AppState>();
+        let mut sent = std::time::Instant::now();
+        mirona_engine::models::download(
+            &engine.config(),
+            &engine.paths.models,
+            &st.cancel_download,
+            |done, total| {
+                // A few updates a second is enough for a progress bar.
+                if done == 0 || done == total || sent.elapsed().as_millis() >= 200 {
+                    sent = std::time::Instant::now();
+                    worker
+                        .emit("models", Some(ModelProgress { done, total }))
+                        .ok();
+                }
+            },
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+    st.downloading.store(false, Ordering::SeqCst);
+    app.emit("models", None::<ModelProgress>).ok();
+    changed(&app, res)
+}
+
+#[tauri::command]
+fn cancel_download(st: St) {
+    st.cancel_download
+        .store(true, std::sync::atomic::Ordering::SeqCst);
 }
 
 /// The command MCP clients run: this app's own binary with `mcp` (see `main.rs`), so it works
@@ -1630,6 +1678,8 @@ pub fn run() {
                 session: Mutex::new(None),
                 processing: Mutex::new(vec![]),
                 importing: false.into(),
+                downloading: false.into(),
+                cancel_download: false.into(),
                 startup_errors: errors,
                 mcp_http: Mutex::new(None),
             });
@@ -1706,6 +1756,8 @@ pub fn run() {
             list_templates,
             regenerate,
             import_audio,
+            download_models,
+            cancel_download,
             start_recording,
             start_call_recording,
             stop_recording,

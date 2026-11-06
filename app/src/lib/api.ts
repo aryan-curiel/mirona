@@ -65,12 +65,16 @@ export type Person = Speaker & { meetings: number; lastSeen: MeetingSummary | nu
 
 export type Permission = "granted" | "denied" | "notDetermined";
 
+/** A "models" event: bytes downloaded so far, or null when a run ends. */
+export type ModelProgress = { done: number; total: number } | null;
+
 /** Mirrors `Status` in src-tauri/src/lib.rs. */
 export type Status = {
   mic: Permission;
   systemAudio: Permission;
   missingModels: string[];
-  fetchCommand: string;
+  /** Bytes the model downloader would fetch. */
+  downloadSize: number;
   keys: string[];
   configPath: string;
   cli: string;
@@ -125,6 +129,9 @@ export const api = {
   regenerate: (meetingId: string, template: string) => invoke<void>("regenerate", { meetingId, template }),
   /** Opens the file picker; the file name, or null when cancelled. Errors while one runs. */
   importAudio: () => invoke<string | null>("import_audio"),
+  /** Resolves when every model is in place; progress arrives on the "models" event. */
+  downloadModels: () => invoke<void>("download_models"),
+  cancelDownload: () => invoke<void>("cancel_download"),
   startRecording: () => invoke<Meeting>("start_recording"),
   startCallRecording: (title: string | null, client: string | null) => invoke<Meeting>("start_call_recording", { title, client }),
   pendingCall: () => invoke<CallSuggestion | null>("pending_call"),

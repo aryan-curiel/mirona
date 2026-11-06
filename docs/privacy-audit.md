@@ -11,9 +11,11 @@ content said in the call never appears in a summary or an MCP result**.
   this machine), and cloud providers are refused even when pointed at one. The switch starts on
   in every process and is set from `config.toml` by the app, the CLI and the MCP server.
   `privacy_mode_opens_no_connection` proves it with a real socket.
-- **No other network code**: no telemetry, no update check, no model downloads (speakrs and
-  Parakeet load from the models folder; `scripts/fetch-models.sh` is run by hand). A future
-  downloader (NGR-174) must call `net::allow`.
+- **No other network code**: no telemetry, no update check. The one exception is the model
+  downloader (NGR-174, `crates/mirona-engine/src/models.rs`): it runs only when the user clicks
+  Download, calls `net::allow_model` (HTTPS to `huggingface.co` or `github.com` only), fetches
+  pinned revisions and checks each file's SHA-256. It sends no meeting data, so privacy mode lets
+  it through. Run the audit with the models already in place.
 - **Sensitive lines** (`Segment::is_sensitive`): tagged by the classifier, or naming a password,
   a salary, an account or card number or health details. They never reach any model (summaries,
   notes, follow-up drafts, `ask_meeting`), are never embedded, and MCP shows them as
@@ -22,7 +24,7 @@ content said in the call never appears in a summary or an MCP result**.
 
 ## 1. Automated run (CLI + MCP)
 
-Needs macOS, the models (`scripts/fetch-models.sh`) and Ollama with `qwen3:4b` and
+Needs macOS, the models (Settings › Models › Download, or `scripts/fetch-models.sh`) and Ollama with `qwen3:4b` and
 `nomic-embed-text`.
 
 ```bash

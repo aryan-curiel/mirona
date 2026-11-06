@@ -21,7 +21,7 @@ const SIMILAR_VOICE: &str = "Similar voice";
 /// Segments are VAD chunks: never longer than 1.5 × 5 s (`VadConfig`).
 const MAX_SEGMENT_MS: u32 = 7_500;
 /// `CoreML` peaks at 7–13 GB, so it needs at least this much RAM (ADR 0001).
-const COREML_MIN_RAM: u64 = 16 << 30;
+pub(crate) const COREML_MIN_RAM: u64 = 16 << 30;
 
 /// A segment's stretch of the recording, and whether the mic heard it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -305,7 +305,7 @@ fn mode(diarization: &str, models: &Path) -> Mode {
 }
 
 /// Physical memory: `sysctl hw.memsize` on macOS, `/proc/meminfo` on Linux.
-fn ram_bytes() -> Option<u64> {
+pub(crate) fn ram_bytes() -> Option<u64> {
     if cfg!(target_os = "macos") {
         let out = std::process::Command::new("sysctl")
             .args(["-n", "hw.memsize"])
@@ -352,7 +352,7 @@ impl Engine {
         let dir = self.paths.models.join(MODELS_DIR);
         if !dir.join(CPU_MODEL).is_file() {
             return Err(format!(
-                "speaker models are missing in {} (run scripts/fetch-models.sh)",
+                "speaker models are missing in {} (download them in Settings › Models)",
                 dir.display()
             ));
         }

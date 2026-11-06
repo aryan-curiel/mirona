@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { type SettingsTab, useStore } from "../store";
 import { api, LLM_LOCAL, type Settings } from "../lib/api";
 import { applyPlatform, detected } from "../lib/platform";
-import { CopyLine, Folder } from "./Setup";
+import { CopyLine, Folder, ModelDownload } from "./Setup";
 import { Icon, type IconName, Logo, Toggle } from "../components/ui";
 import { shortcutLabel, Toast } from "../components/Shell";
 
@@ -754,9 +754,11 @@ function SettingsView() {
         <Row title="Models folder" sub="Speech and voice-activity models">
           <Folder label="models folder" path={st.modelsDir} onPick={(modelsDir) => save({ modelsDir })} />
           {status.missingModels.length ? (
-            <div className="mt-2 text-[13px] text-record-text">
-              Missing: <span className="font-mono">{status.missingModels.join(", ")}</span>. From the Mirona source folder, run:
-              <CopyLine text={status.fetchCommand} />
+            <div className="mt-2 text-[13px]">
+              <p className="text-record-text">
+                Missing: <span className="font-mono">{status.missingModels.join(", ")}</span>
+              </p>
+              <ModelDownload />
             </div>
           ) : (
             <p className="mt-2 text-[13px] text-accent-strong">All models for {st.stt === "whisper" ? "Whisper" : "Parakeet"} are installed.</p>
