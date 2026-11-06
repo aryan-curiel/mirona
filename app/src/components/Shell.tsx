@@ -86,18 +86,20 @@ export function useModelNames() {
 
 const mac = navigator.userAgent.includes("Mac");
 const MAC_KEYS: Record<string, string> = { cmdorctrl: "⌘", commandorcontrol: "⌘", commandorctrl: "⌘", cmdorcontrol: "⌘", cmd: "⌘", command: "⌘", super: "⌘", alt: "⌥", option: "⌥", shift: "⇧", ctrl: "⌃", control: "⌃" };
-/** "CmdOrCtrl+Alt+Shift+R" → "⌘⌥⇧R" on macOS, "Ctrl+Alt+Shift+R" elsewhere. Also takes key codes ("KeyR"). */
-export const shortcutLabel = (s: string) =>
+/** "CmdOrCtrl+Alt+Shift+R" → ["⌘","⌥","⇧","R"] on macOS, ["Ctrl","Alt","Shift","R"] elsewhere. Also takes key codes ("KeyR"). */
+export const shortcutKeys = (s: string) =>
   s
     .split("+")
+    .filter((t) => t.trim())
     .map((t) => {
       const k = t.trim();
       const low = k.toLowerCase();
       if (mac && MAC_KEYS[low]) return MAC_KEYS[low];
       if (!mac && /^(cmd|command)or(ctrl|control)$/.test(low)) return "Ctrl";
       return k.replace(/^(Key|Digit)(?=.)/, "");
-    })
-    .join(mac ? "" : "+");
+    });
+/** "CmdOrCtrl+Alt+Shift+R" → "⌘⌥⇧R" on macOS, "Ctrl+Alt+Shift+R" elsewhere. */
+export const shortcutLabel = (s: string) => shortcutKeys(s).join(mac ? "" : "+");
 
 /** The audio file being imported: name, then percent transcribed (indeterminate until known). */
 export function ImportProgress() {
