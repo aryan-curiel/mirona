@@ -420,3 +420,65 @@ fn a_crashed_recording_is_compressed_at_next_start() {
     let reopened = Store::open(dir.path().join("meetings")).unwrap();
     assert_eq!(reopened.audio_path(&id).unwrap(), Some(caf));
 }
+
+#[test]
+fn downloader_fetches_only_what_the_providers_need() {
+    use crate::models::{PARAKEET, SPEAKRS_CPU, VAD, needed};
+    let dir = tempfile::tempdir().unwrap();
+    let m = dir.path();
+    let mut cfg = Config::default();
+    cfg.providers
+        .insert("diarization".into(), "speakrs-cpu".into());
+    let paths = |cfg: &Config| needed(cfg, m).iter().map(|f| f.path).collect::<Vec<_>>();
+    let all: Vec<_> = [VAD, PARAKEET, SPEAKRS_CPU]
+        .into_iter()
+        .flatten()
+        .map(|f| f.path)
+        .collect();
+    assert_eq!(paths(&cfg), all);
+    // A whole file is skipped; a short one (an old partial copy) is fetched again.
+    std::fs::write(
+        m.join(VAD[0].path),
+        vec![0; usize::try_from(VAD[0].size).unwrap()],
+    )
+    .unwrap();
+    std::fs::create_dir(m.join(mirona_capture::PARAKEET_DIR)).unwrap();
+    std::fs::write(m.join(PARAKEET[3].path), "short").unwrap();
+    assert_eq!(paths(&cfg), all[1..]);
+    cfg.providers.insert("diarization".into(), "off".into());
+    cfg.providers.insert("stt".into(), "whisper".into());
+    assert_eq!(paths(&cfg), ["ggml-small.en.bin"]);
+    std::fs::write(m.join("ggml-base.en.bin"), "").unwrap();
+    assert_eq!(paths(&cfg), Vec::<&str>::new());
+}
+
+/// Downloads the 0.6 MB VAD model for real, resuming from a partial file.
+#[test]
+#[ignore = "network"]
+fn downloader_resumes_and_checks_the_checksum() {
+    use crate::models::{VAD, download};
+    let dir = tempfile::tempdir().unwrap();
+    let m = dir.path();
+    let mut cfg = Config::default();
+    cfg.providers.insert("diarization".into(), "off".into());
+    cfg.providers.insert("stt".into(), "whisper".into());
+    std::fs::write(m.join("ggml-base.en.bin"), "").unwrap();
+    // A partial download from an earlier run: its first 1000 bytes, fetched for real.
+    let first = ureq::get(VAD[0].url)
+        .header("Range", "bytes=0-999")
+        .call()
+        .unwrap()
+        .into_body()
+        .read_to_vec()
+        .unwrap();
+    std::fs::write(m.join("silero_vad.onnx.part"), first).unwrap();
+    let mut last = (0, 0);
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    download(&cfg, m, &cancel, |d, t| last = (d, t)).unwrap();
+    assert_eq!(last, (VAD[0].size, VAD[0].size));
+    assert_eq!(
+        std::fs::metadata(m.join(VAD[0].path)).unwrap().len(),
+        VAD[0].size
+    );
+    assert!(!m.join("silero_vad.onnx.part").exists());
+}

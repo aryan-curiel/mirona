@@ -6,7 +6,8 @@
 //! The switch is process-wide and starts on: a process that never loaded its config can't
 //! reach the network. `Engine`, the CLI and the MCP server set it from `config.toml`.
 //! There is no telemetry and no update check, so nothing else in Mirona opens a connection.
-//! A model downloader (NGR-174) must go through [`allow`] too.
+//! The one exception is [`allow_model`]: model downloads the user starts (NGR-174), from pinned
+//! URLs on [`MODEL_HOSTS`], carrying no meeting data.
 
 use crate::{Error, Locality, Result};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -50,6 +51,18 @@ pub fn allow(url: &str, locality: Locality) -> Result<()> {
     Ok(())
 }
 
+/// Where models come from. Every file is pinned to a revision and a SHA-256.
+pub const MODEL_HOSTS: [&str; 2] = ["huggingface.co", "github.com"];
+
+/// Call before every model download. Allowed in privacy mode too: the user starts it and it
+/// sends nothing about their meetings. Only HTTPS to [`MODEL_HOSTS`].
+pub fn allow_model(url: &str) -> Result<()> {
+    if url.starts_with("https://") && MODEL_HOSTS.contains(&host(url)) {
+        return Ok(());
+    }
+    Err(Error::PrivacyBlocked(host(url).to_string()))
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -80,6 +93,19 @@ pub(crate) mod tests {
         set_privacy(false);
         assert!(allow("https://api.openai.com/v1", Locality::Cloud).is_ok());
         set_privacy(true);
+    }
+
+    #[test]
+    fn models_come_only_from_pinned_hosts() {
+        assert!(allow_model("https://huggingface.co/a/b/resolve/x/f.onnx").is_ok());
+        assert!(allow_model("https://github.com/k2-fsa/x").is_ok());
+        for url in [
+            "http://huggingface.co/a",
+            "https://huggingface.co.evil.com/a",
+            "https://api.openai.com/v1",
+        ] {
+            assert!(allow_model(url).is_err(), "{url}");
+        }
     }
 
     /// The acceptance test: with privacy on, no provider opens a connection, even when it is

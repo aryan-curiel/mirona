@@ -10,18 +10,16 @@ Tick items as you go (`- [x]`). Anything that fails: note what you saw under **F
   cd app && pnpm install && pnpm tauri build --bundles app
   ```
   Copy `target/release/bundle/macos/Mirona.app` to `/Applications`.
-- [ ] **Download the speech models** (about 700 MB)
-  ```bash
-  scripts/fetch-models.sh "$HOME/Library/Application Support/com.nagare.mirona/models"
-  ```
 - [ ] **Ollama for summaries** (already installed on this Mac): `ollama serve` is running and
   `ollama list` shows `qwen3:4b`. If not: `brew install ollama && ollama pull qwen3:4b`.
 - [ ] **Clean slate (optional):** delete the 4 demo meetings in `~/Documents/Mirona`, and remove
   "Mirona Probe" from System Settings → Privacy & Security → Microphone and → Screen & System
   Audio Recording.
 - [ ] **Open Mirona from /Applications.** On first run the onboarding window opens and the main
-  window stays hidden. Step 2 asks for the microphone and system audio and shows any missing
-  models; each check pops when it's granted. Step 3's choices save as you go.
+  window stays hidden. Step 2 asks for the microphone and system audio and offers to download
+  the models (about 1 GB on a Mac with 16 GB or more, 700 MB otherwise); each check pops when
+  it's done. Cancel halfway and download again: it picks up where it stopped. Step 3's choices
+  save as you go. To test a fresh download, move the models folder away first.
   Expected: both permissions show as granted, no models are missing, and the main window appears
   when the onboarding closes (finish, Skip or the red button). Reopening the app goes straight to
   the main window (the marker is `onboarded` in the app dir; delete it to see the tour again).
@@ -88,7 +86,7 @@ For each call: record the whole call, then check the transcript has both "Me" an
 ## 5. Settings (Models and MCP)
 
 - [ ] **Speech-to-text:** switch to Whisper, record 20 s, switch back to Parakeet.
-  (Whisper needs `scripts/fetch-models.sh … --whisper` first.)
+  (Whisper's model downloads from Settings › Models › Models folder after you pick it, about 490 MB.)
 - [ ] **Privacy mode on:** OpenAI and Anthropic can't be selected.
 - [ ] **API keys:** add a key for Anthropic (and OpenAI, Jev if you have them).
   Expected: "saved in the keychain"; the key isn't in `config.toml`.

@@ -10,6 +10,8 @@ mirona-core.workspace = true
 mirona-store.workspace = true
 mirona-capture.workspace = true
 jiff = "0.2"
+sha2 = "0.10"
+ureq = "3"
 mirona-summary.workspace = true
 mirona-providers = { workspace = true, features = ["jev", "ollama", "openai", "anthropic", "keychain", "speakrs"] }
 

@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { applyPlatform, detected } from "../lib/platform";
 import { needsSetup, useStore } from "../store";
-import { api, type Permission } from "../lib/api";
+import { api, type ModelProgress, type Permission } from "../lib/api";
 import { Icon, type IconName, PageHeader, Toggle } from "../components/ui";
 import { shortcutLabel, Toast } from "../components/Shell";
 
@@ -23,6 +23,69 @@ export function CopyLine({ text }: { text: string }) {
         }
       >
         {done ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+const mb = (bytes: number) => `${Math.round(bytes / 1e6)} MB`;
+
+/** Downloads the missing models (NGR-174). Any window shows the progress, whichever started it. */
+export function ModelDownload() {
+  const st = useStore((s) => s.status);
+  const refresh = useStore((s) => s.refreshStatus);
+  const [progress, setProgress] = useState<ModelProgress>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const off = listen<ModelProgress>("models", (ev) => setProgress(ev.payload));
+    return () => void off.then((f) => f());
+  }, []);
+  if (!st || st.missingModels.length === 0) return null;
+  const start = async () => {
+    setError(null);
+    setProgress({ done: 0, total: st.downloadSize });
+    try {
+      await api.downloadModels();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setProgress(null);
+      await refresh();
+    }
+  };
+  if (progress) {
+    return (
+      <div className="mt-2 flex items-center gap-3" role="status">
+        <div className="min-w-0 flex-1">
+          <progress
+            className="h-1.5 w-full appearance-none overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-[var(--mi-neutral-tint)] [&::-webkit-progress-value]:bg-accent [&::-webkit-progress-value]:transition-[width]"
+            max={progress.total || 1}
+            value={progress.done}
+            aria-label="Downloading models"
+          />
+          <p className="mt-1 text-[12px] text-muted">
+            {mb(progress.done)} of {mb(progress.total)}
+          </p>
+        </div>
+        <button type="button" className="mi-ghost min-h-11! shrink-0" onClick={() => void api.cancelDownload()}>
+          Cancel
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 flex items-center gap-3">
+      <p className="min-w-0 flex-1 text-[13px] leading-snug">
+        {error ? (
+          <span className="text-record-text">{error}</span>
+        ) : (
+          <>
+            {mb(st.downloadSize)} from Hugging Face, once. Checked, then everything runs on this Mac.
+          </>
+        )}
+      </p>
+      <button type="button" className="mi-btn-primary h-11 shrink-0 px-5" onClick={() => void start()}>
+        {error ? "Try again" : "Download"}
       </button>
     </div>
   );
@@ -123,26 +186,9 @@ function Permissions() {
         title="System audio"
         why="The others come through your speakers. Mirona records that sound, never your screen."
       />
-      <Step
-        ok={models}
-        title="Speech models"
-        action={
-          !models && (
-            <button type="button" className="mi-ghost min-h-11!" onClick={() => s.refreshStatus()}>
-              Check again
-            </button>
-          )
-        }
-      >
-        {models ? (
-          <p>Installed, about 700 MB, all on this Mac.</p>
-        ) : (
-          <p>
-            Missing <span className="font-mono text-[12px]">{st.missingModels.join(", ")}</span>. From the Mirona source folder, run:
-          </p>
-        )}
+      <Step ok={models} title="Speech and speaker models">
+        {models ? <p>Installed, all on this Mac.</p> : <ModelDownload />}
       </Step>
-      {!models && <CopyLine text={st.fetchCommand} />}
     </div>
   );
 }
@@ -196,7 +242,7 @@ function Preferences() {
   const save = s.saveSettings;
   return (
     <section className="mi-card mi-stagger overflow-hidden">
-      <Pref title="Privacy mode" sub="Nothing leaves this Mac. Off, cloud models can be picked in Settings.">
+      <Pref title="Privacy mode" sub="No meeting data leaves this Mac. Off, cloud models can be picked in Settings.">
         <Toggle on={st.privacy} onChange={s.setPrivacy} label="Privacy mode" />
       </Pref>
       <Pref title="Consent reminder" sub="Before each recording, a nudge to tell people, with a message to paste.">

@@ -9,6 +9,7 @@ pub mod classify;
 mod diarize;
 pub mod keep;
 mod llm;
+pub mod models;
 pub mod search;
 
 pub use llm::Llm;
@@ -86,7 +87,7 @@ pub fn documents_dir() -> PathBuf {
 }
 
 /// Model files that recording and import need but `models` lacks, for the configured STT
-/// (`scripts/fetch-models.sh <models>` fetches them). Empty: ready to record.
+/// ([`models::download`] fetches them). Empty: ready to record.
 pub fn missing_models(cfg: &Config, models: &Path) -> Vec<String> {
     use mirona_capture::{PARAKEET_DIR, VAD_MODEL, WHISPER_MODELS};
     let mut out = vec![];

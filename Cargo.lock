@@ -3233,7 +3233,9 @@ dependencies = [
  "mirona-providers",
  "mirona-store",
  "mirona-summary",
+ "sha2 0.10.9",
  "tempfile",
+ "ureq 3.5.1",
 ]
 
 [[package]]
