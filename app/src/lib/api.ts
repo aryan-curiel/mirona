@@ -49,6 +49,11 @@ export type Settings = {
   retentionAudioDays: number | null;
   /** Client → delete its meetings this many days old. */
   retentionClients: Record<string, number>;
+  /** Remind to get consent before each recording (NGR-169). */
+  consentReminder: boolean;
+  consentMessage: string;
+  /** Clients who already agreed: no reminder for them. */
+  consentGiven: string[];
 };
 
 /** A call app started using the mic: the "call" event (NGR-170). */

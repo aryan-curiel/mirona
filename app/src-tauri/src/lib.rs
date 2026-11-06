@@ -723,7 +723,14 @@ fn toggle(app: &AppHandle) {
         let res = if recording {
             stop(&app).map(drop)
         } else {
-            start(&app).map(drop)
+            start(&app).map(|m| {
+                // No window to ask in first: say it as the recording starts (NGR-169).
+                if app.state::<AppState>().engine().config().consent_reminder {
+                    let msg = "Recording. Remember to ask everyone for consent (message in \
+                               Models and MCP › Consent reminder).";
+                    app.emit("pipeline", notice(&m.id, msg.into(), false)).ok();
+                }
+            })
         };
         if let Err(e) = res {
             app.emit("pipeline", notice("", e, true)).ok();
@@ -930,6 +937,14 @@ struct Settings {
     /// Clients whose calls start recording without a click (needs calendar titles).
     #[serde(default)]
     auto_record: Vec<String>,
+    /// Consent reminder before recording (NGR-169).
+    #[serde(default)]
+    consent_reminder: bool,
+    #[serde(default)]
+    consent_message: String,
+    /// Clients who already agreed to be recorded.
+    #[serde(default)]
+    consent_given: Vec<String>,
     /// Encryption at rest; read-only here: `set_encryption` turns it on or off (NGR-165).
     #[serde(default, skip_deserializing)]
     encrypt: bool,
@@ -1006,6 +1021,9 @@ impl Settings {
             detect_calls: cfg.detect_calls,
             calendar_titles: cfg.calendar_titles,
             auto_record: cfg.auto_record.clone(),
+            consent_reminder: cfg.consent_reminder,
+            consent_message: cfg.consent_message.clone(),
+            consent_given: cfg.consent_given.clone(),
             encrypt: cfg.encrypt,
             retention_audio_days: cfg.retention.audio_days,
             retention_clients: cfg.retention.clients.clone(),
@@ -1103,6 +1121,23 @@ impl Settings {
         {
             return Err("Retention needs at least 1 day.".into());
         }
+        self.apply_consent_and_retention(&mut cfg);
+        Ok(cfg)
+    }
+
+    /// The consent reminder (NGR-169) and retention (NGR-165) part of [`Settings::apply`].
+    fn apply_consent_and_retention(&self, cfg: &mut Config) {
+        cfg.consent_reminder = self.consent_reminder;
+        cfg.consent_message = match self.consent_message.trim() {
+            "" => mirona_providers::config::DEFAULT_CONSENT_MESSAGE.into(),
+            m => m.into(),
+        };
+        cfg.consent_given = self
+            .consent_given
+            .iter()
+            .map(|c| c.trim().to_string())
+            .filter(|c| !c.is_empty())
+            .collect();
         cfg.retention.audio_days = self.retention_audio_days;
         cfg.retention.clients = self
             .retention_clients
@@ -1110,7 +1145,6 @@ impl Settings {
             .map(|(c, d)| (c.trim().to_string(), *d))
             .filter(|(c, _)| !c.is_empty())
             .collect();
-        Ok(cfg)
     }
 }
 

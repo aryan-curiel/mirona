@@ -383,3 +383,88 @@ export function RecordingBar() {
     </div>
   );
 }
+
+/**
+ * Before recording (NGR-169): who the call is with, a message to paste in the meeting chat,
+ * and "they already agreed" so the reminder stays quiet for that client from then on.
+ */
+export function ConsentSheet() {
+  const consent = useStore((s) => s.consent);
+  const st = useStore((s) => s.settings);
+  const meetings = useStore((s) => s.meetings);
+  const call = useStore((s) => s.call);
+  const confirm = useStore((s) => s.confirmConsent);
+  const cancel = useStore((s) => s.cancelConsent);
+  const [client, setClient] = useState("");
+  const [agreed, setAgreed] = useState(false);
+  const [never, setNever] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!consent) return;
+    setClient(call?.client ?? "");
+    setAgreed(false);
+    setNever(false);
+    setCopied(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && cancel();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [consent, call, cancel]);
+  if (!consent || !st) return null;
+  const clients = [...new Set([...Object.keys(st.clients), ...meetings.map((m) => m.client)])].filter((c) => c && c !== "Unsorted").sort();
+  const given = client !== "" && st.consentGiven.includes(client);
+  const copy = async () => {
+    await navigator.clipboard.writeText(st.consentMessage).catch(() => {});
+    setCopied(true);
+  };
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/20 p-6">
+      <div role="dialog" aria-modal="true" aria-labelledby="consent-title" className="mi-card mi-enter w-full max-w-[520px] p-6">
+        <h2 id="consent-title" className="text-[18px] font-semibold">
+          Before you record
+        </h2>
+        <p className="mt-1 text-[14px] text-ink-3">Recording rules differ by country: in many places everyone on the call has to agree.</p>
+        <label className="mt-4 flex flex-col gap-1 text-[13px] text-muted">
+          Who is the call with?
+          <select className="mi-field h-10 text-[14px] text-ink" value={client} onChange={(e) => setClient(e.target.value)}>
+            <option value="">Not sure yet</option>
+            {clients.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        </label>
+        {given ? (
+          <p className="mt-4 text-[14px] text-accent-strong">{client} already agreed to be recorded.</p>
+        ) : (
+          <>
+            <p className="mt-4 text-[13px] text-muted">Paste this in the meeting chat:</p>
+            <div className="mt-1 flex items-start gap-2">
+              <p className="selectable flex-1 rounded-md bg-white/60 p-3 text-[14px]">{st.consentMessage}</p>
+              <button type="button" className="mi-ghost text-[13px]" onClick={() => void copy()}>
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            {client && (
+              <label className="mt-3 flex items-center gap-2 text-[14px]">
+                <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+                {client} agreed: don't remind me for them again
+              </label>
+            )}
+          </>
+        )}
+        <label className="mt-2 flex items-center gap-2 text-[13px] text-muted">
+          <input type="checkbox" checked={never} onChange={(e) => setNever(e.target.checked)} />
+          Don't show this reminder again (turn it back on in Models and MCP)
+        </label>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="mi-ghost min-h-11! px-4" onClick={cancel}>
+            Cancel
+          </button>
+          {/* biome-ignore lint/a11y/noAutofocus: the dialog's main action takes focus when it opens */}
+          <button type="button" autoFocus className="mi-btn-primary flex h-11 items-center gap-2 px-5" onClick={() => void confirm(client || null, agreed, never)}>
+            <Icon name="mic" /> Start recording
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

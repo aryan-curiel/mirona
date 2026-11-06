@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "./store";
 import { applyPlatform, detected, type Platform } from "./lib/platform";
-import { CallBanner, RecordingBar, Sidebar, WindowsTitleBar } from "./components/Shell";
+import { CallBanner, ConsentSheet, RecordingBar, Sidebar, WindowsTitleBar } from "./components/Shell";
 import { MeetingView } from "./views/Meeting";
 import { Inspector } from "./views/Inspector";
 import { ActionItemsView, ModelsView, PeopleView } from "./views/Pages";
@@ -46,6 +46,7 @@ export default function App() {
           </div>
         </div>
       </div>
+      <ConsentSheet />
       {toast && (
         <div role={toast.error ? "alert" : "status"} className={`mi-card mi-enter fixed bottom-5 left-1/2 max-w-[640px] -translate-x-1/2 rounded-lg! px-4 py-2.5 text-[14px] font-medium ${toast.error ? "text-record-text" : ""}`}>
           {toast.msg}

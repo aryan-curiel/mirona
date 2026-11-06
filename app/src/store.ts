@@ -58,6 +58,8 @@ type State = {
   toast: { msg: string; error: boolean } | null;
   /** A call app just opened the mic: suggest recording it (NGR-170). */
   call: CallSuggestion | null;
+  /** The consent reminder is open before recording (NGR-169); `call`: from the call banner. */
+  consent: { call: boolean } | null;
 
   init: () => Promise<void>;
   go: (view: View) => void;
@@ -92,6 +94,9 @@ type State = {
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   recordCall: () => Promise<void>;
+  /** From the consent reminder: start, optionally filing the call under `client`. */
+  confirmConsent: (client: string | null, agreed: boolean, stopReminding: boolean) => Promise<void>;
+  cancelConsent: () => void;
   dismissCall: () => void;
   flash: (msg: string, error?: boolean) => void;
 };
@@ -129,6 +134,28 @@ export const useStore = create<State>((set, get) => {
   const afterFix = async () => {
     await reloadMeeting();
     await reloadLists();
+  };
+
+  /** Start recording now; `client` files it under that client right away. */
+  const startNow = async (client: string | null) => {
+    try {
+      const m = await api.startRecording();
+      if (client) await api.confirmClient(m.id, client);
+    } catch (e) {
+      await get().refreshStatus();
+      if (needsSetup(get().status)) set({ view: "setup" });
+      throw e;
+    }
+  };
+
+  const recordCallNow = async () => {
+    const call = get().call;
+    if (!call) return;
+    set({ call: null });
+    await api.startCallRecording(call.title, call.client);
+    // Named after the calendar event once it started: show the new title.
+    await reloadLists();
+    await reloadMeeting();
   };
 
   const onRecording = async (r: RecState) => {
@@ -222,6 +249,7 @@ export const useStore = create<State>((set, get) => {
     importing: null,
     toast: null,
     call: null,
+    consent: null,
 
     init: async () => {
       if (started) return;
@@ -450,14 +478,29 @@ export const useStore = create<State>((set, get) => {
 
     startRecording: () =>
       run(async () => {
-        try {
-          await api.startRecording();
-        } catch (e) {
-          await get().refreshStatus();
-          if (needsSetup(get().status)) set({ view: "setup" });
-          throw e;
+        if (get().settings?.consentReminder) {
+          set({ consent: { call: false } });
+          return;
         }
+        await startNow(null);
       }),
+
+    confirmConsent: (client, agreed, stopReminding) =>
+      run(async () => {
+        const c = get().consent;
+        set({ consent: null });
+        const st = get().settings;
+        if (st && ((agreed && client && !st.consentGiven.includes(client)) || stopReminding)) {
+          await get().saveSettings({
+            consentGiven: agreed && client ? [...st.consentGiven, client] : st.consentGiven,
+            consentReminder: !stopReminding,
+          });
+        }
+        if (c?.call) await recordCallNow();
+        else await startNow(client);
+      }),
+
+    cancelConsent: () => set({ consent: null }),
 
     stopRecording: () => run(() => api.stopRecording()),
 
@@ -465,11 +508,12 @@ export const useStore = create<State>((set, get) => {
       run(async () => {
         const call = get().call;
         if (!call) return;
-        set({ call: null });
-        await api.startCallRecording(call.title, call.client);
-        // Named after the calendar event once it started: show the new title.
-        await reloadLists();
-        await reloadMeeting();
+        const st = get().settings;
+        if (st?.consentReminder && !(call.client && st.consentGiven.includes(call.client))) {
+          set({ consent: { call: true } });
+          return;
+        }
+        await recordCallNow();
       }),
 
     dismissCall: () => set({ call: null }),

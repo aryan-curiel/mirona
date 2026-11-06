@@ -53,7 +53,16 @@ pub struct Config {
     /// is in the OS keychain (account [`STORE_KEY`]).
     pub encrypt: bool,
     pub retention: Retention,
+    /// Remind me to get consent before each recording (NGR-169). On unless turned off.
+    pub consent_reminder: bool,
+    /// What to paste in the meeting chat.
+    pub consent_message: String,
+    /// Clients who already agreed: no reminder when recording them.
+    pub consent_given: Vec<String>,
 }
+
+pub const DEFAULT_CONSENT_MESSAGE: &str = "Heads-up: I'm recording this call to take notes. The \
+recording and transcript stay on my computer. Tell me if you'd rather I didn't.";
 
 /// Keychain account of the meeting store's encryption key.
 pub const STORE_KEY: &str = "store-key";
@@ -109,6 +118,9 @@ impl Default for Config {
             auto_record: vec![],
             encrypt: false,
             retention: Retention::default(),
+            consent_reminder: true,
+            consent_message: DEFAULT_CONSENT_MESSAGE.into(),
+            consent_given: vec![],
         }
     }
 }
@@ -214,6 +226,10 @@ mod tests {
 
         // Encryption and retention: off and keep everything unless set.
         assert!(!old.encrypt && old.retention == Retention::default());
+        // The consent reminder is on unless turned off, with a message to paste.
+        assert!(old.consent_reminder && old.consent_message == DEFAULT_CONSENT_MESSAGE);
+        cfg.consent_reminder = false;
+        cfg.consent_given = vec!["Helio Health".into()];
         cfg.encrypt = true;
         cfg.retention.audio_days = Some(30);
         cfg.retention.clients.insert("Northwind Bank".into(), 90);

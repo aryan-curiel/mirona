@@ -635,6 +635,37 @@ const llmDefaults = {
   anthropic: { model: "claude-opus-5-5", url: "" },
 };
 
+/** The reminder to get consent before recording (NGR-169). */
+function ConsentSettings({ st, save }: { st: Settings; save: (patch: Partial<Settings>) => Promise<boolean> }) {
+  const [msg, setMsg] = useState(st.consentMessage);
+  useEffect(() => setMsg(st.consentMessage), [st.consentMessage]);
+  return (
+    <div className="flex flex-col gap-3 text-[14px]">
+      <div className="flex items-center gap-3">
+        <Toggle on={st.consentReminder} onChange={(consentReminder) => save({ consentReminder })} label="Remind me to get consent before recording" />
+        <span>Remind me to get consent before recording</span>
+      </div>
+      <label className="flex flex-col gap-1 text-[13px] text-muted">
+        Message to paste in the meeting chat
+        <textarea className="mi-field min-h-20 text-[14px] text-ink" value={msg} onChange={(e) => setMsg(e.target.value)} onBlur={() => msg !== st.consentMessage && save({ consentMessage: msg })} />
+      </label>
+      {st.consentGiven.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-[13px] text-ink-3">Already agreed, no reminder:</p>
+          {st.consentGiven.map((c) => (
+            <div key={c} className="flex items-center gap-2">
+              <span className="flex-1">{c}</span>
+              <button type="button" className="mi-ghost text-[13px]" onClick={() => save({ consentGiven: st.consentGiven.filter((x) => x !== c) })}>
+                Remind me again
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Encryption at rest and retention (NGR-165). */
 function Storage({ st, save, clients }: { st: Settings; save: (patch: Partial<Settings>) => Promise<boolean>; clients: string[] }) {
   const flash = useStore((s) => s.flash);
@@ -824,6 +855,9 @@ export function ModelsView() {
         </Row>
         <Row title="Call detection" sub="When Zoom, Teams, Meet or another call app opens the microphone">
           <CallSettings st={st} onSave={save} />
+        </Row>
+        <Row title="Consent reminder" sub="Recording rules differ by country. Shown before each recording; remembered per client">
+          <ConsentSettings st={st} save={save} />
         </Row>
       </section>
 
