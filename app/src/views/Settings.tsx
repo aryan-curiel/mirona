@@ -1,11 +1,11 @@
 import { getVersion } from "@tauri-apps/api/app";
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { type SettingsTab, useStore } from "../store";
 import { api, LLM_LOCAL, type Settings } from "../lib/api";
 import { applyPlatform, detected } from "../lib/platform";
 import { CopyLine, Folder, ModelDownload } from "./Setup";
 import { Icon, type IconName, Logo, Toggle } from "../components/ui";
-import { shortcutLabel, Toast } from "../components/Shell";
+import { shortcutKeys, shortcutLabel, Toast } from "../components/Shell";
 
 function Row({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
   return (
@@ -74,51 +74,51 @@ function combo(e: KeyboardEvent): string | null {
   return [...mods, e.code.replace(/^(Key|Digit)(?=.)/, "")].join("+");
 }
 
-/** The record shortcut: press a combination (saved at once) or type one (saved on Enter or blur). */
+/** The record shortcut as key caps: click, then press the new combination (saved at once; Esc cancels). */
 function ShortcutField({ value, onSave }: { value: string; onSave: (v: string) => Promise<boolean> }) {
-  const [v, setV] = useState(value);
+  const [listening, setListening] = useState(false);
+  const [pending, setPending] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  const sent = useRef(value);
-  useEffect(() => {
-    setV(value);
-    sent.current = value;
-  }, [value]);
   const commit = async (next: string) => {
-    next = next.trim();
-    if (!next || next === sent.current) return setV(value);
-    sent.current = next;
+    setListening(false);
+    if (next === value) return;
+    setPending(next);
     setFailed(null);
-    if (!(await onSave(next))) {
-      sent.current = value;
-      setV(value);
-      setFailed(next);
-    }
+    if (!(await onSave(next))) setFailed(next);
+    setPending(null);
   };
+  const keys = listening ? [] : shortcutKeys(pending ?? value);
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-3">
-        <input
-          className="mi-field w-72 font-mono text-[14px]"
-          aria-label="Record shortcut"
-          value={v}
-          spellCheck={false}
-          onChange={(e) => setV(e.target.value)}
-          onBlur={() => void commit(v)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") return e.currentTarget.blur();
-            if (e.key === "Escape") return setV(value);
-            const c = combo(e);
-            if (!c) return;
-            e.preventDefault();
-            setV(c);
-            void commit(c);
-          }}
-        />
-        <kbd className="mi-chip mi-chip--neutral font-mono">{shortcutLabel(value)}</kbd>
-      </div>
-      <p className="mt-2 text-[12px] text-muted">
-        Click the field and press the new combination, or type one like <span className="font-mono">CmdOrCtrl+Alt+Shift+R</span>. Needs Cmd, Ctrl or Option.
-      </p>
+      <button
+        type="button"
+        className="mi-field flex min-h-11 w-72 items-center gap-1.5 text-left"
+        aria-label={`Record shortcut: ${shortcutLabel(value)}. Click and press a new combination.`}
+        onClick={() => setListening(true)}
+        onBlur={() => setListening(false)}
+        onKeyDown={(e) => {
+          if (!listening) return;
+          e.preventDefault();
+          if (e.key === "Escape") return setListening(false);
+          const c = combo(e);
+          if (c) void commit(c);
+        }}
+      >
+        {listening ? (
+          <span className="text-[13px] text-muted">Press the new combination… (Esc to cancel)</span>
+        ) : (
+          keys.map((k, i) => (
+            <kbd
+              // biome-ignore lint/suspicious/noArrayIndexKey: keys can repeat only in a malformed value; order is the identity
+              key={i}
+              className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-b-2 border-[var(--mi-control-line)] bg-[var(--mi-neutral-tint)] px-1.5 font-sans text-[13px] font-medium text-[var(--mi-ink-2)]"
+            >
+              {k}
+            </kbd>
+          ))
+        )}
+      </button>
+      <p className="mt-2 text-[12px] text-muted">Click and press the new combination. Needs {isMac ? "⌘, ⌃ or ⌥" : "Ctrl or Alt"}.</p>
       {failed && (
         <p className="mt-1 text-[12px] text-record-text" role="alert">
           {shortcutLabel(failed)} can't be used: another app may own it, or it isn't a valid shortcut. Still using {shortcutLabel(value)}.

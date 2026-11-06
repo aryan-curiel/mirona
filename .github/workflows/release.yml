@@ -1,0 +1,63 @@
+# NGR-175: a version tag (v0.1.0) builds a signed, notarized macOS app and DMG and attaches them
+# to a draft GitHub release. Secrets and the release steps: docs/releasing.md.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches the app version
+        run: |
+          for v in "$(jq -r .version app/src-tauri/tauri.conf.json)" "$(jq -r .version app/package.json)" \
+            "$(awk -F'"' '/^version/{print $2; exit}' Cargo.toml)"; do
+            [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "version $v doesn't match tag $GITHUB_REF_NAME"; exit 1; }
+          done
+      - uses: dtolnay/rust-toolchain@stable
+      - name: sherpa-onnx native libs
+        run: |
+          v=$(awk '/name = "sherpa-onnx-sys"/{getline; print $3}' Cargo.lock | tr -d '"')
+          n="sherpa-onnx-v$v-osx-arm64-static-lib"
+          mkdir -p "$RUNNER_TEMP/sherpa" && cd "$RUNNER_TEMP/sherpa"
+          curl -fsSL -o "$n.tar.bz2" "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$v/$n.tar.bz2"
+          tar xjf "$n.tar.bz2"
+          echo "SHERPA_ONNX_LIB_DIR=$RUNNER_TEMP/sherpa/$n/lib" >> "$GITHUB_ENV"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: app
+      # The Tauri bundler imports the certificate into a temporary keychain, signs with the
+      # hardened runtime and Entitlements.plist, then notarizes and staples.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: app
+          args: --bundles app,dmg
+          tagName: ${{ github.ref_name }}
+          releaseName: Mirona ${{ github.ref_name }}
+          releaseBody: "macOS 14.6 or later, Apple silicon. Open the DMG and drag Mirona to Applications; the first run downloads the speech models (about 1 GB)."
+          releaseDraft: true
+      - name: The app is notarized
+        run: |
+          app=$(find target/release/bundle/macos -name '*.app' -maxdepth 1)
+          spctl -a -vv "$app"
+          xcrun stapler validate "$app"

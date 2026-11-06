@@ -18,5 +18,8 @@
         "windowEffects": { "effects": ["sidebar"], "state": "followsWindowActiveState" }
       }
     ]
+  },
+  "bundle": {
+    "macOS": { "entitlements": "Entitlements.plist", "minimumSystemVersion": "14.6" }
   }
 }

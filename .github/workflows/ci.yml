@@ -1,6 +1,24 @@
-# NGR-127: lint, test and build on macOS, Windows and Linux.
+# NGR-127. Every push to main and every PR: one Linux job (1x minutes on a private repo).
+# macOS (10x) and Windows (2x) only on demand: Actions › CI › Run workflow, with "all OSes".
+# Releases build macOS anyway (release.yml). Docs-only changes skip CI.
 name: CI
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "**/*.md", "design-kit/screenshots/**", "design-kit/prototype/**"]
+  pull_request:
+    paths-ignore: ["docs/**", "**/*.md", "design-kit/screenshots/**", "design-kit/prototype/**"]
+  workflow_dispatch:
+    inputs:
+      all-oses:
+        description: Also check macOS (with the real providers) and Windows
+        type: boolean
+        default: true
+
+# A newer push to the same branch cancels the run still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -11,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-22.04]
+        os: ${{ fromJSON(inputs.all-oses && '["ubuntu-22.04","macos-latest","windows-latest"]' || '["ubuntu-22.04"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +42,8 @@ jobs:
           # build outputs, or a restored cache skips the script and linking fails.
           cache-directories: target/sherpa-onnx-prebuilt
           prefix-key: v1-sherpa
+          # Only main writes the cache; PRs reuse it (the cache quota is shared too).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: sherpa-onnx native libs
         # Point every build at one download instead of the build script's cache in target/,
         # which a restored Rust cache can leave half-present (linking then fails).
@@ -48,6 +68,11 @@ jobs:
       - name: Linux deps
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Design tokens match the kit, contrast >= 4.5:1
+        if: runner.os == 'Linux'
+        run: |
+          diff design-kit/tokens/tokens.css app/src/tokens.css
+          python3 design-kit/tokens/check-contrast.py
       - run: pnpm install --frozen-lockfile
         working-directory: app
       - run: pnpm lint
@@ -60,46 +85,14 @@ jobs:
       - name: TS bindings are up to date
         shell: bash
         run: git diff --exit-code app/src/bindings
+      # Real providers (Parakeet, speakrs, Jev, Ollama) behind features; speakrs builds with
+      # CoreML, so macOS only. Tests that need models, a key or Ollama are #[ignore]d.
+      - name: Providers with all features
+        if: runner.os == 'macOS'
+        run: |
+          cargo clippy -p mirona-providers --all-targets --all-features
+          cargo test -p mirona-providers --all-features
       - name: Debug build of the app
+        if: runner.os != 'Linux'
         run: pnpm tauri build --debug --no-bundle
         working-directory: app
-
-  # Real providers (Parakeet, speakrs, Jev, Ollama) behind features. macOS only: speakrs
-  # builds with CoreML. Tests that need models, an API key or Ollama are #[ignore]d here.
-  providers:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          # sherpa-onnx's build script downloads its native libs here; cache them with the
-          # build outputs, or a restored cache skips the script and linking fails.
-          cache-directories: target/sherpa-onnx-prebuilt
-          prefix-key: v1-sherpa
-      - name: sherpa-onnx native libs
-        # Point every build at one download instead of the build script's cache in target/,
-        # which a restored Rust cache can leave half-present (linking then fails).
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          v=$(awk '/name = "sherpa-onnx-sys"/{getline; print $3}' Cargo.lock | tr -d '"')
-          if [ "$RUNNER_OS" = macOS ]; then os=osx-arm64; else os=linux-x64; fi
-          n="sherpa-onnx-v$v-$os-static-lib"
-          mkdir -p "$RUNNER_TEMP/sherpa" && cd "$RUNNER_TEMP/sherpa"
-          curl -fsSL -o "$n.tar.bz2" "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$v/$n.tar.bz2"
-          tar xjf "$n.tar.bz2"
-          echo "SHERPA_ONNX_LIB_DIR=$RUNNER_TEMP/sherpa/$n/lib" >> "$GITHUB_ENV"
-      - run: cargo clippy -p mirona-providers --all-targets --all-features
-      - run: cargo test -p mirona-providers --all-features
-
-  tokens:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: App tokens match the design kit
-        run: diff design-kit/tokens/tokens.css app/src/tokens.css
-      - name: Text contrast >= 4.5:1 in both themes
-        run: python3 design-kit/tokens/check-contrast.py
