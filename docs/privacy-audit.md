@@ -53,3 +53,4 @@ it, and calls every MCP read tool plus `ask_meeting`, sampling every socket the 
 | Date | Version | Automated run | App + Little Snitch | Notes |
 | --- | --- | --- | --- | --- |
 | 2026-11-06 | main (M3) | PASS: 6 connections, all to Ollama on 127.0.0.1; no secret in output | not run yet | First run caught the local model missing a salary line (sensitive 0.01): fixed with the keyword safety net |
+| 2026-11-06 | main (M3) | PASS (rerun) | PASS with `privacy-audit.sh watch` (no Little Snitch installed): a 34 s recording with a spoken password and salary, live tags, summary, embedding: 5 connections, all to Ollama on 127.0.0.1. Summary, follow-up draft and Claude Desktop's answers had no secret | Caught the review list quoting a sensitive line (fixed); encryption on/off and encrypted playback checked in the app |

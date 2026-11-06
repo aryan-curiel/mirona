@@ -203,8 +203,14 @@ function ReviewList() {
   const m = useStore((s) => s.meeting);
   const resolve = useStore((s) => s.resolve);
   const jump = useStore((s) => s.jump);
+  const showSensitive = useStore((s) => s.filters.showSensitive);
   if (!m || !items.length) return null;
-  const textAt = (r: Review) => (r.segmentId ? m.segments.find((x) => x.id === r.segmentId)?.text : r.question === "action_item" ? r.value : null);
+  // The line a review is about; a sensitive one is quoted only with "Show sensitive text" on.
+  const textAt = (r: Review) => {
+    const seg = r.segmentId ? m.segments.find((x) => x.id === r.segmentId) : m.segments.find((x) => x.startMs === r.atMs);
+    if (seg && (seg.redacted || seg.tags.some((t) => t.kind === "sensitive")) && !showSensitive) return "[sensitive: hidden]";
+    return r.segmentId ? seg?.text : r.question === "action_item" ? r.value : null;
+  };
   return (
     <>
       <hr className="my-6 border-line" />

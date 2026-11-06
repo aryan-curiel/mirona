@@ -456,9 +456,17 @@ fn edit_segment(st: St, meeting_id: String, segment_id: String, text: String) ->
 /// The recording's path, for `convertFileSrc` (the meetings folder is in the asset scope). An
 /// encrypted recording is decrypted to `.mirona/tmp` first (cleared on the next start).
 #[tauri::command]
-fn audio_path(st: St, meeting_id: String) -> Res<Option<PathBuf>> {
+fn audio_path(app: AppHandle, st: St, meeting_id: String) -> Res<Option<PathBuf>> {
     let path = st.engine().store.lock().unwrap().plain_audio(&meeting_id)?;
-    Ok(path.filter(|p| p.is_file()))
+    let path = path.filter(|p| p.is_file());
+    // The decrypted copy sits under `.mirona/`, which the folder-wide scope doesn't match
+    // (dot folders need a literal match): allow that one file.
+    if let Some(p) = &path {
+        app.asset_protocol_scope()
+            .allow_file(p)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(path)
 }
 
 /// Delete a meeting everywhere: folder, index, embeddings, voices and corrections (NGR-165).
