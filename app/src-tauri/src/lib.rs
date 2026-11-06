@@ -80,7 +80,29 @@ struct RecState {
 /// Reload the store if the CLI or an import changed the meetings folder. Cheap when nothing did.
 #[tauri::command]
 fn refresh_store(st: St) -> Res<bool> {
-    st.engine().store.lock().unwrap().refresh()
+    let engine = st.engine();
+    let changed = engine.store.lock().unwrap().refresh()?;
+    if changed {
+        embed_later(engine);
+    }
+    Ok(changed)
+}
+
+/// Embed the lines of meetings that have no vectors yet (meetings from the CLI, demo meetings,
+/// ones recorded while Ollama was off), off the UI thread and one run at a time (NGR-167).
+fn embed_later(engine: Arc<Engine>) {
+    static RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if RUNNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(move || {
+        if let Some(emb) = mirona_engine::search::embedder(&engine.config())
+            && let Err(e) = mirona_engine::search::backfill(&engine.store, &emb)
+        {
+            eprintln!("mirona: search by meaning unavailable: {e}");
+        }
+        RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
 }
 
 #[tauri::command]
@@ -481,7 +503,10 @@ async fn set_encryption(st: St<'_>, on: bool) -> Res<Settings> {
 /// Adds the four sample meetings, for a tour before the first real one.
 #[tauri::command]
 fn add_demo_meetings(st: St) -> Res<()> {
-    mirona_store::sample::seed(&mut st.engine().store.lock().unwrap())
+    let engine = st.engine();
+    mirona_store::sample::seed(&mut engine.store.lock().unwrap())?;
+    embed_later(engine);
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -1383,11 +1408,7 @@ pub fn run() {
                     }
                 });
                 // Meetings recorded before search by meaning (or while Ollama was off).
-                if let Some(emb) = mirona_engine::search::embedder(&engine.config())
-                    && let Err(e) = mirona_engine::search::backfill(&engine.store, &emb)
-                {
-                    eprintln!("mirona: search by meaning unavailable: {e}");
-                }
+                embed_later(engine);
             });
             Ok(())
         })
