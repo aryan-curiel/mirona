@@ -303,7 +303,60 @@ export function Inspector() {
   const hidden = seg && (seg.redacted || seg.tags.some((t) => t.kind === "sensitive")) && !s.filters.showSensitive;
 
   return (
-    <aside className="mi-panel h-full w-[var(--mi-inspector-w)] shrink-0 overflow-y-auto border-l border-white/60 px-6 pt-6 pb-8" aria-label="Inspector">
+    <aside
+      ref={(el) => {
+        if (el && seg && el.dataset.seg !== seg.id) {
+          el.dataset.seg = seg.id;
+          el.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }}
+      className="mi-panel h-full w-[var(--mi-inspector-w)] shrink-0 overflow-y-auto border-l border-white/60 px-6 pt-6 pb-8"
+      aria-label="Inspector"
+    >
+      {/* The line you just inspected comes first, so its answers are right where you look. */}
+      {seg && (
+        <>
+      <div className="flex items-center justify-between">
+        <Label>Selected segment</Label>
+        {seg && (
+          <button type="button" className="text-[13px] text-accent-strong underline-offset-2 hover:underline" onClick={() => s.selectSegment("")}>
+            Close
+          </button>
+        )}
+      </div>
+      {seg && sp ? (
+        <div key={seg.id} className="mi-enter">
+          <p className="mt-3 text-[15px] font-semibold">
+            {sp.name} <Mono>{fmt(seg.startMs, true)}</Mono>
+          </p>
+          <blockquote className="mt-3 rounded-lg bg-[rgba(255,250,240,0.7)] p-3 text-[14px]">“{hidden ? "[sensitive: hidden]" : seg.text}”</blockquote>
+          {seg.answers.length ? (
+            <>
+              <p className="mt-3 text-[13px] text-muted">
+                {classifier} answered {seg.answers.length + (seg.owners.length ? 1 : 0)} typed questions in one call. The mark on each bar is its threshold; below it, you decide.
+              </p>
+              {seg.due && <p className="mt-2 text-[14px]">Due: <span className="font-medium">{seg.due}</span></p>}
+              <div className="mt-2">
+                {seg.answers.map((x) => (
+                  <AnswerRow key={x.id} a={x} segmentId={seg.id} />
+                ))}
+              </div>
+              <Owners segmentId={seg.id} />
+            </>
+          ) : (
+            <p className="mt-3 text-[13px] text-muted">{live ? "Being tagged; answers appear in a few seconds." : "Not classified yet."}</p>
+          )}
+          <p className="mt-4 rounded-lg bg-accent-tint/70 p-3 text-[13px] text-accent-strong">
+            {s.corrections} correction{s.corrections === 1 ? "" : "s"} saved as labelled examples for evaluating the classifier.
+          </p>
+        </div>
+      ) : (
+        <p className="mt-3 text-[13px] text-muted">Pick a segment to see the typed questions behind its tags.</p>
+      )}
+
+          <hr className="my-6 border-line" />
+        </>
+      )}
       <div className="flex items-center justify-between">
         <Label>This meeting</Label>
         <span className="rounded-md bg-[var(--mi-neutral-tint)] px-2 py-0.5 font-mono text-[12px] text-ink-3" title="Classifier">{classifier}</span>
@@ -334,37 +387,7 @@ export function Inspector() {
 
       <ReviewList />
 
-      <hr className="my-6 border-line" />
-      <Label>Selected segment</Label>
-      {seg && sp ? (
-        <div key={seg.id} className="mi-enter">
-          <p className="mt-3 text-[15px] font-semibold">
-            {sp.name} <Mono>{fmt(seg.startMs, true)}</Mono>
-          </p>
-          <blockquote className="mt-3 rounded-lg bg-[rgba(255,250,240,0.7)] p-3 text-[14px]">“{hidden ? "[sensitive: hidden]" : seg.text}”</blockquote>
-          {seg.answers.length ? (
-            <>
-              <p className="mt-3 text-[13px] text-muted">
-                {classifier} answered {seg.answers.length + (seg.owners.length ? 1 : 0)} typed questions in one call. The mark on each bar is its threshold; below it, you decide.
-              </p>
-              {seg.due && <p className="mt-2 text-[14px]">Due: <span className="font-medium">{seg.due}</span></p>}
-              <div className="mt-2">
-                {seg.answers.map((x) => (
-                  <AnswerRow key={x.id} a={x} segmentId={seg.id} />
-                ))}
-              </div>
-              <Owners segmentId={seg.id} />
-            </>
-          ) : (
-            <p className="mt-3 text-[13px] text-muted">{live ? "Being tagged; answers appear in a few seconds." : "Not classified yet."}</p>
-          )}
-          <p className="mt-4 rounded-lg bg-accent-tint/70 p-3 text-[13px] text-accent-strong">
-            {s.corrections} correction{s.corrections === 1 ? "" : "s"} saved as labelled examples for evaluating the classifier.
-          </p>
-        </div>
-      ) : (
-        <p className="mt-3 text-[13px] text-muted">Pick a segment to see the typed questions behind its tags.</p>
-      )}
+      {!seg && <p className="mt-6 text-[13px] text-muted">Click Inspect on a line to see the typed questions behind its tags.</p>}
 
       <hr className="my-6 border-line" />
       <Label>Redo for this meeting</Label>

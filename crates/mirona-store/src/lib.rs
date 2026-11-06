@@ -38,6 +38,9 @@ pub struct Store {
     entries: Vec<Entry>,
     people: Vec<Speaker>,
     errors: Vec<String>,
+    /// Last `.mirona/generation` this store wrote or loaded. Every write bumps the file, so a
+    /// store can tell when another process (CLI, an import) changed the folder: `refresh`.
+    seen: std::cell::RefCell<String>,
 }
 
 impl Store {
@@ -67,6 +70,7 @@ impl Store {
             entries: vec![],
             people: vec![],
             errors: vec![],
+            seen: std::cell::RefCell::new(String::new()),
         };
         s.reindex()?;
         Ok(s)
@@ -91,6 +95,38 @@ impl Store {
         &self.root
     }
 
+    fn generation_path(&self) -> PathBuf {
+        self.root.join(".mirona").join("generation")
+    }
+
+    fn read_generation(&self) -> String {
+        std::fs::read_to_string(self.generation_path()).unwrap_or_default()
+    }
+
+    /// Mark the folder as changed by this store (called after every write).
+    pub(crate) fn touched(&self) {
+        let token = format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        );
+        // Best effort: a failed bump only means another process notices a bit later.
+        let _ = std::fs::write(self.generation_path(), &token);
+        *self.seen.borrow_mut() = token;
+    }
+
+    /// Reload if another process wrote to the folder since this store last looked. Cheap when
+    /// nothing changed (one small file read). Returns whether anything was reloaded.
+    pub fn refresh(&mut self) -> Result<bool> {
+        if self.read_generation() == *self.seen.borrow() {
+            return Ok(false);
+        }
+        self.reindex()?;
+        Ok(true)
+    }
+
     /// Problems found while loading: unreadable meetings (skipped) and bad transcript lines.
     pub fn load_errors(&self) -> &[String] {
         &self.errors
@@ -99,6 +135,7 @@ impl Store {
     /// Re-reads every meeting folder (picking up edits made outside the app) and rebuilds the
     /// index from scratch.
     pub fn reindex(&mut self) -> Result<()> {
+        *self.seen.borrow_mut() = self.read_generation();
         let mut entries: Vec<Entry> = vec![];
         let mut errors = vec![];
         let dirs = std::fs::read_dir(&self.root).map_err(|e| e.to_string())?;
@@ -236,6 +273,7 @@ impl Store {
         files::write_transcript(&e)?;
         files::write_meeting(&e)?;
         index::reindex_meeting(&mut self.db, &e)?;
+        self.touched();
         let t = timestamp(created);
         let at = self
             .entries
@@ -287,6 +325,7 @@ impl Store {
             .unwrap_or_else(|| new_speaker(&seg.speaker_id));
         files::append_segment(&self.entries[i].dir, &seg)?;
         index::insert_segment(&self.db, meeting_id, &seg)?;
+        self.touched();
         self.entries[i].meeting.segments.push(seg);
         if !self.entries[i]
             .meeting
@@ -340,6 +379,7 @@ impl Store {
         let e = self.entries.remove(i);
         std::fs::remove_dir_all(&e.dir).map_err(|err| format!("{}: {err}", e.dir.display()))?;
         index::remove_meeting(&mut self.db, id)?;
+        self.touched();
         self.refresh_people();
         self.forget_meeting_voices(id)
     }
@@ -587,7 +627,9 @@ impl Store {
             files::write_transcript(e)?;
         }
         files::write_meeting(e)?;
-        index::reindex_meeting(&mut self.db, e)
+        index::reindex_meeting(&mut self.db, e)?;
+        self.touched();
+        Ok(())
     }
 
     /// `<root>/<YYYY-MM-DD-HHMM>-<slug>`, suffixed `-2`, `-3`… if taken (`current` is free).

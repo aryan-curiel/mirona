@@ -114,7 +114,9 @@ impl Store {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
-        write_atomic(&path, &serde_json::to_string(v).map_err(|e| e.to_string())?)
+        write_atomic(&path, &serde_json::to_string(v).map_err(|e| e.to_string())?)?;
+        self.touched();
+        Ok(())
     }
 
     /// Known people with a voiceprint, for `speakrs::match_voiceprint`.

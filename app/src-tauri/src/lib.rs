@@ -70,6 +70,12 @@ struct RecState {
 
 // --- Meetings ---
 
+/// Reload the store if the CLI or an import changed the meetings folder. Cheap when nothing did.
+#[tauri::command]
+fn refresh_store(st: St) -> Res<bool> {
+    st.engine().store.lock().unwrap().refresh()
+}
+
 #[tauri::command]
 fn list_meetings(st: St) -> Vec<MeetingSummary> {
     st.engine().store.lock().unwrap().list_meetings()
@@ -979,6 +985,7 @@ fn tray(app: &tauri::App, shortcut: &str) -> tauri::Result<()> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[allow(clippy::too_many_lines)] // mostly the list of commands
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -1030,6 +1037,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_meetings,
+            refresh_store,
             get_meeting,
             list_action_items,
             toggle_action_item,

@@ -229,6 +229,15 @@ export const useStore = create<State>((set, get) => {
       if (first) await get().openMeeting(first.id);
       if (needsSetup(status) && !seen()) set({ view: "setup" });
       await onRecording(await api.recordingState());
+      // Pick up meetings the CLI or an import wrote while the window was open.
+      const sync = async () => {
+        if (await api.refreshStore().catch(() => false)) {
+          await reloadLists();
+          await reloadMeeting();
+        }
+      };
+      window.addEventListener("focus", () => void sync());
+      setInterval(() => void sync(), 5000);
     },
 
     go: (view) => {

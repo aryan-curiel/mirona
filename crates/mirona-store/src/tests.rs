@@ -581,3 +581,24 @@ fn transcripts_from_before_end_times_and_due_dates_load() {
     assert!(errors.is_empty(), "{errors:?}");
     assert_eq!((segs[0].end_ms, segs[0].due.clone()), (0, None));
 }
+
+#[test]
+fn refresh_picks_up_writes_from_another_process() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = Store::open(dir.path()).unwrap();
+    assert!(!app.refresh().unwrap(), "nothing changed yet");
+
+    // Another process (the CLI, an import) adds a meeting.
+    let mut cli = Store::open(dir.path()).unwrap();
+    let id = new_meeting("Imported", &mut cli);
+    assert!(app.meeting(&id).is_err());
+    assert!(app.refresh().unwrap());
+    assert_eq!(app.meeting(&id).unwrap().title, "Imported");
+    assert!(!app.refresh().unwrap(), "already up to date");
+
+    // The app's own writes don't trigger a reload.
+    app.set_title(&id, "Renamed").unwrap();
+    assert!(!app.refresh().unwrap());
+    assert!(cli.refresh().unwrap(), "but the other store sees them");
+    assert_eq!(cli.meeting(&id).unwrap().title, "Renamed");
+}

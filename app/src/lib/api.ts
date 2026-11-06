@@ -55,6 +55,7 @@ export type Template = { id: string; name: string };
 /** Typed wrappers over the Tauri commands in src-tauri/src/lib.rs. */
 export const api = {
   listMeetings: () => invoke<MeetingSummary[]>("list_meetings"),
+  refreshStore: () => invoke<boolean>("refresh_store"),
   getMeeting: (id: string) => invoke<Meeting>("get_meeting", { id }),
   listActionItems: () => invoke<ActionItem[]>("list_action_items"),
   toggleActionItem: (id: string) => invoke<ActionItem>("toggle_action_item", { id }),
