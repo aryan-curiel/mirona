@@ -478,6 +478,44 @@ function Clients({ clients, onSave }: { clients: Record<string, string>; onSave:
   );
 }
 
+/** Call detection (NGR-170): suggest, name from the calendar, and per-client auto-record. */
+function CallSettings({ st, onSave }: { st: Settings; onSave: (patch: Partial<Settings>) => Promise<boolean> }) {
+  const flash = useStore((s) => s.flash);
+  const calendar = async (on: boolean) => {
+    if (on && !(await api.requestPermission("calendar").catch(() => false))) {
+      flash("Mirona needs calendar access: System Settings › Privacy & Security › Calendars.", true);
+      return;
+    }
+    await onSave({ calendarTitles: on });
+  };
+  const clients = Object.keys(st.clients);
+  const auto = (c: string, on: boolean) => onSave({ autoRecord: on ? [...st.autoRecord, c] : st.autoRecord.filter((x) => x !== c) });
+  return (
+    <div className="flex flex-col gap-3 text-[14px]">
+      <div className="flex items-center gap-3">
+        <Toggle on={st.detectCalls} onChange={(detectCalls) => onSave({ detectCalls })} label="Suggest recording when a call starts" />
+        <span>Suggest recording when a call starts</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <Toggle on={st.calendarTitles} onChange={(on) => void calendar(on)} label="Use calendar event titles" />
+        <span>Use calendar event titles</span>
+      </div>
+      {st.calendarTitles && clients.length > 0 && (
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1 text-[13px] text-ink-3">Record without asking when the event names this client:</legend>
+          {clients.map((c) => (
+            <label key={c} className="flex items-center gap-2">
+              <input type="checkbox" checked={st.autoRecord.includes(c)} onChange={(e) => void auto(c, e.target.checked)} />
+              {c}
+            </label>
+          ))}
+        </fieldset>
+      )}
+      <p className="text-[12px] text-muted">Mirona never records a call on its own unless you tick its client here. A browser using the microphone counts as a call, since Meet can't be told apart from other tabs.</p>
+    </div>
+  );
+}
+
 const llmDefaults = {
   ollama: { model: "qwen3:4b", url: "http://localhost:11434/api/chat" },
   openai: { model: "gpt-4.1-mini", url: "https://api.openai.com/v1" },
@@ -582,6 +620,9 @@ export function ModelsView() {
         </Row>
         <Row title="Clients" sub="The classifier picks one per meeting; describe each so it can tell them apart">
           <Clients clients={st.clients} onSave={(clients) => save({ clients })} />
+        </Row>
+        <Row title="Call detection" sub="When Zoom, Teams, Meet or another call app opens the microphone">
+          <CallSettings st={st} onSave={save} />
         </Row>
       </section>
 

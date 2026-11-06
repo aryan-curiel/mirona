@@ -217,6 +217,30 @@ function Meter({ label, level }: { label: string; level: number }) {
   );
 }
 
+/** "Zoom is using the microphone. Record this call?" (NGR-170). Never records on its own. */
+export function CallBanner() {
+  const call = useStore((s) => s.call);
+  const rec = useStore((s) => s.recording);
+  const record = useStore((s) => s.recordCall);
+  const dismiss = useStore((s) => s.dismissCall);
+  if (!call || rec) return null;
+  return (
+    <div role="alert" className="flex min-h-14 shrink-0 items-center gap-4 border-b border-line-soft bg-[var(--mi-neutral-tint)] px-6 py-2 text-[13px]">
+      <Icon name="mic" className="text-accent" />
+      <span className="flex-1 text-ink">
+        <span className="font-semibold">{call.app}</span> is using the microphone. Record this call?
+        {call.title && <span className="text-ink-3"> It will be named “{call.title}”{call.client ? ` for ${call.client}` : ""}.</span>}
+      </span>
+      <button type="button" className="mi-ghost min-h-11! px-4" onClick={dismiss}>
+        Dismiss
+      </button>
+      <button type="button" className="mi-btn-primary flex h-11 items-center gap-2 px-4" onClick={record}>
+        <Icon name="mic" /> Record
+      </button>
+    </div>
+  );
+}
+
 export function RecordingBar() {
   const rec = useStore((s) => s.recording);
   const stop = useStore((s) => s.stopRecording);

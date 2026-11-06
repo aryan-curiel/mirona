@@ -8,8 +8,11 @@
 //!   the same path. [`compress`] turns a finished recording's WAV into Opus in CAF.
 //! - STT: [`Stt::load`] picks the provider from config (`[providers] stt`), Parakeet by default.
 //!
+//! - Calls: [`calls::calls_using_mic`] says which call app just opened the mic (NGR-170).
+//!
 //! Models live in one dir laid out by `scripts/fetch-models.sh`.
 
+pub mod calls;
 mod chunk;
 mod compress;
 mod live;
