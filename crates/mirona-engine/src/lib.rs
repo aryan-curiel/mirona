@@ -1,9 +1,24 @@
-//! The M1 pipeline in one place: record (or import) → transcribe → store → summary and
-//! enhanced notes → store. The app and the CLI both drive meetings through this crate.
+//! The pipeline in one place: record (or import) → transcribe → store → speakers, tags,
+//! summary and enhanced notes → store. The app, the CLI and the MCP server all drive meetings
+//! through this crate.
+//!
+//! - [`Engine`] owns the shared [`Store`], the [`Config`] and the resolved [`Paths`].
+//!   [`Engine::record`] returns a [`Session`]; [`Session::stop`] saves the meeting, compresses
+//!   the audio and runs [`Engine::post_process`]. [`Engine::import`] does the same for a file,
+//!   [`Engine::summarize`] rewrites a summary with another template or model.
+//! - [`classify`] tags lines live and answers the meeting questions after the call;
+//!   [`search`] embeds lines and runs the one hybrid search; [`keep`] holds the store key and
+//!   retention; [`models`] downloads the models the config needs; [`Llm`] is the configured
+//!   summary LLM.
+//! - [`app_dir`] is where `config.toml`, models and templates live (`MIRONA_APP_DIR`
+//!   overrides it); [`RecordingLock`] keeps one recording per meetings folder across processes.
 //!
 //! While recording, the audio source says who speaks: the mic is "me", the system audio is
 //! "them", an imported file is "speaker". After the call, `diarize.rs` splits "them" (and
 //! "speaker") by voice and names known people.
+//!
+//! Providers block inside their futures, so `block_on` is the whole executor; long work belongs
+//! on a worker thread, with progress sent as [`PipelineEvent`]s.
 
 pub mod classify;
 mod diarize;
@@ -26,6 +41,7 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 
 pub type Result<T> = std::result::Result<T, String>;
+/// The meeting store, shared between the engine, its workers and the app.
 pub type Shared = Arc<Mutex<Store>>;
 
 /// File name of the recording inside the meeting folder while capturing. When it stops it is
@@ -117,6 +133,7 @@ pub fn config_path(app_dir: &Path) -> PathBuf {
     app_dir.join("config.toml")
 }
 
+/// The pipeline over one meeting store and config; see the crate docs.
 pub struct Engine {
     pub store: Shared,
     pub paths: Paths,
@@ -126,6 +143,7 @@ pub struct Engine {
 }
 
 impl Engine {
+    /// Also applies the config's privacy switch to the process-wide network gate.
     pub fn new(store: Shared, cfg: Config, paths: Paths) -> Self {
         mirona_providers::net::set_privacy(cfg.privacy);
         Self {
@@ -155,6 +173,7 @@ impl Engine {
         self.cfg.lock().unwrap().clone()
     }
 
+    /// Use `cfg` from now on (and its privacy switch) without saving it.
     pub fn set_config(&self, cfg: Config) {
         mirona_providers::net::set_privacy(cfg.privacy);
         *self.cfg.lock().unwrap() = cfg;
@@ -353,7 +372,7 @@ impl Engine {
 
     /// Compress recordings still kept as WAV: sessions that crashed (or were killed) before
     /// [`Session::stop`] compressed them, and meetings from before compression. A WAV written to
-    /// in the last [`LOCK_STALE`] is a recording in progress and is left alone. Slow (a few
+    /// in the last 15 seconds is a recording in progress and is left alone. Slow (a few
     /// seconds per recorded hour): run it off the UI thread. Returns one error per meeting that
     /// failed; those keep their WAV and are retried next time.
     pub fn compress_recordings(&self) -> Vec<String> {
@@ -397,7 +416,7 @@ impl Engine {
 const PREVIEW_EVERY: std::time::Duration = std::time::Duration::from_millis(100);
 
 /// An `on_text` for [`summarize_with`] that sends `Summarizing` previews: the overview written
-/// so far, at most every [`PREVIEW_EVERY`].
+/// so far, at most every 100 ms.
 pub fn preview(id: &str, events: &Sender<PipelineEvent>) -> impl FnMut(&str) + Send + use<> {
     let (id, events) = (id.to_string(), events.clone());
     let mut text = String::new();
@@ -553,6 +572,7 @@ impl RecordingLock {
         meetings.join(".mirona").join("recording.lock")
     }
 
+    /// Claim the folder, or fail while another live recording holds a fresh lock.
     pub fn take(meetings: &Path) -> Result<Self> {
         let path = Self::path(meetings);
         let fresh = std::fs::metadata(&path)

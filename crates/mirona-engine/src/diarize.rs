@@ -352,7 +352,7 @@ impl Engine {
         let dir = self.paths.models.join(MODELS_DIR);
         if !dir.join(CPU_MODEL).is_file() {
             return Err(format!(
-                "speaker models are missing in {} (download them in Settings › Models)",
+                "speaker models are missing in {} (download them in Settings › AI models)",
                 dir.display()
             ));
         }

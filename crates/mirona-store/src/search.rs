@@ -21,7 +21,7 @@ pub const EMBEDDINGS: &str = "embeddings.json";
 const RRF_K: f32 = 60.0;
 /// Most nearest neighbours a query takes from the embeddings.
 const MEANING_TOP: usize = 50;
-/// Below this cosine a line isn't "about" the query, and lines more than [`WINDOW`] below the
+/// Below this cosine a line isn't "about" the query, and lines more than 0.1 below the
 /// best match are noise. ponytail: measured on the demo meetings with nomic-embed-text and its
 /// search prefixes (related 0.54–0.65, unrelated 0.35–0.52); make both per model if another
 /// one is used.

@@ -1,0 +1,12 @@
+# The docs site (NGR-176): scripts/build-docs.sh assembles the Markdown from the repo into
+# target/book-src with this config, so the files stay where GitHub shows them.
+[book]
+title = "Mirona"
+description = "Meeting memory that stays on your Mac"
+language = "en"
+src = "."
+
+[output.html]
+git-repository-url = "https://github.com/aryan-curiel/mirona"
+edit-url-template = "https://github.com/aryan-curiel/mirona/edit/main/{path}"
+additional-js = ["mermaid-init.js"]

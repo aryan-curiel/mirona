@@ -1,5 +1,7 @@
 # NGR-130 spike: Jev accuracy on labelled English transcript chunks
 
+> Historical: the spike as run in November 2026. Current models and providers are in `docs/providers.md` and `docs/licenses.md`.
+
 Status: **done.** Jev (`jev-1.14.0`) and two local baselines measured on the same 50 chunks.
 Date: 2026-11-05. Machine: Apple M3 Pro, 36 GB.
 

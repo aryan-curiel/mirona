@@ -1,4 +1,4 @@
-# Mirona testing checklist (milestones 1–3 and their gates)
+# Mirona testing checklist (milestones 1–4 and their gates)
 
 Tick items as you go (`- [x]`). Anything that fails: note what you saw under **Findings** at the end
 (or open a Linear issue in the Mirona project) with the meeting folder name and time.
@@ -9,7 +9,8 @@ Tick items as you go (`- [x]`). Anything that fails: note what you saw under **F
   ```bash
   cd app && pnpm install && pnpm tauri build --bundles app
   ```
-  Copy `target/release/bundle/macos/Mirona.app` to `/Applications`.
+  Copy `target/release/bundle/macos/Mirona.app` to `/Applications`. Or install a release DMG
+  (see **8. Release build**).
 - [ ] **Ollama for summaries** (already installed on this Mac): `ollama serve` is running and
   `ollama list` shows `qwen3:4b`. If not: `brew install ollama && ollama pull qwen3:4b`.
 - [ ] **Clean slate (optional):** delete the 4 demo meetings in `~/Documents/Mirona`, and remove
@@ -51,7 +52,7 @@ Tick items as you go (`- [x]`). Anything that fails: note what you saw under **F
 
 - [ ] **Menu-bar icon:** Start recording / Stop from the tray menu.
 - [ ] **Global shortcut** (default ⌘⌥⇧R) while another app is in front: starts and stops recording.
-- [ ] **Change the shortcut:** Settings → Record shortcut, press a new combination, then use it.
+- [ ] **Change the shortcut:** Settings › General › Record shortcut, press a new combination, then use it.
   Expected: the new one works, the old one doesn't, and the tray and recording bar show the new one.
 - [ ] **Closing the window** keeps Mirona in the menu bar; clicking the Dock icon brings the window
   back.
@@ -83,28 +84,31 @@ For each call: record the whole call, then check the transcript has both "Me" an
 - [ ] **Import:** sidebar → Import an audio file (an mp3 or m4a of a meeting).
   Expected: a progress bar, then a new meeting with transcript and summary.
 
-## 5. Settings (Models and MCP)
+## 5. Settings (AI models)
 
 - [ ] **Speech-to-text:** switch to Whisper, record 20 s, switch back to Parakeet.
-  (Whisper's model downloads from Settings › Models › Models folder after you pick it, about 490 MB.)
+  (Whisper's model downloads from Settings › AI models › Models folder after you pick it, about 490 MB.)
+- [ ] **Model download from Settings:** with a model missing, Settings › AI models › Models folder
+  lists it and offers the download, with progress and cancel. In privacy mode it still downloads
+  (the one exception, `net::allow_model`); nothing else reaches the network.
 - [ ] **Privacy mode on:** OpenAI and Anthropic can't be selected.
-- [ ] **API keys:** add a key for Anthropic (and OpenAI, Jev if you have them).
+- [ ] **API keys** (Settings › AI models): add a key for Anthropic (and OpenAI, Jev if you have them).
   Expected: "saved in the keychain"; the key isn't in `config.toml`.
 - [ ] **Anthropic summaries:** privacy mode off → Summaries: Anthropic → Regenerate a summary.
   Expected: the summary says it was written by the Claude model. Back to Ollama afterwards if you
   want everything local.
-- [ ] **Meetings folder:** pick another folder, record something, check it lands there; switch back.
-- [ ] **config.toml:** edit a value in the file shown at the bottom of Settings (for example
+- [ ] **Meetings folder** (Settings › General): pick another folder, record something, check it lands there; switch back.
+- [ ] **config.toml:** edit a value in the file shown at the bottom of Settings › Advanced (for example
   `template`), restart Mirona, and see the change in Settings.
 
 ## 6. Claude Code and the CLI
 
-- [ ] **Connect Claude Code** with the command shown in Settings → MCP server
+- [ ] **Connect Claude Code** with the command shown in Settings › Agents (MCP)
   (`claude mcp add mirona -- "/Applications/Mirona.app/Contents/MacOS/mirona-app" mcp`).
 - [ ] **Ask Claude Code:** "What did we decide in my last meeting?", "List my open action items",
-  "Find where we talked about <topic>".
+  "Find where we talked about \<topic\>".
   Expected: answers cite meetings and timestamps.
-- [ ] **MCP switch off** in Settings, then ask again.
+- [ ] **MCP switch off** in Settings › Agents (MCP), then ask again.
   Expected: Claude reports the Mirona server is turned off.
 - [ ] **Skill (optional):** install `skills/mirona` (see `docs/cli-and-mcp.md`) and ask Claude Code
   to prepare for a meeting with a client.
@@ -113,7 +117,7 @@ For each call: record the whole call, then check the transcript has both "Me" an
 
 ## 6b. Milestone 2: who and what
 
-- [ ] **Jev key:** Settings → API keys → Jev. Turn privacy mode off and set Classification to Jev.
+- [ ] **Jev key:** Settings › AI models › API keys › Jev. Turn privacy mode off and set Classification to Jev.
   Privacy mode on means the local model answers instead, with less accurate tags.
 - [ ] **Tags live:** during a real call, lines get Action / Decision / Question / Small talk /
   Sensitive tags a second or two after they appear.
@@ -127,7 +131,7 @@ For each call: record the whole call, then check the transcript has both "Me" an
   Correct one → the tag and action items update at once.
 - [ ] **Needs review:** items below threshold are in the inspector's review list; Confirm / Not
   this settles them.
-- [ ] **Meeting chips:** type, client (add your clients in Settings first), priority, tone,
+- [ ] **Meeting chips:** type, client (add your clients in Settings › Clients first), priority, tone,
   follow-up. The summary uses the template matching the meeting type.
 - [ ] **Follow-up draft:** shown with Copy when a follow-up is needed.
 - [ ] **Action items view:** filter by client and status; links jump to the moment.
@@ -135,23 +139,23 @@ For each call: record the whole call, then check the transcript has both "Me" an
 
 ## 6c. Milestone 3: privacy and search
 
-- [ ] **Privacy mode:** sidebar switch on → Models and MCP shows privacy on; `mirona privacy`
+- [ ] **Privacy mode:** sidebar switch on → Settings › Privacy and storage shows privacy on; `mirona privacy`
   says on. Off in the app → `mirona privacy` says off.
 - [ ] **Search:** `ollama pull nomic-embed-text`, restart Mirona (older meetings are embedded in
   the background). Sidebar search "pricing worries" finds a line that says "the budget is tight";
   filters (client, dates, speaker, tag) narrow it; a click opens the meeting at that line.
 - [ ] **Sensitive:** say a password in a call: the line is hidden in the transcript, missing from
   the summary, and Claude Code can't quote it.
-- [ ] **Encryption:** Models and MCP → Encryption on. In Finder, `transcript.jsonl` is unreadable;
+- [ ] **Encryption:** Settings › Privacy and storage → Encryption on. In Finder, `transcript.jsonl` is unreadable;
   the app still shows and searches everything; audio plays. Off again: files readable.
-- [ ] **Retention:** set "Delete old recordings" to 1 day, Apply rules now: recordings older than a
+- [ ] **Retention:** Settings › Privacy and storage, set "Delete old recordings" to 1 day, Apply rules now: recordings older than a
   day are gone, their transcripts stay; `.mirona/retention.log` lists them.
 - [ ] **Delete:** Delete meeting → it's gone from the list, search and the folder.
 - [ ] **Consent:** Start recording → the reminder shows; pick a client and tick "agreed" → the
   next recording with that client shows "already agreed".
 - [ ] **Call detection:** start a Zoom/Meet test call → "Record this call?" banner and
   notification; nothing records without a click.
-- [ ] **MCP over HTTP:** turn it on, create a token, paste the `claude mcp add` line; Claude Code
+- [ ] **MCP over HTTP:** Settings › Agents (MCP), turn it on, create a token, paste the `claude mcp add` line; Claude Code
   answers from Mirona; the activity list shows it. Also from Claude Desktop and one other client.
 - [ ] **ask_meeting:** in Claude Code, "what did we decide about X?" (route `decisions`, no LLM)
   and "why did the client hesitate?" (route `open_question`).
@@ -189,6 +193,15 @@ Gate 1 is done when the last week had no lost recordings.
 | 12 | | | | | |
 | 13 | | | | | |
 | 14 | | | | | |
+
+## 8. Release build (NGR-175)
+
+- [ ] **Tag a release** as in `docs/releasing.md`.
+  Expected: the Release workflow is green and a draft GitHub release has the `.app` and `.dmg`.
+- [ ] **Install from the DMG** on a Mac that never had Mirona (macOS 14.6 or later).
+  Expected: it opens without a Gatekeeper warning; `spctl -a -vv /Applications/Mirona.app` says
+  "Notarized Developer ID"; the mic and system-audio prompts appear; onboarding downloads the
+  models; a recording works end to end.
 
 ## Findings
 

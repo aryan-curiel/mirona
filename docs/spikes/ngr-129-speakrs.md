@@ -1,5 +1,7 @@
 # NGR-129 — Spike: speakrs diarization on macOS (CoreML)
 
+> Historical: the spike as run in November 2026. Current models and providers are in `docs/providers.md` and `docs/licenses.md`.
+
 **Date:** 2026-11-05 · **Machine:** Apple M3 Pro (5P+6E), 36 GB, macOS 27 · **Crate:** `speakrs = "=0.7.0"`
 (`coreml` + `cpu` features) · **Code:** `spikes/speakrs/` (reproduce steps in its README)
 

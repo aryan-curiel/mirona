@@ -1,5 +1,21 @@
-//! One trait per pipeline stage (NGR-133). Real providers (Parakeet, speakrs, Jev, Ollama…)
-//! land in later milestones; the `fake` module backs the prototype and tests.
+//! One trait per pipeline stage (NGR-133), the config that picks an implementation for each,
+//! and the privacy gate every choice goes through.
+//!
+//! - Stages: [`SttProvider`] (speech to text), [`Diarizer`] (who spoke when, voiceprints),
+//!   [`Classifier`] (typed questions from [`questions`]), [`LlmProvider`] (summaries and
+//!   notes, streamed) and [`Embedder`] (vectors for search). All share [`Provider`], which
+//!   says whether an implementation runs locally or in the cloud.
+//! - Privacy: [`check_privacy`] refuses cloud providers in privacy mode, and [`net::allow`]
+//!   is the one network gate every HTTP request asks first (only loopback in privacy mode).
+//! - Config: [`config::Config`] is `config.toml` (privacy, `[providers]`, models, LLM,
+//!   MCP, thresholds, clients).
+//! - [`fake`] holds deterministic implementations for tests and the prototype.
+//!
+//! Real providers sit behind features, all off by default: `parakeet` and `whisper` (STT),
+//! `speakrs` (diarization; the module itself always builds), `jev` and `ollama`
+//! (classification; `ollama` also embeds), `openai`, `anthropic` and `ollama` (LLM), and
+//! `keychain` (API keys in the OS keychain). `mirona-engine` and `mirona-capture` turn on what
+//! they need; everything else depends only on the traits.
 
 pub mod config;
 pub mod net;
@@ -26,6 +42,7 @@ use questions::{Question, Reply};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Why a provider couldn't run.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// A cloud provider was asked to run while privacy mode is on.
@@ -59,6 +76,7 @@ pub fn check_privacy(option: &ProviderOption, privacy_mode: bool) -> Result<()> 
     Ok(())
 }
 
+/// Speech to text on short chunks (≤ 5 s, cut by the VAD).
 pub trait SttProvider: Provider {
     /// Transcribe a chunk of 16 kHz mono PCM.
     fn transcribe(&self, pcm: &[f32]) -> impl Future<Output = Result<String>> + Send;
@@ -80,6 +98,7 @@ pub struct FoundSpeaker {
     pub speech_ms: u32,
 }
 
+/// What a [`Diarizer`] found in one recording.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Diarization {
     /// Ordered by start; may overlap.
@@ -138,6 +157,7 @@ pub trait LlmProvider: Provider {
     ) -> impl Future<Output = Result<Completion>> + Send;
 }
 
+/// Text to a vector for search by meaning (NGR-167).
 pub trait Embedder: Provider {
     fn embed(&self, text: &str) -> impl Future<Output = Result<Vec<f32>>> + Send;
 }
