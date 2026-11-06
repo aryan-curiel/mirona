@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { listen } from "@tauri-apps/api/event";
-import { api, type CallSuggestion, LLM_LOCAL, type Person, type RecState, type Settings, type Status, type Template } from "./lib/api";
+import { api, type CallSuggestion, LLM_LOCAL, type Person, type RecState, type Settings, type Status, type Template, type UpdateInfo } from "./lib/api";
 import type { ActionItem } from "./bindings/ActionItem";
 import type { Meeting } from "./bindings/Meeting";
 import type { MeetingSummary } from "./bindings/MeetingSummary";
@@ -73,6 +73,10 @@ type State = {
   call: CallSuggestion | null;
   /** The consent reminder is open before recording (NGR-169); `call`: from the call banner. */
   consent: { call: boolean } | null;
+  /** A newer version is ready to install; `installing` while it downloads. */
+  update: UpdateInfo | null;
+  installing: boolean;
+  dismissedUpdate: string | null;
 
   init: () => Promise<void>;
   /** The settings window: settings, status and the client list only. */
@@ -121,6 +125,8 @@ type State = {
   confirmConsent: (client: string | null, agreed: boolean, stopReminding: boolean) => Promise<void>;
   cancelConsent: () => void;
   dismissCall: () => void;
+  installUpdate: () => Promise<void>;
+  dismissUpdate: () => void;
   flash: (msg: string, error?: boolean) => void;
 };
 
@@ -282,6 +288,9 @@ export const useStore = create<State>((set, get) => {
     toast: null,
     call: null,
     consent: null,
+    update: null,
+    installing: false,
+    dismissedUpdate: null,
 
     init: async () => {
       if (started) return;
@@ -290,8 +299,9 @@ export const useStore = create<State>((set, get) => {
       await listen<RecState>("recording", (ev) => void onRecording(ev.payload));
       await listen<CallSuggestion | null>("call", (ev) => set({ call: ev.payload }));
       await listen("settings", () => void onSettings());
+      await listen<UpdateInfo | null>("update", (ev) => set({ update: ev.payload }));
       // A call that started before this window listened.
-      set({ call: await api.pendingCall().catch(() => null) });
+      set({ call: await api.pendingCall().catch(() => null), update: await api.pendingUpdate().catch(() => null) });
       const [settings, status, templates] = await Promise.all([api.getSettings(), api.status(), api.listTemplates().catch(() => [])]);
       set({ settings, status, templates });
       await reloadLists();
@@ -317,6 +327,8 @@ export const useStore = create<State>((set, get) => {
       if (tab) set({ settingsTab: tab });
       await listen("settings", () => void onSettings());
       await listen<SettingsTab>("settings-tab", (ev) => set({ settingsTab: ev.payload }));
+      await listen<UpdateInfo | null>("update", (ev) => set({ update: ev.payload }));
+      set({ update: await api.pendingUpdate().catch(() => null) });
       const [settings, status, templates] = await Promise.all([api.getSettings(), api.status(true), api.listTemplates().catch(() => [])]);
       set({ settings, status, templates });
       await reloadLists();
@@ -577,6 +589,18 @@ export const useStore = create<State>((set, get) => {
       set({ call: null });
       void api.dismissCall();
     },
+
+    installUpdate: async () => {
+      set({ installing: true });
+      try {
+        await api.installUpdate();
+      } catch (e) {
+        get().flash(String(e), true);
+      }
+      set({ installing: false });
+    },
+
+    dismissUpdate: () => set({ dismissedUpdate: get().update?.version ?? null }),
 
     flash: (msg, error = false) => {
       const toast = { msg, error };

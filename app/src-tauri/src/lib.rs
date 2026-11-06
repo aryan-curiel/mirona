@@ -34,6 +34,8 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 
+mod update;
+
 type Res<T> = Result<T, String>;
 
 struct AppState {
@@ -1120,6 +1122,9 @@ struct Settings {
     /// Client → delete its meetings this many days old.
     #[serde(default)]
     retention_clients: BTreeMap<String, u32>,
+    /// Check GitHub for a new version on start and daily.
+    #[serde(default)]
+    check_updates: bool,
 }
 
 /// Questions with a threshold the user can set (NGR-158).
@@ -1194,6 +1199,7 @@ impl Settings {
             encrypt: cfg.encrypt,
             retention_audio_days: cfg.retention.audio_days,
             retention_clients: cfg.retention.clients.clone(),
+            check_updates: cfg.check_updates,
         }
     }
 
@@ -1285,6 +1291,7 @@ impl Settings {
         cfg.clients = clients;
         cfg.detect_calls = self.detect_calls;
         cfg.calendar_titles = self.calendar_titles;
+        cfg.check_updates = self.check_updates;
         if self.retention_audio_days == Some(0) || self.retention_clients.values().any(|d| *d == 0)
         {
             return Err("Retention needs at least 1 day.".into());
@@ -1643,6 +1650,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _, ev| {
@@ -1690,7 +1698,9 @@ pub fn run() {
                 startup_errors: errors,
                 mcp_http: Mutex::new(None),
             });
+            app.manage(update::Pending::default());
             watch_calls(app.handle().clone());
+            update::watch(app.handle().clone());
             let st = app.state::<AppState>();
             // First run: the onboarding comes before the main window (hidden in tauri.conf.json).
             if st.app_dir.join(ONBOARDED).exists() {
@@ -1781,6 +1791,9 @@ pub fn run() {
             open_settings,
             show_onboarding,
             voiceprint_shape,
+            update::check_update,
+            update::pending_update,
+            update::install_update,
         ])
         // Closing the main window keeps Mirona in the menu bar, so recording can still be
         // started from the tray or the shortcut. Quit from the tray menu. Settings just close.

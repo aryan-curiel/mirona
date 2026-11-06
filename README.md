@@ -67,7 +67,7 @@ Details, tests and project conventions are in [CONTRIBUTING.md](CONTRIBUTING.md)
 ## Roadmap
 
 - **Now:** first public release (signed macOS build, docs, open-source setup).
-- **Next:** Windows capture (WASAPI loopback), then Linux (PipeWire), plus opt-in auto-update.
+- **Next:** Windows capture (WASAPI loopback), then Linux (PipeWire).
 
 ## License
 

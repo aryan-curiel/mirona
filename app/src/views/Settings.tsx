@@ -575,6 +575,7 @@ function About() {
           <p>Your AI agents can search and ask about your meetings over MCP, only when you let them.</p>
         </div>
       </section>
+      <Updates />
       <section className="mi-card mt-5 p-6" aria-labelledby="credits">
         <h2 id="credits" className="text-[16px] font-semibold">
           Models and credits
@@ -593,6 +594,67 @@ function About() {
 
       <p className="mt-5 text-[13px] text-muted">Open source under the Apache License 2.0.</p>
     </>
+  );
+}
+
+/** Opt-in update check (GitHub releases) and a manual check; installing restarts the app. */
+function Updates() {
+  const st = useStore((s) => s.settings);
+  const save = useStore((s) => s.saveSettings);
+  const update = useStore((s) => s.update);
+  const installing = useStore((s) => s.installing);
+  const install = useStore((s) => s.installUpdate);
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState("");
+  const check = async () => {
+    setChecking(true);
+    try {
+      setResult((await api.checkUpdate()) ? "" : "Mirona is up to date.");
+    } catch (e) {
+      setResult(String(e));
+    }
+    setChecking(false);
+  };
+  if (!st) return null;
+  return (
+    <section className="mi-card mt-5 p-6" aria-labelledby="updates">
+      <h2 id="updates" className="text-[16px] font-semibold">
+        Updates
+      </h2>
+      <p className="mt-1 text-[14px] text-ink-3">
+        Checking asks GitHub for the latest release, even in privacy mode. It sends nothing about your meetings. Updates are signed and install only
+        when you click.
+      </p>
+      <div className="mt-4 flex items-center gap-3 text-[14px]">
+        <Toggle
+          on={st.checkUpdates}
+          onChange={async (checkUpdates) => {
+            if ((await save({ checkUpdates })) && checkUpdates) await check();
+          }}
+          label="Check for updates automatically"
+        />
+        <span>Check for updates automatically</span>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-[14px]">
+        {update ? (
+          <>
+            <span>
+              <span className="font-semibold">Mirona {update.version}</span> is available.
+            </span>
+            <button type="button" className="mi-btn-primary h-11 px-5" onClick={() => void install()} disabled={installing}>
+              {installing ? "Installing…" : "Install and restart"}
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" className="mi-ghost min-h-11! px-4" onClick={() => void check()} disabled={checking}>
+              {checking ? "Checking…" : "Check now"}
+            </button>
+            {result && <span className="text-ink-3" role="status">{result}</span>}
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 

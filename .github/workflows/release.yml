@@ -49,9 +49,14 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Signs the update bundle; the app checks it against the pubkey in tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: app
-          args: --bundles app,dmg
+          # Update artifacts only here, so local builds don't need the signing key. The action
+          # also uploads latest.json, which the app's update check reads.
+          args: --bundles app,dmg --config '{"bundle":{"createUpdaterArtifacts":true}}'
           tagName: ${{ github.ref_name }}
           releaseName: Mirona ${{ github.ref_name }}
           releaseBody: "macOS 14.6 or later, Apple silicon. Open the DMG and drag Mirona to Applications; the first run downloads the speech models (about 1 GB)."

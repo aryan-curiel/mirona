@@ -108,8 +108,10 @@ On by default. In privacy mode:
   reachable
 - classification uses the local LLM instead of Jev, with less accurate tags
 
-The one thing that goes out in privacy mode is the model download you start yourself. It
-fetches fixed files from Hugging Face and GitHub and sends nothing about your meetings. See
+What goes out in privacy mode is what you start yourself: the model download (fixed files from
+Hugging Face and GitHub) and the update check (GitHub, only if you turned it on in Settings ›
+About or clicked Check now). Neither sends anything about your meetings. When an update is out, a
+banner offers Install and restart. See
 [PRIVACY.md](../PRIVACY.md).
 
 **Sensitive lines** (tagged by the classifier, or mentioning a password, salary, account or card
