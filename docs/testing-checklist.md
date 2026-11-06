@@ -108,6 +108,35 @@ For each call: record the whole call, then check the transcript has both "Me" an
 - [ ] **CLI (optional):** `cargo install --path crates/mirona-cli`, then `mirona list`,
   `mirona search <word>`, `mirona actions --open`.
 
+## 6b. Milestone 2: who and what
+
+- [ ] **Jev key:** Settings → API keys → Jev. Turn privacy mode off and set Classification to Jev.
+  Privacy mode on means the local model answers instead, with less accurate tags.
+- [ ] **Tags live:** during a real call, lines get Action / Decision / Question / Small talk /
+  Sensitive tags a second or two after they appear.
+- [ ] **Speakers:** after Stop, "Them" is split into Speaker 1, Speaker 2… Name one (click the
+  name). Next meeting with that person: they're named automatically.
+- [ ] **Name suggestions:** when someone is addressed by name ("over to you, Keiko"), a
+  "Keiko? Confirm" chip appears.
+- [ ] **Fix a wrong match:** rename a wrongly named speaker; the People view updates.
+- [ ] **People view:** merge two entries that are the same person; delete a voiceprint.
+- [ ] **Inspector:** Inspect a line → its questions show at the top with bars and thresholds;
+  Correct one → the tag and action items update at once.
+- [ ] **Needs review:** items below threshold are in the inspector's review list; Confirm / Not
+  this settles them.
+- [ ] **Meeting chips:** type, client (add your clients in Settings first), priority, tone,
+  follow-up. The summary uses the template matching the meeting type.
+- [ ] **Follow-up draft:** shown with Copy when a follow-up is needed.
+- [ ] **Action items view:** filter by client and status; links jump to the moment.
+- [ ] **Claude Code:** "What do I owe Northwind?" returns action items, with unconfirmed ones marked.
+
+## 7b. Gate 2: labelled set (NGR-163)
+
+- [ ] Over your meetings, correct tags in the inspector (each correction is a labelled example)
+  until you have 200 or more.
+- [ ] Run `mirona eval --with jev --with local-llm` and record: does Jev match or beat the local
+  model on action items and decisions, at lower latency?
+
 ## 7. Gate 1: two weeks of daily use (NGR-151)
 
 Record every work call for two weeks and use Claude Code with Mirona at least once a day.
