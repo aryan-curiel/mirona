@@ -139,6 +139,7 @@ export const api = {
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   /** Opens the settings window, or focuses it, on `tab`. */
   openSettings: (tab: string) => invoke<void>("open_settings", { tab }),
+  showOnboarding: (step: number) => invoke<void>("show_onboarding", { step }),
   mcpActivity: (limit: number) => invoke<McpActivity[]>("mcp_activity", { limit }),
   /** Returns the new token, once. */
   addMcpClient: (name: string) => invoke<string>("add_mcp_client", { name }),

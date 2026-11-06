@@ -8,13 +8,12 @@ import type { MeetingPart } from "./bindings/MeetingPart";
 import type { PipelineEvent } from "./bindings/PipelineEvent";
 import type { Review } from "./bindings/Review";
 
-export type View = "meetings" | "all" | "actions" | "people" | "activity" | "setup";
-export type SettingsTab = "general" | "privacy" | "models" | "clients" | "agents" | "advanced";
+export type View = "meetings" | "all" | "actions" | "people" | "activity";
+export type SettingsTab = "general" | "privacy" | "models" | "clients" | "agents" | "advanced" | "about";
 export type Tab = "transcript" | "notes" | "summary";
 
 type Recording = { meetingId: string; elapsedMs: number; levels: number[] };
 
-const SETUP_SEEN = "mirona.setupSeen";
 const DETAILS = "mirona.modelDetails";
 /** localStorage that never throws (private windows, blocked storage). */
 const stored = (k: string) => {
@@ -31,8 +30,6 @@ const remember = (k: string, v: string) => {
     // the preference just isn't remembered
   }
 };
-
-const seen = () => stored(SETUP_SEEN) === "1";
 
 /** Anything a first recording still needs: permissions or speech models. */
 export const needsSetup = (s: Status | null) =>
@@ -88,7 +85,8 @@ type State = {
   removeParts: (id: string, parts: MeetingPart[]) => Promise<void>;
   /** Delete whole meetings everywhere. */
   deleteMeetings: (ids: string[]) => Promise<void>;
-  finishSetup: () => void;
+  /** The onboarding window at `step` (0 welcome, 1 permissions and models), on top of this one. */
+  openOnboarding: (step: number) => void;
   setTab: (tab: Tab) => void;
   openMeeting: (id: string) => Promise<void>;
   selectSegment: (id: string) => void;
@@ -175,7 +173,7 @@ export const useStore = create<State>((set, get) => {
       if (client) await api.confirmClient(m.id, client);
     } catch (e) {
       await get().refreshStatus();
-      if (needsSetup(get().status)) set({ view: "setup" });
+      if (needsSetup(get().status)) get().openOnboarding(1);
       throw e;
     }
   };
@@ -300,7 +298,6 @@ export const useStore = create<State>((set, get) => {
       for (const e of status.errors) get().flash(e, true);
       const first = get().meetings[0];
       if (first) await get().openMeeting(first.id);
-      if (needsSetup(status) && !seen()) set({ view: "setup" });
       await onRecording(await api.recordingState());
       // Pick up meetings the CLI or an import wrote while the window was open.
       const sync = async () => {
@@ -325,10 +322,7 @@ export const useStore = create<State>((set, get) => {
       await reloadLists();
     },
 
-    go: (view) => {
-      set({ view });
-      if (view === "setup") void get().refreshStatus();
-    },
+    go: (view) => set({ view }),
 
     openSettings: (tab) => void run(() => api.openSettings(tab)),
 
@@ -360,10 +354,7 @@ export const useStore = create<State>((set, get) => {
         get().flash(n === 1 ? `Deleted “${titles.get(ids[0])}” everywhere.` : `Deleted ${n} meetings everywhere.`);
       }),
 
-    finishSetup: () => {
-      remember(SETUP_SEEN, "1");
-      set({ view: "meetings" });
-    },
+    openOnboarding: (step) => void run(() => api.showOnboarding(step)),
 
     setTab: (tab) => set({ tab }),
 
