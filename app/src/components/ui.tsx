@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactNode } from "react";
+import { type MouseEvent, type ReactNode, useRef } from "react";
 import type { TagKind } from "../bindings/TagKind";
 import type { Tint } from "../bindings/Tint";
 
@@ -89,5 +89,21 @@ export function PageHeader({ title, children }: { title: string; children: React
       <h1 className="text-[26px] font-bold leading-tight tracking-[-0.015em]">{title}</h1>
       <p className="mt-1.5 text-[14px] text-muted">{children}</p>
     </header>
+  );
+}
+
+/** The last non-null value, so a closing panel can keep showing its content while it animates out. */
+export function useLast<T>(value: T | null): T | null {
+  const last = useRef(value);
+  if (value) last.current = value;
+  return last.current;
+}
+
+/** Slides its content open and closed by height, so what sits below glides instead of jumping. */
+export function Reveal({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <div className="mi-reveal" data-open={open} inert={!open}>
+      <div>{children}</div>
+    </div>
   );
 }

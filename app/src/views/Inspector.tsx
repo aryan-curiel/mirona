@@ -325,7 +325,7 @@ export function Inspector() {
         )}
       </div>
       {seg && sp ? (
-        <div key={seg.id} className="mi-enter">
+        <div key={seg.id} className="mi-swap">
           <p className="mt-3 text-[15px] font-semibold">
             {sp.name} <Mono>{fmt(seg.startMs, true)}</Mono>
           </p>

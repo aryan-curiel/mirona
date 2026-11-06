@@ -62,7 +62,7 @@ export function ActionItemsView() {
       </p>
       <div className="mi-card overflow-hidden">
         {rows.map((a, i) => (
-          <div key={a.id} className={`mi-enter grid grid-cols-[auto_1fr_120px_110px_auto] items-center gap-4 px-6 py-4 ${i ? "border-t border-line-soft" : ""}`}>
+          <div key={a.id} style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }} className={`mi-enter grid grid-cols-[auto_1fr_120px_110px_auto] items-center gap-4 px-6 py-4 ${i ? "border-t border-line-soft" : ""}`}>
             <input type="checkbox" checked={a.done} onChange={() => s.toggleAction(a.id)} aria-label={`Done: ${a.text}`} />
             <div className="min-w-0">
               <p className={`text-[15px] ${a.done ? "text-muted line-through" : ""}`}>

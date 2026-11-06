@@ -256,7 +256,9 @@ export const useStore = create<State>((set, get) => {
       started = true;
       await listen<PipelineEvent>("pipeline", (ev) => void onEvent(ev.payload));
       await listen<RecState>("recording", (ev) => void onRecording(ev.payload));
-      await listen<CallSuggestion>("call", (ev) => set({ call: ev.payload }));
+      await listen<CallSuggestion | null>("call", (ev) => set({ call: ev.payload }));
+      // A call that started before this window listened.
+      set({ call: await api.pendingCall().catch(() => null) });
       const [settings, status, templates] = await Promise.all([api.getSettings(), api.status(), api.listTemplates().catch(() => [])]);
       set({ settings, status, templates });
       await reloadLists();
@@ -516,7 +518,10 @@ export const useStore = create<State>((set, get) => {
         await recordCallNow();
       }),
 
-    dismissCall: () => set({ call: null }),
+    dismissCall: () => {
+      set({ call: null });
+      void api.dismissCall();
+    },
 
     flash: (msg, error = false) => {
       const toast = { msg, error };

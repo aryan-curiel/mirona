@@ -1,11 +1,11 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SearchFilters } from "../bindings/SearchFilters";
 import type { SearchResults } from "../bindings/SearchResults";
 import type { TagKind } from "../bindings/TagKind";
 import { needsSetup, useStore, type View } from "../store";
 import { api, fmt } from "../lib/api";
-import { Icon, Logo, Toggle } from "./ui";
+import { Icon, Logo, Reveal, Toggle, useLast } from "./ui";
 
 const nav: { id: View; label: string; icon: Parameters<typeof Icon>[0]["name"] }[] = [
   { id: "meetings", label: "Meetings", icon: "list" },
@@ -338,12 +338,15 @@ function Meter({ label, level }: { label: string; level: number }) {
 
 /** "Zoom is using the microphone. Record this call?" (NGR-170). Never records on its own. */
 export function CallBanner() {
-  const call = useStore((s) => s.call);
+  const current = useStore((s) => s.call);
   const rec = useStore((s) => s.recording);
   const record = useStore((s) => s.recordCall);
   const dismiss = useStore((s) => s.dismissCall);
-  if (!call || rec) return null;
+  const open = !!current && !rec;
+  const call = useLast(open ? current : null);
+  if (!call) return null;
   return (
+    <Reveal open={open}>
     <div role="alert" className="flex min-h-14 shrink-0 items-center gap-4 border-b border-line-soft bg-[var(--mi-neutral-tint)] px-6 py-2 text-[13px]">
       <Icon name="mic" className="text-accent" />
       <span className="flex-1 text-ink">
@@ -357,17 +360,20 @@ export function CallBanner() {
         <Icon name="mic" /> Record
       </button>
     </div>
+    </Reveal>
   );
 }
 
 export function RecordingBar() {
-  const rec = useStore((s) => s.recording);
+  const live = useStore((s) => s.recording);
+  const rec = useLast(live);
   const stop = useStore((s) => s.stopRecording);
   const hint = shortcutLabel(useStore((s) => s.status?.shortcut ?? ""));
   const { stt, llm } = useModelNames();
   if (!rec) return null;
   const [mic = 0, system = 0] = rec.levels;
   return (
+    <Reveal open={!!live}>
     <div data-tauri-drag-region className="flex h-14 shrink-0 items-center gap-4 border-b border-[rgba(194,54,43,0.15)] bg-[var(--mi-record-tint)] px-6 text-[13px]">
       <span className="mi-pulse size-2.5 rounded-full bg-record" />
       <span className="font-semibold text-record-text">Recording</span>
@@ -381,6 +387,7 @@ export function RecordingBar() {
         Stop and summarize {hint && <span className="ml-1 text-[12px] font-medium opacity-80">{hint}</span>}
       </button>
     </div>
+    </Reveal>
   );
 }
 
@@ -399,17 +406,33 @@ export function ConsentSheet() {
   const [agreed, setAgreed] = useState(false);
   const [never, setNever] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Stays mounted while it fades out; Escape closes at once (keyboard actions don't animate).
+  const [shown, setShown] = useState(consent);
+  const [closing, setClosing] = useState(false);
+  const instant = useRef(false);
+  if (consent && consent !== shown) {
+    setShown(consent);
+    setClosing(false);
+  } else if (!consent && shown && !closing) {
+    if (instant.current) setShown(null);
+    else setClosing(true);
+    instant.current = false;
+  }
   useEffect(() => {
     if (!consent) return;
     setClient(call?.client ?? "");
     setAgreed(false);
     setNever(false);
     setCopied(false);
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && cancel();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      instant.current = true;
+      cancel();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [consent, call, cancel]);
-  if (!consent || !st) return null;
+  if (!shown || !st) return null;
   const clients = [...new Set([...Object.keys(st.clients), ...meetings.map((m) => m.client)])].filter((c) => c && c !== "Unsorted").sort();
   const given = client !== "" && st.consentGiven.includes(client);
   const copy = async () => {
@@ -417,8 +440,12 @@ export function ConsentSheet() {
     setCopied(true);
   };
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/20 p-6">
-      <div role="dialog" aria-modal="true" aria-labelledby="consent-title" className="mi-card mi-enter w-full max-w-[520px] p-6">
+    <div
+      data-closing={closing}
+      onAnimationEnd={(e) => closing && e.target === e.currentTarget && setShown(null)}
+      className="mi-scrim fixed inset-0 z-50 grid place-items-center bg-black/20 p-6"
+    >
+      <div role="dialog" aria-modal="true" aria-labelledby="consent-title" className="mi-card mi-pop w-full max-w-[520px] p-6">
         <h2 id="consent-title" className="text-[18px] font-semibold">
           Before you record
         </h2>

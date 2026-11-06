@@ -10,6 +10,9 @@ import { SetupView } from "./views/Setup";
 export default function App() {
   const view = useStore((s) => s.view);
   const toast = useStore((s) => s.toast);
+  // Keep the last toast mounted after it clears so it can fade out.
+  const [lastToast, setLastToast] = useState(toast);
+  if (toast && toast !== lastToast) setLastToast(toast);
   const hasMeeting = useStore((s) => !!s.meeting);
   const init = useStore((s) => s.init);
   const [platform, setPlatform] = useState<Platform>(detected);
@@ -47,9 +50,14 @@ export default function App() {
         </div>
       </div>
       <ConsentSheet />
-      {toast && (
-        <div role={toast.error ? "alert" : "status"} className={`mi-card mi-enter fixed bottom-5 left-1/2 max-w-[640px] -translate-x-1/2 rounded-lg! px-4 py-2.5 text-[14px] font-medium ${toast.error ? "text-record-text" : ""}`}>
-          {toast.msg}
+      {lastToast && (
+        <div
+          role={lastToast.error ? "alert" : "status"}
+          data-open={!!toast}
+          aria-hidden={!toast}
+          className={`mi-card mi-toast fixed bottom-5 left-1/2 max-w-[640px] -translate-x-1/2 rounded-lg! px-4 py-2.5 text-[14px] font-medium ${lastToast.error ? "text-record-text" : ""}`}
+        >
+          {lastToast.msg}
         </div>
       )}
     </div>

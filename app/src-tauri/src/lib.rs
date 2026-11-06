@@ -645,6 +645,7 @@ fn stop(app: &AppHandle) -> Res<String> {
 /// Start recording and name the meeting after the calendar event and its client (NGR-170).
 fn record_call(app: &AppHandle, title: Option<&str>, client: Option<&str>) -> Res<Meeting> {
     let mut meeting = start(app)?;
+    *PENDING_CALL.lock().unwrap() = None;
     let engine = app.state::<AppState>().engine();
     let mut s = engine.store.lock().unwrap();
     if let Some(t) = title.map(str::trim).filter(|t| !t.is_empty()) {
@@ -679,6 +680,21 @@ struct CallSuggestion {
     client: Option<String>,
 }
 
+/// The suggestion still on offer: the window asks for it when it loads, so a call that started
+/// before the window was listening (or before Mirona opened) is never missed. Cleared when the
+/// call ends, when it is recorded, or when the user dismisses it.
+static PENDING_CALL: Mutex<Option<CallSuggestion>> = Mutex::new(None);
+
+#[tauri::command]
+fn pending_call() -> Option<CallSuggestion> {
+    PENDING_CALL.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn dismiss_call() {
+    *PENDING_CALL.lock().unwrap() = None;
+}
+
 /// Every 3 s: when a call app newly opens the mic and nothing records, suggest recording, or
 /// record right away if the calendar names a client the user allowed to auto-record.
 fn watch_calls(app: AppHandle) {
@@ -693,6 +709,17 @@ fn watch_calls(app: AppHandle) {
             }
             let calls = mirona_capture::calls::calls_using_mic();
             let new = calls.iter().find(|c| !seen.contains(&c.name)).cloned();
+            // The suggested app let go of the mic: the call is over, the banner goes.
+            {
+                let mut pending = PENDING_CALL.lock().unwrap();
+                if pending
+                    .as_ref()
+                    .is_some_and(|p| !calls.iter().any(|c| c.name == p.app))
+                {
+                    *pending = None;
+                    app.emit("call", None::<CallSuggestion>).ok();
+                }
+            }
             seen = calls.into_iter().map(|c| c.name).collect();
             let Some(call) = new else { continue };
             if app.state::<AppState>().session.lock().unwrap().is_some() {
@@ -727,15 +754,13 @@ fn watch_calls(app: AppHandle) {
                     call.name
                 ),
             );
-            app.emit(
-                "call",
-                CallSuggestion {
-                    app: call.name,
-                    title,
-                    client,
-                },
-            )
-            .ok();
+            let suggestion = CallSuggestion {
+                app: call.name,
+                title,
+                client,
+            };
+            *PENDING_CALL.lock().unwrap() = Some(suggestion.clone());
+            app.emit("call", Some(suggestion)).ok();
         }
     });
 }
@@ -1439,6 +1464,8 @@ pub fn run() {
             delete_client,
             run_retention,
             set_encryption,
+            pending_call,
+            dismiss_call,
             add_demo_meetings,
             list_templates,
             regenerate,
