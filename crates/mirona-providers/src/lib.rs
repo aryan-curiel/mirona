@@ -2,6 +2,7 @@
 //! land in later milestones; the `fake` module backs the prototype and tests.
 
 pub mod config;
+pub mod net;
 pub mod questions;
 
 #[cfg(feature = "anthropic")]

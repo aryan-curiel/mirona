@@ -35,6 +35,7 @@ pub fn app_dir() -> PathBuf {
 /// Config and folders from `app_dir`, the same way the app resolves them.
 pub fn load(app_dir: &Path) -> Result<(Config, Paths), String> {
     let cfg = Config::load(&mirona_engine::config_path(app_dir))?;
+    mirona_providers::net::set_privacy(cfg.privacy);
     let paths = Paths::resolve(&cfg, app_dir, &mirona_engine::documents_dir());
     Ok((cfg, paths))
 }
@@ -85,6 +86,9 @@ pub struct TranscriptArgs {
     pub from: Option<String>,
     /// End of the range (exclusive), same format. Default: the end.
     pub to: Option<String>,
+    /// Include lines tagged sensitive (passwords, salaries, health). Only when the user asked
+    /// for that content. Redacted lines stay hidden regardless.
+    pub include_sensitive: Option<bool>,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -129,7 +133,8 @@ impl Server {
         let store = self.store()?;
         let from = a.from.as_deref().map(parse_at).transpose()?;
         let to = a.to.as_deref().map(parse_at).transpose()?;
-        Ok(transcript(&store.meeting(&a.id)?, from, to))
+        let all = a.include_sensitive.unwrap_or(false);
+        Ok(transcript(&store.meeting(&a.id)?, from, to, all))
     }
 
     #[tool(
@@ -147,8 +152,9 @@ impl Server {
             .filter(|i| i.client.to_lowercase().contains(&client))
             .filter(|i| !(a.open_only.unwrap_or(false) && i.done))
             .map(|i| {
+                let m = store.meeting(&i.meeting_id).ok();
                 json!({
-                    "id": i.id, "text": i.text, "owner": i.owner, "due": i.due, "done": i.done,
+                    "id": i.id, "text": item_text(m.as_ref(), &i), "owner": i.owner, "due": i.due, "done": i.done,
                     "client": i.client, "meeting_id": i.meeting_id, "meeting": i.meeting_title,
                     "at": i.at_ms.map(at), "needs_review": i.needs_review,
                 })
@@ -223,7 +229,7 @@ pub fn meeting(store: &Store, id: &str) -> Result<Value, String> {
         .into_iter()
         .filter(|a| a.meeting_id == m.id)
         .map(|a| {
-            json!({ "id": a.id, "text": a.text, "owner": a.owner, "due": a.due, "done": a.done,
+            json!({ "id": a.id, "text": item_text(Some(&m), &a), "owner": a.owner, "due": a.due, "done": a.done,
                     "at": a.at_ms.map(at), "needs_review": a.needs_review })
         })
         .collect();
@@ -258,7 +264,13 @@ pub fn meeting(store: &Store, id: &str) -> Result<Value, String> {
 }
 
 /// `[m:ss] Speaker: text` lines for segments starting in `[from, to)` (milliseconds).
-pub fn transcript(m: &Meeting, from: Option<u32>, to: Option<u32>) -> String {
+/// Sensitive lines read `[redacted]` unless `include_sensitive`; redacted ones always do.
+pub fn transcript(
+    m: &Meeting,
+    from: Option<u32>,
+    to: Option<u32>,
+    include_sensitive: bool,
+) -> String {
     let mut out = format!("# {} · {} · {}\n", m.title, m.client, m.date_label);
     for s in &m.segments {
         if from.is_some_and(|f| s.start_ms < f) || to.is_some_and(|t| s.start_ms >= t) {
@@ -269,7 +281,7 @@ pub fn transcript(m: &Meeting, from: Option<u32>, to: Option<u32>) -> String {
             .iter()
             .find(|p| p.id == s.speaker_id)
             .map_or(s.speaker_id.as_str(), |p| &p.name);
-        let text = if s.redacted || sensitive(s) {
+        let text = if s.redacted || (sensitive(s) && !include_sensitive) {
             "[redacted]"
         } else {
             &s.text
@@ -277,6 +289,20 @@ pub fn transcript(m: &Meeting, from: Option<u32>, to: Option<u32>) -> String {
         writeln!(out, "[{}] {who}: {text}", at(s.start_ms)).ok();
     }
     out
+}
+
+/// An action item said on a sensitive or redacted line shows `[redacted]` instead.
+fn item_text(m: Option<&Meeting>, a: &mirona_core::ActionItem) -> String {
+    let hidden = m.is_some_and(|m| {
+        m.segments
+            .iter()
+            .any(|s| Some(s.start_ms) == a.at_ms && (s.redacted || sensitive(s)))
+    });
+    if hidden {
+        "[redacted]".into()
+    } else {
+        a.text.clone()
+    }
 }
 
 /// Tagged sensitive (at/above threshold, or confirmed by the user): kept from agents.
@@ -324,7 +350,7 @@ mod tests {
                 Some((m, s))
             })
             .expect("the demo data has a sensitive line");
-        let t = transcript(&m, None, None);
+        let t = transcript(&m, None, None, false);
         assert!(!t.contains(&seg.text) && t.contains("[redacted]"), "{t}");
         let v = meeting(&store, &m.id).unwrap();
         assert!(v["unconfirmed"].is_array());
@@ -335,6 +361,119 @@ mod tests {
                 .iter()
                 .all(|a| a["needs_review"].is_boolean())
         );
+    }
+
+    /// Writes back everything it was shown, so anything that reached the model would show up
+    /// in the summary.
+    struct Echo;
+    impl mirona_providers::Provider for Echo {
+        fn id(&self) -> &'static str {
+            "echo"
+        }
+        fn locality(&self) -> mirona_core::Locality {
+            mirona_core::Locality::Local
+        }
+    }
+    impl mirona_engine::Labelled for Echo {
+        fn label(&self) -> String {
+            "echo".into()
+        }
+    }
+    impl mirona_providers::LlmProvider for Echo {
+        fn complete(
+            &self,
+            p: &mirona_providers::Prompt<'_>,
+            on_text: &mut (dyn FnMut(&str) + Send),
+        ) -> impl Future<Output = mirona_providers::Result<mirona_providers::Completion>> + Send
+        {
+            let text = if p.system.contains("\"notes\"") {
+                json!({ "notes": [{ "kind": "note", "text": p.user, "segment": 0 }] })
+            } else {
+                json!({ "overview": p.user, "decisions": [{ "text": p.user, "segment": 0 }],
+                        "action_items": [], "open_questions": [] })
+            }
+            .to_string();
+            on_text(&text);
+            std::future::ready(Ok(mirona_providers::Completion {
+                text,
+                usage: mirona_providers::Usage::default(),
+            }))
+        }
+    }
+
+    /// NGR-166: a meeting with a password and a salary leaks neither through the summary,
+    /// the enhanced notes, nor any MCP tool, unless the agent asks for sensitive lines.
+    #[test]
+    fn a_password_and_a_salary_never_leak() {
+        use mirona_core::{Tag, TagKind};
+        const SECRETS: [&str; 2] = ["Tulip-4471", "182,000"];
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(dir.path()).unwrap();
+        let id = store.start_meeting("m-1").unwrap().id;
+        let lines = [
+            ("me", "Let's go through the onboarding."),
+            ("them", "The staging password is Tulip-4471, by the way."),
+            ("them", "And my salary would be 182,000 a year."),
+            ("me", "I'll send the onboarding checklist."),
+        ];
+        for (n, (who, text)) in lines.iter().enumerate() {
+            let sensitive = text.contains("Tulip") || text.contains("salary");
+            let n32 = u32::try_from(n).unwrap();
+            store
+                .push_segment(
+                    &id,
+                    mirona_core::Segment {
+                        id: format!("{id}-{n}"),
+                        speaker_id: (*who).into(),
+                        start_ms: n32 * 5000,
+                        end_ms: n32 * 5000 + 4000,
+                        text: (*text).into(),
+                        redacted: false,
+                        tags: if sensitive {
+                            vec![Tag {
+                                kind: TagKind::Sensitive,
+                                label: "Sensitive".into(),
+                            }]
+                        } else {
+                            vec![]
+                        },
+                        answers: vec![],
+                        owners: vec![],
+                        due: None,
+                    },
+                )
+                .unwrap();
+        }
+        store
+            .set_notes(&id, vec!["onboarding".into(), "checklist".into()])
+            .unwrap();
+        let paths = mirona_engine::Paths {
+            meetings: dir.path().into(),
+            models: dir.path().join("models"),
+            templates: dir.path().join("templates"),
+        };
+        let shared = std::sync::Arc::new(std::sync::Mutex::new(store));
+        mirona_engine::summarize_with(&shared, &paths, &id, "client-call", &Echo, &mut |_| {})
+            .unwrap();
+        let store = shared.lock().unwrap();
+        let m = store.meeting(&id).unwrap();
+        let summary = serde_json::to_string(&(&m.summary, &m.notes.enhanced)).unwrap();
+        assert!(summary.contains("onboarding"), "the echo saw the meeting");
+
+        let outputs = [
+            summary,
+            meeting(&store, &id).unwrap().to_string(),
+            transcript(&m, None, None, false),
+            search(&store, "Tulip").unwrap().to_string(),
+            search(&store, "salary").unwrap().to_string(),
+        ];
+        for out in &outputs {
+            for s in SECRETS {
+                assert!(!out.contains(s), "{s} leaked: {out}");
+            }
+        }
+        let asked = transcript(&m, None, None, true);
+        assert!(SECRETS.iter().all(|s| asked.contains(s)), "{asked}");
     }
 
     #[test]

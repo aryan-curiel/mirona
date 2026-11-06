@@ -29,21 +29,7 @@ impl OpenAi {
     }
 }
 
-/// `localhost`, 127.0.0.0/8 or `[::1]`. ponytail: LAN hosts count as cloud (safe side); add an
-/// explicit "this server is mine" switch if someone runs LM Studio on another box.
-pub fn is_loopback(url: &str) -> bool {
-    let rest = url.split_once("://").map_or(url, |(_, r)| r);
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
-    let host = match host.strip_prefix('[') {
-        Some(v6) => v6.split(']').next().unwrap_or_default(),
-        None => host.split(':').next().unwrap_or_default(),
-    };
-    host.eq_ignore_ascii_case("localhost")
-        || host
-            .parse::<std::net::IpAddr>()
-            .is_ok_and(|ip| ip.is_loopback())
-}
+pub use crate::net::is_loopback;
 
 pub fn request(model: &str, base_url: &str, prompt: &Prompt<'_>) -> Value {
     let mut body = json!({
@@ -128,6 +114,7 @@ impl LlmProvider for OpenAi {
         // worker thread. Switch to an async client if they ever share the UI executor.
         async move {
             let err = |e: &dyn std::fmt::Display| Error::Provider(format!("openai: {e}"));
+            crate::net::allow(&self.base_url, self.locality())?;
             let mut req = self
                 .http
                 .post(format!("{}/chat/completions", self.base_url));
@@ -218,6 +205,8 @@ mod tests {
         let url = std::env::var("MIRONA_OPENAI_URL").unwrap_or(OPENAI_URL.into());
         let model = std::env::var("MIRONA_OPENAI_MODEL").unwrap_or("gpt-4o-mini".into());
         let llm = OpenAi::new(url, model, std::env::var("OPENAI_API_KEY").ok());
+        let _g = crate::net::tests::SWITCH.lock().unwrap();
+        crate::net::set_privacy(false); // a cloud call, on purpose
         let p = Prompt {
             system: "Answer with a JSON object {\"word\": string}.",
             user: "Say hello.",

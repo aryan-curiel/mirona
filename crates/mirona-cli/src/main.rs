@@ -16,6 +16,9 @@ use std::time::Duration;
 #[derive(Parser)]
 #[command(name = "mirona", version, about = "Local-first meeting memory")]
 struct Cli {
+    /// Privacy mode for this run, whatever config.toml says: only this machine is reachable
+    #[arg(long, global = true)]
+    privacy: bool,
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -49,6 +52,11 @@ enum Cmd {
     Compress,
     /// Run the MCP server on stdio (for Claude Code / Claude Desktop)
     Mcp,
+    /// Show privacy mode, or turn it on/off (the same setting as the app's switch)
+    Privacy {
+        #[arg(value_parser = ["on", "off"])]
+        state: Option<String>,
+    },
     /// Score the classifiers on labelled examples: the public synthetic set plus your own
     /// corrections. Accuracy, precision/recall per question, latency
     Eval {
@@ -73,7 +81,12 @@ enum Cmd {
 
 fn main() {
     let app_dir = mirona_mcp::app_dir();
-    let res = match Cli::parse().cmd {
+    let cli = Cli::parse();
+    if cli.privacy {
+        // SAFETY: set before any other thread exists.
+        unsafe { std::env::set_var(mirona_providers::config::PRIVACY_ENV, "1") };
+    }
+    let res = match cli.cmd {
         Cmd::Record => record(&app_dir),
         Cmd::Stop => stop(&app_dir),
         Cmd::List => list(&app_dir),
@@ -84,6 +97,7 @@ fn main() {
         Cmd::Reindex => reindex(&app_dir),
         Cmd::Compress => compress(&app_dir),
         Cmd::Mcp => mirona_mcp::serve(),
+        Cmd::Privacy { state } => privacy(&app_dir, state.as_deref()),
         Cmd::Eval {
             set,
             with,
@@ -121,7 +135,7 @@ fn show(app_dir: &Path, id: &str) -> Result {
     let m = store.meeting(id)?;
     print_digest(&m, &store.action_items());
     println!("\n## Transcript");
-    print!("{}", mirona_mcp::transcript(&m, None, None));
+    print!("{}", mirona_mcp::transcript(&m, None, None, false));
     Ok(())
 }
 
@@ -220,6 +234,11 @@ fn run_eval(
     );
     for id in &with {
         let report = match id.as_str() {
+            "jev" if cfg.privacy => {
+                return Err(
+                    "privacy mode is on, so Jev can't be reached: `mirona privacy off`".into(),
+                );
+            }
             "jev" => {
                 // The keychain key (Settings → API keys), or TYPESAFE_API_KEY for dev and CI.
                 let key = mirona_providers::keychain::api_key("jev")
@@ -252,6 +271,30 @@ fn run_eval(
         };
         println!("{}", report.1.markdown(&report.0));
     }
+    Ok(())
+}
+
+fn privacy(app_dir: &Path, state: Option<&str>) -> Result {
+    use mirona_providers::config::Config;
+    let path = mirona_engine::config_path(app_dir);
+    if let Some(state) = state {
+        // Read the file itself: `--privacy` must not be written back as the saved setting.
+        let mut cfg = Config::load(&path)?;
+        if std::env::var_os(mirona_providers::config::PRIVACY_ENV).is_some() {
+            return Err("`mirona privacy on|off` saves the setting; drop --privacy".into());
+        }
+        cfg.privacy = state == "on";
+        cfg.save(&path)?;
+    }
+    let on = Config::load(&path)?.privacy;
+    println!(
+        "Privacy mode is {}",
+        if on {
+            "on: only this machine is reachable (Ollama, local models)"
+        } else {
+            "off: cloud providers can be used"
+        }
+    );
     Ok(())
 }
 

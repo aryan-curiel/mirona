@@ -619,8 +619,16 @@ pub fn follow_up_draft(store: &Shared, id: &str, llm: &impl LlmProvider) -> Resu
             .map(|d| format!("- {}", d.text))
             .collect()
     };
+    // An item said on a sensitive line never goes into an email (NGR-166).
+    let secret = |at: Option<u32>| {
+        m.segments.iter().any(|s| {
+            Some(s.start_ms) == at
+                && (s.redacted || s.tags.iter().any(|t| t.kind == TagKind::Sensitive))
+        })
+    };
     let actions: Vec<String> = items
         .iter()
+        .filter(|a| !secret(a.at_ms))
         .map(|a| {
             let owner = if confirmed.contains(&a.owner.as_str()) {
                 a.owner.as_str()

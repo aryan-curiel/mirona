@@ -25,6 +25,11 @@ pub struct Jev {
 
 impl Jev {
     pub fn new(api_key: impl Into<String>) -> Self {
+        Self::with_url(api_key, URL)
+    }
+
+    /// Another endpoint (a proxy, or a test server).
+    pub fn with_url(api_key: impl Into<String>, url: &str) -> Self {
         let http = ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(30)))
             .http_status_as_error(false)
@@ -33,7 +38,7 @@ impl Jev {
         Self {
             key: api_key.into(),
             model: MODEL.into(),
-            url: URL.into(),
+            url: url.into(),
             http,
         }
     }
@@ -123,6 +128,7 @@ impl Classifier for Jev {
         // thread. Switch to an async client if classifiers ever share the UI executor.
         async move {
             let err = |e: &dyn std::fmt::Display| Error::Provider(format!("jev: {e}"));
+            crate::net::allow(&self.url, self.locality())?;
             for attempt in 0..4 {
                 let mut r = self
                     .http

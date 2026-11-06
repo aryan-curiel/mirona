@@ -36,6 +36,9 @@ pub struct Config {
     pub clients: BTreeMap<String, String>,
 }
 
+/// Set to `1` to force privacy mode on, whatever `config.toml` says.
+pub const PRIVACY_ENV: &str = "MIRONA_PRIVACY";
+
 /// Cmd+Shift+R is a browser's hard reload, so one more modifier keeps it out of other apps' way.
 pub const DEFAULT_SHORTCUT: &str = "CmdOrCtrl+Alt+Shift+R";
 
@@ -89,12 +92,17 @@ impl Config {
     }
 
     /// A missing file means defaults; a broken one is an error, never silently reset.
+    /// `MIRONA_PRIVACY=1` (the CLI's `--privacy`) forces privacy mode on for this process.
     pub fn load(path: &Path) -> Result<Self, String> {
-        match std::fs::read_to_string(path) {
-            Ok(s) => toml::from_str(&s).map_err(|e| format!("{}: {e}", path.display())),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(e) => Err(format!("{}: {e}", path.display())),
+        let mut cfg: Self = match std::fs::read_to_string(path) {
+            Ok(s) => toml::from_str(&s).map_err(|e| format!("{}: {e}", path.display()))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Self::default(),
+            Err(e) => return Err(format!("{}: {e}", path.display())),
+        };
+        if std::env::var_os(PRIVACY_ENV).is_some_and(|v| v == "1") {
+            cfg.privacy = true;
         }
+        Ok(cfg)
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {

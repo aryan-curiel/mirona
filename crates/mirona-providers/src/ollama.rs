@@ -177,8 +177,13 @@ impl Provider for Ollama {
     fn id(&self) -> &'static str {
         "local-llm"
     }
+    /// Ollama on another machine is someone else's server.
     fn locality(&self) -> Locality {
-        Locality::Local
+        if crate::net::is_loopback(&self.url) {
+            Locality::Local
+        } else {
+            Locality::Cloud
+        }
     }
 }
 
@@ -191,6 +196,7 @@ impl Classifier for Ollama {
         let body = request(&self.model, text, questions);
         // ponytail: blocking HTTP inside the future, same as Jev (the engine's worker thread).
         async move {
+            crate::net::allow(&self.url, self.locality())?;
             let resp: Value = self
                 .http
                 .post(&self.url)
@@ -274,6 +280,7 @@ impl crate::LlmProvider for Ollama {
             let err = |e: &dyn std::fmt::Display| {
                 Error::Provider(format!("ollama ({}): {e}", self.model))
             };
+            crate::net::allow(&self.url, self.locality())?;
             let mut resp = self
                 .http
                 .post(&self.url)

@@ -102,6 +102,7 @@ impl LlmProvider for Anthropic {
         // ponytail: blocking HTTP inside the future, same as Jev (worker thread in the engine).
         async move {
             let err = |e: &dyn std::fmt::Display| Error::Provider(format!("anthropic: {e}"));
+            crate::net::allow(&self.url, self.locality())?;
             let mut resp = self
                 .http
                 .post(&self.url)
@@ -184,6 +185,8 @@ mod tests {
     #[ignore = "needs ANTHROPIC_API_KEY and network"]
     fn live_streams_a_completion() {
         let key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY");
+        let _g = crate::net::tests::SWITCH.lock().unwrap();
+        crate::net::set_privacy(false); // a cloud call, on purpose
         let p = Prompt {
             system: "Answer with only a JSON object {\"word\": string}.",
             user: "Say hello.",

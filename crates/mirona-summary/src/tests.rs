@@ -524,7 +524,7 @@ fn tag(m: &mut Meeting, i: usize, kind: TagKind) {
 }
 
 #[test]
-fn small_talk_is_dropped_and_sensitive_stays_off_cloud() {
+fn small_talk_is_dropped_and_sensitive_reaches_no_model() {
     let mut m = meeting(
         &[
             ("nadia", "00:01", "How was the weekend?"),
@@ -536,11 +536,10 @@ fn small_talk_is_dropped_and_sensitive_stays_off_cloud() {
     tag(&mut m, 0, TagKind::SmallTalk);
     tag(&mut m, 1, TagKind::Sensitive);
     tag(&mut m, 2, TagKind::Action);
-    let local = transcript_lines(&m, false);
-    assert_eq!(local.len(), 2, "{local:?}");
-    assert!(local[0].starts_with("[1 ") && local[0].contains("Tulip"));
-    let cloud = transcript_lines(&m, true);
-    assert!(cloud[0].contains("[redacted]"), "{cloud:?}");
+    let lines = transcript_lines(&m);
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(lines[0].starts_with("[1 ") && lines[0].contains("[redacted]"));
+    assert!(!lines.join("\n").contains("Tulip"), "{lines:?}");
 
     // Line 2 is a classified action; line 1 isn't, so an item citing only it needs review.
     assert!(classified_action(&m, Some(9000)));

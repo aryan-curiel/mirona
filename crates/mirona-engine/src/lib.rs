@@ -124,6 +124,7 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(store: Shared, cfg: Config, paths: Paths) -> Self {
+        mirona_providers::net::set_privacy(cfg.privacy);
         Self {
             store,
             paths,
@@ -152,6 +153,7 @@ impl Engine {
     }
 
     pub fn set_config(&self, cfg: Config) {
+        mirona_providers::net::set_privacy(cfg.privacy);
         *self.cfg.lock().unwrap() = cfg;
     }
 
