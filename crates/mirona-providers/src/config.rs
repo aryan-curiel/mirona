@@ -28,6 +28,14 @@ pub struct Config {
     pub llm: LlmSettings,
     /// Let MCP clients read meetings. Off: `mirona mcp` refuses to serve (NGR-148/150).
     pub mcp_enabled: bool,
+    /// Also serve MCP over streamable HTTP on 127.0.0.1 (`mcp_port`), for clients that can't
+    /// spawn a process. Every request needs one of `mcp_tokens` (NGR-168).
+    pub mcp_http: bool,
+    pub mcp_port: u16,
+    /// MCP client name → its bearer token. The name is what the activity log shows.
+    pub mcp_tokens: BTreeMap<String, String>,
+    /// Let MCP clients change meetings: mark action items done, rename speakers.
+    pub mcp_write: bool,
     /// Global start/stop-recording shortcut, as a Tauri accelerator ("CmdOrCtrl+Alt+Shift+R").
     pub shortcut: String,
     /// Question id → threshold, overriding the defaults in [`default_threshold`] (NGR-158).
@@ -47,6 +55,9 @@ pub struct Config {
 pub const PRIVACY_ENV: &str = "MIRONA_PRIVACY";
 
 /// Cmd+Shift+R is a browser's hard reload, so one more modifier keeps it out of other apps' way.
+/// Default port for MCP over HTTP.
+pub const DEFAULT_MCP_PORT: u16 = 7337;
+
 pub const DEFAULT_SHORTCUT: &str = "CmdOrCtrl+Alt+Shift+R";
 
 /// Which model the summary stage uses. API keys live in the OS keychain, never here.
@@ -69,6 +80,10 @@ impl Default for Config {
             template: "client-call".into(),
             llm: LlmSettings::default(),
             mcp_enabled: true,
+            mcp_http: false,
+            mcp_port: DEFAULT_MCP_PORT,
+            mcp_tokens: BTreeMap::new(),
+            mcp_write: false,
             shortcut: DEFAULT_SHORTCUT.into(),
             thresholds: BTreeMap::new(),
             clients: BTreeMap::new(),
@@ -160,6 +175,14 @@ mod tests {
         assert!((back.threshold("decision", false) - 0.95).abs() < 1e-6);
         assert!((back.threshold("smalltalk", true) - 0.6).abs() < 1e-6);
 
+        // MCP over HTTP: off, read-only and on the default port unless set.
+        assert_eq!(back.mcp_port, DEFAULT_MCP_PORT);
+        assert!(!back.mcp_http && !back.mcp_write);
+        cfg.mcp_http = true;
+        cfg.mcp_write = true;
+        cfg.mcp_port = 9000;
+        cfg.mcp_tokens
+            .insert("Claude Desktop".into(), "abc123".into());
         // Call detection: on by default, calendar and auto-record opt in.
         std::fs::write(&path, "privacy = false").unwrap();
         let old = Config::load(&path).unwrap();

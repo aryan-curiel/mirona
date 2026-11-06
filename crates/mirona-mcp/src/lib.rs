@@ -1,5 +1,7 @@
-//! Mirona's MCP server (NGR-148): read-only tools over the meeting store, on stdio, built on
-//! the official `rmcp` SDK. Shared by the `mirona-mcp` binary and `mirona mcp`.
+//! Mirona's MCP server (NGR-148): tools over the meeting store, on stdio and (NGR-168)
+//! streamable HTTP on localhost, built on the official `rmcp` SDK. Shared by the `mirona-mcp`
+//! binary, `mirona mcp` and the app. Write tools (`write.rs`) are listed only while
+//! `mcp_write` is on; every tool call lands in the activity log (`activity.rs`).
 //!
 //! Every call reloads `config.toml` and reads the meeting folders afresh into a private
 //! in-memory index ([`Store::open_snapshot`]), so the server sees what the app wrote a moment
@@ -14,12 +16,24 @@ use mirona_core::Meeting;
 use mirona_engine::Paths;
 use mirona_providers::config::Config;
 use mirona_store::Store;
+use rmcp::handler::server::router::tool::ToolRouter;
+use rmcp::handler::server::tool::ToolCallContext;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::{ServerHandler, ServiceExt, schemars, tool, tool_handler, tool_router};
+use rmcp::model::{CallToolRequestParams, CallToolResponse};
+use rmcp::service::RequestContext;
+use rmcp::{
+    ErrorData, RoleServer, ServerHandler, ServiceExt, schemars, tool, tool_handler, tool_router,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
+
+pub mod activity;
+mod web;
+mod write;
+pub use activity::{Activity, activity};
+pub use web::{HttpServer, PATH as HTTP_PATH, new_token, serve_http};
 
 /// Most transcript moments `search_meetings` returns.
 const MAX_MOMENTS: usize = 30;
@@ -42,7 +56,7 @@ pub fn load(app_dir: &Path) -> Result<(Config, Paths), String> {
 
 /// Serve MCP on stdin/stdout until the client hangs up. Refuses when MCP is turned off.
 pub fn serve() -> Result<(), String> {
-    let server = Server { app_dir: app_dir() };
+    let server = Server::new(app_dir());
     if !load(&server.app_dir)?.0.mcp_enabled {
         return Err(DISABLED.into());
     }
@@ -63,6 +77,21 @@ pub fn serve() -> Result<(), String> {
 #[derive(Clone)]
 pub struct Server {
     app_dir: PathBuf,
+}
+
+impl Server {
+    pub fn new(app_dir: PathBuf) -> Self {
+        Self { app_dir }
+    }
+
+    /// The read tools, plus the write tools while `mcp_write` is on (checked per request).
+    fn router(&self) -> ToolRouter<Self> {
+        let mut r = Self::tool_router();
+        if load(&self.app_dir).is_ok_and(|(c, _)| c.mcp_write) {
+            r.merge(Self::write_router());
+        }
+        r
+    }
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -165,6 +194,7 @@ impl Server {
 }
 
 #[tool_handler(
+    router = self.router(),
     name = "mirona",
     instructions = "Mirona is the user's local meeting memory: transcripts, summaries, \
     decisions and action items from their calls. Search first (search_meetings) to find meeting \
@@ -172,7 +202,28 @@ impl Server {
     matters, ideally with a from/to range around a search hit."
 )]
 #[allow(clippy::unused_async_trait_impl)] // the macro's generated handlers
-impl ServerHandler for Server {}
+impl ServerHandler for Server {
+    /// Routes the call and logs who called what (never arguments or results).
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        let client = context
+            .extensions
+            .get::<http::request::Parts>()
+            .and_then(|p| p.extensions.get::<web::ClientName>())
+            .map_or_else(|| "stdio".to_string(), |c| c.0.clone());
+        let tool = request.name.to_string();
+        let res = self
+            .router()
+            .call(ToolCallContext::new(self, request, context))
+            .await;
+        let ok = matches!(&res, Ok(CallToolResponse::Complete(r)) if r.is_error != Some(true));
+        activity::record(&self.app_dir, &client, &tool, ok);
+        res
+    }
+}
 
 impl Server {
     /// A fresh read of the meetings folder, unless MCP was turned off in the meantime.
@@ -245,7 +296,7 @@ pub fn meeting(store: &Store, id: &str) -> Result<Value, String> {
         "client": m.client,
         "date": m.date_label,
         "duration_min": m.duration_min,
-        "speakers": m.speakers.iter().map(|p| &p.name).collect::<Vec<_>>(),
+        "speakers": m.speakers.iter().map(|p| json!({ "id": p.id, "name": p.name })).collect::<Vec<_>>(),
         "transcript_segments": m.segments.len(),
         "overview": s.map(|s| &s.overview),
         "decisions": s.map(|s| timed(&s.decisions)).unwrap_or_default(),

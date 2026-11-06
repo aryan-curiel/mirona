@@ -48,6 +48,8 @@ struct AppState {
     importing: std::sync::atomic::AtomicBool,
     /// Problems found at start (bad config, unreadable meetings, shortcut taken).
     startup_errors: Vec<String>,
+    /// MCP over localhost HTTP, while `mcp_enabled` and `mcp_http` are on (NGR-168).
+    mcp_http: Mutex<Option<mirona_mcp::HttpServer>>,
 }
 
 impl AppState {
@@ -829,6 +831,17 @@ struct Settings {
     llm_base_url: String,
     template: String,
     mcp_enabled: bool,
+    /// MCP over HTTP on 127.0.0.1:`mcp_port`, and whether agents may write (NGR-168).
+    #[serde(default)]
+    mcp_http: bool,
+    #[serde(default)]
+    mcp_port: u16,
+    #[serde(default)]
+    mcp_write: bool,
+    /// Names of the HTTP clients holding a token; read-only (tokens never leave the backend
+    /// after they're created).
+    #[serde(default, skip_deserializing)]
+    mcp_clients: Vec<String>,
     /// Global start/stop shortcut, e.g. "CmdOrCtrl+Alt+Shift+R".
     shortcut: String,
     meetings_dir: PathBuf,
@@ -902,6 +915,10 @@ impl Settings {
             llm_base_url: cfg.llm.base_url.clone(),
             template: cfg.template.clone(),
             mcp_enabled: cfg.mcp_enabled,
+            mcp_http: cfg.mcp_http,
+            mcp_port: cfg.mcp_port,
+            mcp_write: cfg.mcp_write,
+            mcp_clients: cfg.mcp_tokens.keys().cloned().collect(),
             shortcut: cfg.shortcut.clone(),
             meetings_dir: paths.meetings.clone(),
             models_dir: paths.models.clone(),
@@ -959,6 +976,9 @@ impl Settings {
             return Err("pick a summary template".into());
         }
         parse_shortcut(&self.shortcut)?;
+        if self.mcp_port < 1024 {
+            return Err("Pick an MCP port from 1024 to 65535.".into());
+        }
         if !["jev", "local-llm", "off"].contains(&self.classification.as_str()) {
             return Err(format!("unknown classifier {}", self.classification));
         }
@@ -986,6 +1006,9 @@ impl Settings {
         cfg.llm.base_url = base.into();
         cfg.template = self.template.trim().into();
         cfg.mcp_enabled = self.mcp_enabled;
+        cfg.mcp_http = self.mcp_http;
+        cfg.mcp_port = self.mcp_port;
+        cfg.mcp_write = self.mcp_write;
         cfg.shortcut = self.shortcut.trim().into();
         cfg.meetings_dir = dir(&self.meetings_dir, &defaults.meetings);
         cfg.models_dir = dir(&self.models_dir, &defaults.models);
@@ -1021,6 +1044,7 @@ fn save_settings(app: AppHandle, st: St, settings: Settings) -> Res<Settings> {
     let cfg = settings.apply(engine.config(), &defaults)?;
     let paths = Paths::resolve(&cfg, &st.app_dir, &st.documents);
     swap_shortcut(&app, &engine.config().shortcut, &cfg.shortcut)?;
+    sync_mcp_http(&st, &cfg)?;
     if paths.meetings == engine.paths.meetings && paths.models == engine.paths.models {
         engine.save_config(&st.app_dir, cfg.clone())?;
     } else {
@@ -1035,6 +1059,63 @@ fn save_settings(app: AppHandle, st: St, settings: Settings) -> Res<Settings> {
         *st.engine.write().unwrap() = Arc::new(next);
     }
     Ok(Settings::of(&cfg, &paths))
+}
+
+/// Start, stop or move the MCP HTTP server to match `cfg`. If the new port can't be bound,
+/// the old server keeps running and the error says why.
+fn sync_mcp_http(st: &AppState, cfg: &Config) -> Res<()> {
+    let want = (cfg.mcp_enabled && cfg.mcp_http).then_some(cfg.mcp_port);
+    let mut running = st.mcp_http.lock().unwrap();
+    let old = running.as_ref().map(|s| s.port);
+    if old == want {
+        return Ok(());
+    }
+    *running = None; // stops it, freeing the port
+    let Some(port) = want else { return Ok(()) };
+    match mirona_mcp::serve_http(st.app_dir.clone(), port) {
+        Ok(s) => {
+            *running = Some(s);
+            Ok(())
+        }
+        Err(e) => {
+            *running = old.and_then(|p| mirona_mcp::serve_http(st.app_dir.clone(), p).ok());
+            Err(format!(
+                "MCP over HTTP: {e}. Another app may use that port."
+            ))
+        }
+    }
+}
+
+/// Newest MCP tool calls first: who called what, ok or not (NGR-168).
+#[tauri::command]
+fn mcp_activity(st: St, limit: usize) -> Vec<mirona_mcp::Activity> {
+    mirona_mcp::activity(&st.app_dir, limit)
+}
+
+/// A new HTTP client token for `name`, returned once (the UI shows it in a config snippet).
+#[tauri::command]
+fn add_mcp_client(st: St, name: String) -> Res<String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("Give the client a name, e.g. Claude Desktop.".into());
+    }
+    let engine = st.engine();
+    let mut cfg = engine.config();
+    if cfg.mcp_tokens.contains_key(name) {
+        return Err(format!("{name} already has a token. Revoke it first."));
+    }
+    let token = mirona_mcp::new_token()?;
+    cfg.mcp_tokens.insert(name.into(), token.clone());
+    engine.save_config(&st.app_dir, cfg)?;
+    Ok(token)
+}
+
+#[tauri::command]
+fn revoke_mcp_client(st: St, name: String) -> Res<()> {
+    let engine = st.engine();
+    let mut cfg = engine.config();
+    cfg.mcp_tokens.remove(&name);
+    engine.save_config(&st.app_dir, cfg)
 }
 
 /// Move the record shortcut from `old` to `new` right away. If `new` can't be registered
@@ -1159,8 +1240,13 @@ pub fn run() {
                 processing: Mutex::new(vec![]),
                 importing: false.into(),
                 startup_errors: errors,
+                mcp_http: Mutex::new(None),
             });
             watch_calls(app.handle().clone());
+            let st = app.state::<AppState>();
+            if let Err(e) = sync_mcp_http(&st, &st.engine().config()) {
+                eprintln!("mirona: {e}");
+            }
             // Recordings a crash left as WAV get compressed in the background.
             let engine = app.state::<AppState>().engine();
             std::thread::spawn(move || {
@@ -1206,6 +1292,9 @@ pub fn run() {
             pick_folder,
             get_settings,
             save_settings,
+            mcp_activity,
+            add_mcp_client,
+            revoke_mcp_client,
         ])
         // Closing the window keeps Mirona in the menu bar, so recording can still be started
         // from the tray or the shortcut. Quit from the tray menu.
@@ -1255,12 +1344,26 @@ mod tests {
         moved.meetings_dir = "/elsewhere".into();
         moved.stt = "whisper".into();
         moved.mcp_enabled = false;
+        moved.mcp_http = true;
+        moved.mcp_port = 9000;
+        moved.mcp_write = true;
         let cfg = moved.apply(cfg, &d).unwrap();
+        assert!(cfg.mcp_http && cfg.mcp_write);
+        assert_eq!(cfg.mcp_port, 9000);
         assert_eq!(cfg.meetings_dir, Some("/elsewhere".into()));
         assert_eq!(cfg.providers["stt"], "whisper");
         assert!(!cfg.mcp_enabled);
         let paths = Paths::resolve(&cfg, Path::new("/app"), Path::new("/home/me/Documents"));
         assert_eq!(Settings::of(&cfg, &paths), moved);
+
+        // Tokens aren't settings: saving keeps them, and only client names come back.
+        let mut with_token = cfg.clone();
+        with_token.mcp_tokens.insert("Cursor".into(), "t0k".into());
+        let back = moved.apply(with_token, &d).unwrap();
+        assert_eq!(back.mcp_tokens["Cursor"], "t0k");
+        assert_eq!(Settings::of(&back, &paths).mcp_clients, ["Cursor"]);
+        moved.mcp_port = 80;
+        assert!(moved.apply(cfg, &d).is_err(), "privileged port");
     }
 
     #[test]

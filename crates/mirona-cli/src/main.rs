@@ -50,8 +50,16 @@ enum Cmd {
     Reindex,
     /// Compress recordings still kept as WAV (older meetings, crashed sessions) to Opus
     Compress,
-    /// Run the MCP server on stdio (for Claude Code / Claude Desktop)
-    Mcp,
+    /// Run the MCP server on stdio (for Claude Code / Claude Desktop), or on localhost HTTP
+    Mcp {
+        /// Serve streamable HTTP on 127.0.0.1 instead of stdio. Clients need a token from
+        /// Settings (`mcp_tokens` in config.toml)
+        #[arg(long)]
+        http: bool,
+        /// HTTP port. Default: `mcp_port` from config.toml
+        #[arg(long, requires = "http")]
+        port: Option<u16>,
+    },
     /// Show privacy mode, or turn it on/off (the same setting as the app's switch)
     Privacy {
         #[arg(value_parser = ["on", "off"])]
@@ -79,6 +87,25 @@ enum Cmd {
     },
 }
 
+/// `mirona mcp --http`: serves until killed.
+fn mcp_http(app_dir: &Path, port: Option<u16>) -> Result {
+    let cfg = mirona_mcp::load(app_dir)?.0;
+    if !cfg.mcp_enabled {
+        return Err(mirona_mcp::DISABLED.into());
+    }
+    let server = mirona_mcp::serve_http(app_dir.to_path_buf(), port.unwrap_or(cfg.mcp_port))?;
+    eprintln!(
+        "mirona: MCP on http://127.0.0.1:{}{}",
+        server.port,
+        mirona_mcp::HTTP_PATH
+    );
+    if cfg.mcp_tokens.is_empty() {
+        eprintln!("mirona: no client tokens yet: add one in Settings → Models and MCP");
+    }
+    server.wait();
+    Ok(())
+}
+
 fn main() {
     let app_dir = mirona_mcp::app_dir();
     let cli = Cli::parse();
@@ -96,7 +123,8 @@ fn main() {
         Cmd::Import { audio } => import(&app_dir, &audio),
         Cmd::Reindex => reindex(&app_dir),
         Cmd::Compress => compress(&app_dir),
-        Cmd::Mcp => mirona_mcp::serve(),
+        Cmd::Mcp { http: false, .. } => mirona_mcp::serve(),
+        Cmd::Mcp { http: true, port } => mcp_http(&app_dir, port),
         Cmd::Privacy { state } => privacy(&app_dir, state.as_deref()),
         Cmd::Eval {
             set,
