@@ -49,8 +49,10 @@ Lines with an obvious password, salary, account or card number are tagged on you
 sent, but a sensitive line without those words still goes to Jev. Keep privacy mode on for calls
 where that matters.
 
-Mirona never checks for updates on its own. New versions are on the
-[Releases](https://github.com/aryan-curiel/mirona/releases) page.
+Mirona checks for updates only if you turn it on (Settings › About, off by default) or click
+Check now. The check asks GitHub for the latest release, even in privacy mode, and sends nothing
+about your meetings. Updates install only when you click, after their signature is verified. New
+versions are also on the [Releases](https://github.com/aryan-curiel/mirona/releases) page.
 
 ## Checking it yourself
 

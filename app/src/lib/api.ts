@@ -57,7 +57,12 @@ export type Settings = {
   consentMessage: string;
   /** Clients who already agreed: no reminder for them. */
   consentGiven: string[];
+  /** Check GitHub for a new version on start and daily. */
+  checkUpdates: boolean;
 };
+
+/** A newer Mirona on GitHub: the "update" event, null when there is none. */
+export type UpdateInfo = { version: string; notes: string };
 
 /** A call app started using the mic: the "call" event (NGR-170). */
 export type CallSuggestion = { app: string; title: string | null; client: string | null };
@@ -140,6 +145,10 @@ export const api = {
   startCallRecording: (title: string | null, client: string | null) => invoke<Meeting>("start_call_recording", { title, client }),
   pendingCall: () => invoke<CallSuggestion | null>("pending_call"),
   dismissCall: () => invoke<void>("dismiss_call"),
+  checkUpdate: () => invoke<UpdateInfo | null>("check_update"),
+  pendingUpdate: () => invoke<UpdateInfo | null>("pending_update"),
+  /** Downloads, installs and restarts the app; only returns on failure. */
+  installUpdate: () => invoke<void>("install_update"),
   stopRecording: () => invoke<string>("stop_recording"),
   recordingState: () => invoke<RecState>("recording_state"),
   requestPermission: (kind: "mic" | "system" | "calendar") => invoke<boolean>("request_permission", { kind }),

@@ -62,6 +62,8 @@ pub struct Config {
     pub consent_message: String,
     /// Clients who already agreed: no reminder when recording them.
     pub consent_given: Vec<String>,
+    /// Check GitHub for a new version on start and daily. Off until the user turns it on.
+    pub check_updates: bool,
 }
 
 pub const DEFAULT_CONSENT_MESSAGE: &str = "Heads-up: I'm recording this call to take notes. The \
@@ -126,6 +128,7 @@ impl Default for Config {
             consent_reminder: true,
             consent_message: DEFAULT_CONSENT_MESSAGE.into(),
             consent_given: vec![],
+            check_updates: false,
         }
     }
 }

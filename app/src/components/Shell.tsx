@@ -425,6 +425,36 @@ export function CallBanner() {
   );
 }
 
+/** A newer Mirona is out (only when the user checks for updates): install and restart. */
+export function UpdateBanner() {
+  const current = useStore((s) => s.update);
+  const dismissed = useStore((s) => s.dismissedUpdate);
+  const rec = useStore((s) => s.recording);
+  const installing = useStore((s) => s.installing);
+  const install = useStore((s) => s.installUpdate);
+  const dismiss = useStore((s) => s.dismissUpdate);
+  const open = !!current && current.version !== dismissed && !rec;
+  const update = useLast(open ? current : null);
+  if (!update) return null;
+  return (
+    <Reveal open={open}>
+    <div role="status" className="flex min-h-14 shrink-0 items-center gap-4 border-b border-line-soft bg-[var(--mi-neutral-tint)] px-6 py-2 text-[13px]">
+      <Icon name="info" className="text-accent" />
+      <span className="flex-1 text-ink">
+        <span className="font-semibold">Mirona {update.version}</span> is available.
+        <span className="text-ink-3"> Installing restarts the app.</span>
+      </span>
+      <button type="button" className="mi-ghost min-h-11! px-4" onClick={dismiss} disabled={installing}>
+        Later
+      </button>
+      <button type="button" className="mi-btn-primary h-11 px-4" onClick={() => void install()} disabled={installing}>
+        {installing ? "Installing…" : "Install and restart"}
+      </button>
+    </div>
+    </Reveal>
+  );
+}
+
 export function RecordingBar() {
   const live = useStore((s) => s.recording);
   const rec = useLast(live);

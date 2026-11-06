@@ -91,7 +91,10 @@ For each call: record the whole call, then check the transcript has both "Me" an
   models › Models folder, about 490 MB), record 20 s, switch back to Parakeet.
 - [ ] **Model download from Settings:** with a model missing, Settings › AI models › Models folder
   lists it and offers the download, with progress and cancel. In privacy mode it still downloads
-  (the one exception, `net::allow_model`); nothing else reaches the network.
+  (the exception, `net::allow_model`); nothing else reaches the network.
+- [ ] **Updates** (Settings › About): Check now says "up to date" on the latest release. On an
+  older published build it shows the new version and the banner; Install and restart replaces
+  the app and reopens it on the new version. With the setting off, no request to github.com.
 - [ ] **Privacy mode on:** OpenAI and Anthropic can't be selected.
 - [ ] **API keys** (Settings › AI models): add a key for Anthropic (and OpenAI, Jev if you have them).
   Expected: "saved in the keychain"; the key isn't in `config.toml`.

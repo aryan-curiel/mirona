@@ -127,13 +127,18 @@ flowchart LR
     DL["Model download<br/>(user clicked)"] --> AM{"net::allow_model<br/>HTTPS to huggingface.co<br/>or github.com?"}
     AM -- yes --> OUT
     AM -- no --> REFUSE2
+    UP["Update check<br/>(turned on or clicked)"] --> AU{"net::allow_update<br/>HTTPS to github.com?"}
+    AU -- yes --> OUT
+    AU -- no --> REFUSE2
 ```
 
 Two checks, each in one place:
 
 - `check_privacy` refuses any provider whose locality is `Cloud` while privacy mode is on.
 - `net::allow` runs before every HTTP request; in privacy mode only loopback hosts pass. The
-  only exception is `net::allow_model`: model downloads the user starts, from pinned URLs.
+  exceptions are `net::allow_model` (model downloads the user starts, from pinned URLs) and
+  `net::allow_update` (the update check the user turned on, to github.com only;
+  `app/src-tauri/src/update.rs`).
 
 [privacy-audit.md](privacy-audit.md) is the release check that proves it, socket by socket.
 

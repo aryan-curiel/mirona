@@ -11,7 +11,10 @@ content said in the call never appears in a summary or an MCP result**.
   this machine), and cloud providers are refused even when pointed at one. The switch starts on
   in every process and is set from `config.toml` by the app, the CLI and the MCP server.
   `privacy_mode_opens_no_connection` proves it with a real socket.
-- **No other network code**: no telemetry, no update check. The one exception is the model
+- **Update check** (`app/src-tauri/src/update.rs`): off by default; runs only with Settings ›
+  About › Check for updates on, or on Check now. It calls `net::allow_update` (HTTPS to
+  `github.com` only) before the check and the download, and sends no meeting data.
+- **No other network code**: no telemetry. The other exception is the model
   downloader (NGR-174, `crates/mirona-engine/src/models.rs`): it runs only when the user clicks
   Download, calls `net::allow_model` (HTTPS to `huggingface.co` or `github.com` only), fetches
   pinned revisions and checks each file's SHA-256. It sends no meeting data, so privacy mode lets

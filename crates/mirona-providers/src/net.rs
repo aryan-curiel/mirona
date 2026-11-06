@@ -5,9 +5,10 @@
 //!
 //! The switch is process-wide and starts on: a process that never loaded its config can't
 //! reach the network. `Engine`, the CLI and the MCP server set it from `config.toml`.
-//! There is no telemetry and no update check, so nothing else in Mirona opens a connection.
-//! The one exception is [`allow_model`]: model downloads the user starts (NGR-174), from pinned
-//! URLs on [`MODEL_HOSTS`], carrying no meeting data.
+//! There is no telemetry, so nothing else in Mirona opens a connection. The two exceptions
+//! carry no meeting data: [`allow_model`], model downloads the user starts (NGR-174), from
+//! pinned URLs on [`MODEL_HOSTS`]; and [`allow_update`], the update check the user turned on
+//! (or started), only to [`UPDATE_HOST`].
 
 use crate::{Error, Locality, Result};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -63,6 +64,22 @@ pub fn allow_model(url: &str) -> Result<()> {
     Err(Error::PrivacyBlocked(host(url).to_string()))
 }
 
+/// Where app updates come from: the GitHub releases of the Mirona repo.
+pub const UPDATE_HOST: &str = "github.com";
+/// The update manifest the release workflow attaches to every release.
+pub const UPDATE_URL: &str =
+    "https://github.com/aryan-curiel/mirona/releases/latest/download/latest.json";
+
+/// Call before the update check and the update download. Allowed in privacy mode too: the
+/// user opted in (or clicked) and it sends nothing about their meetings. Only HTTPS to
+/// [`UPDATE_HOST`]; the download is verified against the public key built into the app.
+pub fn allow_update(url: &str) -> Result<()> {
+    if url.starts_with("https://") && host(url) == UPDATE_HOST {
+        return Ok(());
+    }
+    Err(Error::PrivacyBlocked(host(url).to_string()))
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -105,6 +122,18 @@ pub(crate) mod tests {
             "https://api.openai.com/v1",
         ] {
             assert!(allow_model(url).is_err(), "{url}");
+        }
+    }
+
+    #[test]
+    fn updates_come_only_from_github() {
+        assert!(allow_update(UPDATE_URL).is_ok());
+        for url in [
+            "http://github.com/aryan-curiel/mirona/releases/latest/download/latest.json",
+            "https://github.com.evil.com/latest.json",
+            "https://huggingface.co/latest.json",
+        ] {
+            assert!(allow_update(url).is_err(), "{url}");
         }
     }
 
