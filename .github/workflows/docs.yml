@@ -1,0 +1,59 @@
+# NGR-176: the docs site (guides + Rust API) on GitHub Pages. Built on release tags and on
+# demand only, to save Actions minutes. Pages needs a public repo (or a paid plan) and
+# Settings › Pages › Source: GitHub Actions.
+name: Docs
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: target/sherpa-onnx-prebuilt
+          prefix-key: v1-sherpa
+          save-if: false
+      - name: sherpa-onnx native libs
+        run: |
+          v=$(awk '/name = "sherpa-onnx-sys"/{getline; print $3}' Cargo.lock | tr -d '"')
+          n="sherpa-onnx-v$v-linux-x64-static-lib"
+          mkdir -p "$RUNNER_TEMP/sherpa" && cd "$RUNNER_TEMP/sherpa"
+          curl -fsSL -o "$n.tar.bz2" "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$v/$n.tar.bz2"
+          tar xjf "$n.tar.bz2"
+          echo "SHERPA_ONNX_LIB_DIR=$RUNNER_TEMP/sherpa/$n/lib" >> "$GITHUB_ENV"
+      - name: Linux deps
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: mdBook
+        run: |
+          mkdir -p "$RUNNER_TEMP/mdbook"
+          curl -fsSL https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-x86_64-unknown-linux-gnu.tar.gz \
+            | tar xz -C "$RUNNER_TEMP/mdbook"
+          echo "$RUNNER_TEMP/mdbook" >> "$GITHUB_PATH"
+      - run: scripts/build-docs.sh
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: target/book
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-22.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

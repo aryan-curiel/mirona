@@ -133,7 +133,7 @@ const CREDITS: [string, string, string][] = [
   ["Parakeet TDT 0.6B v2", "NVIDIA · ONNX export by sherpa-onnx", "CC-BY-4.0"],
   ["Whisper", "OpenAI · ggml weights by whisper.cpp", "MIT"],
   ["Silero VAD", "Silero Team", "MIT"],
-  ["Speaker models (M2)", "pyannote, WeSpeaker · packaged by speakrs", "MIT · CC-BY-4.0"],
+  ["Speaker models", "pyannote, WeSpeaker · packaged by speakrs", "MIT · CC-BY-4.0"],
 ];
 
 function ApiKey({ provider, label, saved }: { provider: string; label: string; saved: boolean }) {

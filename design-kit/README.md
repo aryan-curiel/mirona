@@ -11,9 +11,9 @@ Everything needed to start implementing the Mirona desktop app UI: the interacti
 | `prototype/` | `index.html`: the full interactive app prototype. Open it in a browser, no build or server needed. |
 | `design-system/` | `index.html`: logo, colors, classification tags, glass surfaces, type scale and core components. |
 | `tokens/` | `tokens.css` (CSS variables + ready-made `.mi-*` surface classes) and `tokens.json` (same values, for Tailwind or TS). |
-| `brand/` | `app-icon.svg` (64 px and up), `mark-small.svg` (under 64 px), `mark-mono.svg` (uses `currentColor`), `tray-template.svg` (black, for the macOS menu bar), `png/icon-16…1024.png`. |
-| `screenshots/` | Retina screenshots of every screen and state, for reference while building. `09-settings-window.png` and `10-onboarding-*.png` are taken from the app. |
-| `source/` | The original `.dc.html` design files the pages were built from. |
+| `brand/` | `app-icon.svg` (64 px and up), `mark-small.svg` (under 64 px), `mark-mono.svg` (uses `currentColor`), `tray-template.svg` (black, for the macOS menu bar), `png/icon-16…1024.png` (full bleed, Windows) and `png/icon-macos-1024.png` (with Apple's margin, macOS). |
+| `screenshots/` | Retina screenshots for reference. `01`–`08` are from the original prototype: the sidebar still has the old in-window "Models and MCP" page (`07-models-and-mcp.png`), and the classifier is Kev-0.8B / Kev-4B (the app uses Jev, or qwen3:4b via Ollama in privacy mode; there is no pyannote-rs option). `09-settings-window.png` and `10-onboarding-*.png` are taken from the current app. |
+| `source/` | The original `.dc.html` design files the pages were built from (`Main`, `DesignSystem`). |
 
 ## Screens in the prototype
 
@@ -53,7 +53,8 @@ For Tailwind, map `tokens.json` into `theme.extend` (colors, borderRadius, spaci
 Generate every Tauri icon size from the 1024 PNG:
 
 ```bash
-pnpm tauri icon brand/png/icon-1024.png
+pnpm tauri icon brand/png/icon-macos-1024.png   # macOS (keeps Apple's margin)
+pnpm tauri icon brand/png/icon-1024.png         # Windows (full bleed)
 ```
 
 Use `tray-template.svg` (exported to PNG at 22/44 px) as a macOS template image for the tray.

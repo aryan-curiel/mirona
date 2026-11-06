@@ -41,6 +41,7 @@ pub use web::{HttpServer, PATH as HTTP_PATH, new_token, serve_http};
 /// Most transcript moments `search_meetings` returns.
 const MAX_MOMENTS: usize = 30;
 
+/// The error every entry point returns while `mcp_enabled` is off.
 pub const DISABLED: &str = "The Mirona MCP server is turned off. Turn MCP on in Mirona's \
 settings, or set `mcp_enabled = true` in config.toml.";
 
@@ -77,6 +78,7 @@ pub fn serve() -> Result<(), String> {
     })
 }
 
+/// The MCP tool server; holds only the app folder and rereads everything per call.
 #[derive(Clone)]
 pub struct Server {
     app_dir: PathBuf,
@@ -374,6 +376,7 @@ pub fn search(store: &Store, emb: Option<&impl Embed>, a: &SearchArgs) -> Result
     }))
 }
 
+/// `get_meeting`: summary, decisions, action items and what still needs review, as JSON.
 pub fn meeting(store: &Store, id: &str) -> Result<Value, String> {
     let m = store.meeting(id)?;
     let s = m.summary.as_ref();

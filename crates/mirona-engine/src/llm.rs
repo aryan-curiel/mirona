@@ -10,6 +10,7 @@ use mirona_providers::{
     Completion, LlmProvider, Prompt, Provider, Result, check_privacy, keychain,
 };
 
+/// The configured summary LLM with its model name.
 pub enum Llm {
     Ollama(Ollama, String),
     OpenAi(OpenAi, String),

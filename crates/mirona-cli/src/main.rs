@@ -1,4 +1,16 @@
-//! `mirona` CLI (NGR-149): the same engine and meeting folders as the app.
+//! `mirona` CLI (NGR-149): the same engine and meeting folders as the app, for scripts,
+//! terminals and testing the backend without the UI.
+//!
+//! Subcommands: `record` / `stop`, `list`, `show`, `search`, `actions`, `import`, `reindex`,
+//! `retention`, `delete`, `mcp` (on stdio, or `--http` on localhost) and `eval` (the
+//! classifier eval, see `eval.rs`). `--privacy` forces privacy mode for one run.
+//!
+//! Recording goes through [`mirona_engine::Engine::record`] and holds
+//! [`mirona_engine::RecordingLock`], so the app and the CLI never record into the same folder
+//! at once; `stop` drops a `recording.stop` file that the recording process watches for.
+//! Readers open the store with [`mirona_store::Store::open_snapshot`] and never rewrite the
+//! app's index.
+//!
 //! `MIRONA_APP_DIR` overrides the app folder (where `config.toml` lives).
 
 mod eval;
@@ -68,7 +80,7 @@ enum Cmd {
     /// Rebuild the search index from the meeting files
     Reindex,
     /// Apply the retention rules now (old recordings, old meetings of a client); also logged
-    /// to <meetings>/.mirona/retention.log
+    /// to `<meetings>/.mirona/retention.log`
     Retention,
     /// Delete a meeting everywhere (files, index, embeddings, voices, corrections), or every
     /// meeting of a client
@@ -129,7 +141,7 @@ fn mcp_http(app_dir: &Path, port: Option<u16>) -> Result {
         mirona_mcp::HTTP_PATH
     );
     if cfg.mcp_tokens.is_empty() {
-        eprintln!("mirona: no client tokens yet: add one in Settings → Models and MCP");
+        eprintln!("mirona: no client tokens yet: add one in Settings › Agents (MCP)");
     }
     server.wait();
     Ok(())

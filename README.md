@@ -1,10 +1,51 @@
 # Mirona
 
-Local-first, agent-native meeting memory: transcription, speakers, typed classification (hosted Jev; local LLM fallback in privacy mode), summaries and an MCP server. Tauri 2 + Rust + React.
+**Meeting memory that stays on your Mac.** Mirona records your calls, transcribes them on your
+Mac, works out who said what, and keeps every meeting as Markdown files you own. Claude and other
+AI agents can search them over MCP, if you let them.
 
-> **Status: prototype.** The UI is wired end to end against a mocked backend with sample data. No audio is captured and no models run yet.
+- **Private by default.** Speech-to-text, speaker detection and search run on your Mac. Privacy
+  mode (on from the start) blocks every cloud service at one network gate, and Mirona has no
+  telemetry. Recordings can be encrypted at rest.
+- **Files you own.** One folder per meeting: `meeting.md` (notes, summary, action items) and
+  `transcript.jsonl`. Back them up, sync them, grep them.
+- **Useful afterwards.** Action items, decisions and open questions link back to the moment they
+  were said. Summaries follow templates you can edit, and follow-up emails are drafted for you.
+- **Knows who spoke.** Speakers are split after the call. Name a voice once and Mirona recognises
+  it in later meetings.
+- **Ready for your agents.** An MCP server (stdio or localhost HTTP with per-client tokens), a CLI
+  and a Claude Code skill. Sensitive lines (passwords, salaries, account numbers) stay out of
+  summaries and search, and agents see them as `[redacted]` unless they ask for them.
 
-## Run the demo
+> **Status:** early. macOS 14.6+ on Apple silicon. Windows and Linux capture are on the roadmap.
+
+## Install
+
+1. Download the latest `Mirona_x.y.z_aarch64.dmg` from
+   [Releases](https://github.com/aryan-curiel/mirona/releases), open it and drag Mirona to
+   Applications.
+2. Open Mirona. The first-run setup asks for the microphone and system audio, and downloads the
+   speech and speaker models (about 1 GB, once).
+3. Record from the sidebar, the menu bar, or <kbd>⌘⌥⇧R</kbd> from any app.
+
+Summaries need a language model. The local default is [Ollama](https://ollama.com) with
+`qwen3:4b` (`ollama pull qwen3:4b`). With privacy mode off you can use OpenAI or Anthropic
+instead, with your own key.
+
+## Docs
+
+| | |
+| --- | --- |
+| [User guide](docs/user-guide.md) | Recording, speakers, summaries, search, privacy mode, encryption, retention |
+| [CLI and MCP](docs/cli-and-mcp.md) | The `mirona` CLI, MCP tools, setup for Claude Code, Claude Desktop, Cursor |
+| [Architecture](docs/architecture.md) | Crates, the pipeline, where files live |
+| [Adding a provider](docs/providers.md) | A new speech, speaker, classifier, LLM or embedding provider |
+| [Privacy](PRIVACY.md) | What leaves your Mac, and when |
+| [Contributing](CONTRIBUTING.md) | Build, test, open a PR |
+
+## Build from source
+
+Needs Rust (stable), Node 22+ with pnpm, and cmake.
 
 ```bash
 cd app
@@ -12,52 +53,14 @@ pnpm install
 pnpm tauri dev
 ```
 
-Requires Rust (stable) and Node 22+ with pnpm.
+Details, tests and project conventions are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-### Demo script
+## Roadmap
 
-1. **Meetings**: open *Claims Desk weekly sync*. Click any segment's **Inspect** to see the classifier's typed questions, probabilities and the 0.60 threshold. Click **Correct** to fix an answer (it retags the segment and counts as a labelled example).
-2. Click the dashed **Inés? … Confirm** chip to enroll Speaker 3 as Inés everywhere.
-3. In the inspector, confirm the client and open **Draft follow-up email**.
-4. **Notes** and **Summary** tabs: timestamps jump back to the transcript.
-5. **Start recording**: segments stream in live with speakers and tags. **Stop and process** writes the summary and adds the action item.
-6. **Privacy mode** off unlocks cloud providers in **Models and MCP**; turning it back on resets every stage to local.
-7. `Cmd/Ctrl+Shift+L` previews the other platform's skin (macOS ⇄ Windows).
+- **Now:** first public release (signed macOS build, docs, open-source setup).
+- **Next:** Windows capture (WASAPI loopback), then Linux (PipeWire), plus opt-in auto-update.
 
-## Platform look
+## License
 
-| | macOS | Windows 11 |
-| --- | --- | --- |
-| Window chrome | Native traffic lights over the sidebar (`titleBarStyle: Overlay`) | Custom caption bar with Fluent min/max/close |
-| Material | Sidebar vibrancy | Mica |
-| Details | Rounded nav highlight, macOS switch | Accent pill on active nav, Fluent toggle, tighter corners, Segoe UI Variable |
-
-The macOS icon (`icon.icns`) is built from `design-kit/brand/png/icon-macos-1024.png`, which has Apple's ~100 px margin and shadow; Windows icons use the full-bleed `icon-1024.png`.
-
-Per-platform window settings live in `app/src-tauri/tauri.{macos,windows}.conf.json`; CSS skins key off `html[data-platform]` in `app/src/styles.css`.
-
-## Layout
-
-```
-crates/
-  mirona-core/       Domain types + pipeline events (NGR-132). `cargo test -p mirona-core` regenerates app/src/bindings/*.ts
-  mirona-providers/  One trait per stage + fakes; privacy gate refuses cloud providers in one place (NGR-133)
-  mirona-store/      Meeting store. Prototype: in memory with sample data. Target: Markdown + SQLite (NGR-140)
-  mirona-mcp/        MCP server over stdio: search_meetings, get_meeting, get_transcript, list_action_items (NGR-148)
-  mirona-cli/        `mirona meetings | show <id> | actions | search <q>` (NGR-149)
-app/
-  src-tauri/         Tauri shell: typed commands over the store + fake capture pipeline emitting events
-  src/               React + Tailwind v4 + zustand. Views follow design-kit/ screen by screen
-design-kit/          Prototype, tokens, brand and screenshots
-```
-
-Try the backend without the UI:
-
-```bash
-cargo run -p mirona-cli -- actions
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | cargo run -q -p mirona-mcp
-```
-
-## What's mocked
-
-Audio capture, STT, diarization, Jev classification and LLM summaries are scripted (`crates/mirona-store/src/sample.rs`). The store is in memory and resets on restart. The real implementations follow the Linear milestones: Foundations → MVP → Who and what → Privacy and search → Open-source release.
+[Apache-2.0](LICENSE). Model and third-party credits are in [NOTICE](NOTICE) and
+[docs/licenses.md](docs/licenses.md).

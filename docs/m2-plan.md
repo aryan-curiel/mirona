@@ -1,5 +1,7 @@
 # Milestone 2 build plan: who and what
 
+> Historical: the plan as written for milestone 2. Current behaviour is in `docs/user-guide.md` and `docs/architecture.md`.
+
 This is the contract between the people and agents building M2 in parallel. Linear: milestone "2 · Who and what" (NGR-152 to NGR-163). The model choices come from ADR 0001: speakrs, plus Jev pinned to `jev-1.14.0` with qwen3:4b via Ollama as the privacy-mode fallback, and the thresholds recorded there.
 
 Today, in M1, the speaker comes from the audio source: the mic is "me" and system audio is "them". The `Classifier`, `Diarizer`, `speakrs::match_voiceprint`, Jev and Ollama providers exist and are tested, but nothing calls them yet. The UI already has places for tags, filters, the inspector, people, the action items view and the follow-up draft, all from the prototype; some still show "Coming in M2".

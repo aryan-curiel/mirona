@@ -7,7 +7,7 @@
 //! own only for clients the user opted in (`auto_record`, matched by calendar title).
 //!
 //! Long work (stopping + summarizing, import, regenerate) runs on its own thread and reports
-//! on the "pipeline" event channel; "recording" carries the recorder state ([`RecState`]).
+//! on the "pipeline" event channel; "recording" carries the recorder state (`RecState`).
 
 // Tauri hands commands their arguments by value.
 #![allow(clippy::needless_pass_by_value)]
@@ -409,7 +409,7 @@ fn idle(st: &AppState, meeting_id: &str) -> Res<()> {
 fn rerun_diarization(app: AppHandle, st: St, meeting_id: String) -> Res<()> {
     idle(&st, &meeting_id)?;
     if mirona_engine::stage(&st.engine().config(), "diarization", "speakrs") == "off" {
-        return Err("Speaker detection is off in Models and MCP.".into());
+        return Err("Speaker detection is off in Settings › AI models.".into());
     }
     let (engine, tx) = (st.engine(), events(&app));
     std::thread::spawn(move || {
@@ -435,7 +435,7 @@ fn rerun_classification(app: AppHandle, st: St, meeting_id: String) -> Res<()> {
     let engine = st.engine();
     let cfg = engine.config();
     let (c, why) = mirona_engine::classify::AnyClassifier::from_config(&cfg);
-    let c = c.ok_or("Classification is off in Models and MCP.")?;
+    let c = c.ok_or("Classification is off in Settings › AI models.")?;
     let tx = events(&app);
     if let Some(why) = why {
         tx.send(notice(&meeting_id, why, false)).ok();
@@ -670,7 +670,7 @@ fn start(app: &AppHandle) -> Res<Meeting> {
     let missing = mirona_engine::missing_models(&engine.config(), &engine.paths.models);
     if !missing.is_empty() {
         return Err(format!(
-            "Speech models are missing ({}). Download them in Settings › Models.",
+            "Speech models are missing ({}). Download them in Settings › AI models.",
             missing.join(", ")
         ));
     }
@@ -842,7 +842,7 @@ fn toggle(app: &AppHandle) {
                 // No window to ask in first: say it as the recording starts (NGR-169).
                 if app.state::<AppState>().engine().config().consent_reminder {
                     let msg = "Recording. Remember to ask everyone for consent (message in \
-                               Models and MCP › Consent reminder).";
+                               Settings › General › Consent reminder).";
                     app.emit("pipeline", notice(&m.id, msg.into(), false)).ok();
                 }
             })
@@ -1044,7 +1044,7 @@ async fn pick_folder(app: AppHandle) -> Option<PathBuf> {
 
 // --- Settings (NGR-150) ---
 
-/// Everything the Models and MCP screen edits. Mirrors `config.toml`; folders are shown
+/// Everything the Settings window edits. Mirrors `config.toml`; folders are shown
 /// resolved (the default when the config leaves them out).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[allow(clippy::struct_excessive_bools)] // independent on/off settings

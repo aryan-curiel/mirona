@@ -1,5 +1,7 @@
 # NGR-128 spike: Parakeet-TDT in Rust with live latency
 
+> Historical: the spike as run in November 2026. Current models and providers are in `docs/providers.md` and `docs/licenses.md`.
+
 **Recommendation: make Parakeet-TDT-0.6B-v2 (int8, through `sherpa-onnx`) the default speech-to-text model.** Feed it Silero-VAD segments of at most **5 s**. Keep Whisper (whisper-rs) as the fallback for non-English meetings and for low-memory machines.
 
 Parakeet was the most accurate model on every clip. On meeting audio its word error rate was about 5 points lower than Whisper small.en and 9 points lower than base.en. It runs live on the CPU with about 17× headroom: real-time factor 0.06, and a segment comes back in about 0.2 s (p50) and 0.5 s (p95). The costs are memory (about 1.25 GB resident while live, against 0.4–0.8 GB for Whisper) and CPU: four cores busy in short bursts, while Whisper on Metal runs mostly on the GPU.

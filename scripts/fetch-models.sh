@@ -7,8 +7,9 @@
 #                                                CPU set ~33 MB everywhere, CoreML set ~273 MB on macOS
 #   ggml-small.en.bin / ggml-base.en.bin         Whisper, only with --whisper[=base] (MIT)
 # Usage: scripts/fetch-models.sh <dir> [--whisper | --whisper=base]
-# Re-running skips what is already there. The app downloads the same files itself
-# (crates/mirona-engine/src/models.rs, pinned + SHA-256); keep the two in step.
+# Re-running skips what is already there. For source checkouts only: the app downloads models
+# itself (crates/mirona-engine/src/models.rs), from pinned revisions with SHA-256 checks. This
+# script gets the same models but from the sherpa-onnx tarball, without checksums.
 set -eu
 [ $# -ge 1 ] || { echo "usage: $0 <dir> [--whisper | --whisper=base]" >&2; exit 2; }
 dir=$1

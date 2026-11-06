@@ -1,5 +1,7 @@
 # Milestone 1 build plan (MVP: daily driver)
 
+> Historical: the plan as written for milestone 1. Current behaviour is in `docs/user-guide.md` and `docs/architecture.md`.
+
 The working contract between the people and agents building M1 in parallel. Linear: milestone "1 · MVP: daily driver". Model choices come from ADR 0001.
 
 ## Phase 1: three independent work packages (in parallel, separate files)

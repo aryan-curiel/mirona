@@ -1,7 +1,18 @@
 //! Mirona domain model and pipeline events (NGR-132).
 //!
-//! Every type here is serialized with serde and exported to TypeScript with ts-rs:
-//! `cargo test -p mirona-core` regenerates `app/src/bindings/`.
+//! The types every other crate and the UI agree on: a [`Meeting`] (with its [`Speaker`]s,
+//! transcript [`Segment`]s, [`Summary`], [`ActionItem`]s and classification
+//! [`MeetingAnswers`]), the list row [`MeetingSummary`], search ([`SearchFilters`],
+//! [`SearchResults`]), provider choices ([`ProviderOption`], [`Locality`]) and the
+//! [`PipelineEvent`]s the engine streams to the app while recording and processing.
+//!
+//! [`Segment::is_sensitive`] is the one rule for what stays out of cloud models, summaries,
+//! search vectors and agents (the classifier still reads each line once to tag it).
+//!
+//! No logic beyond small helpers and no I/O: `mirona-store` persists these types,
+//! `mirona-engine` produces them. Every type is serialized with serde and exported to
+//! TypeScript with ts-rs: `cargo test -p mirona-core` regenerates `app/src/bindings/`; commit
+//! the result and never edit the bindings by hand.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

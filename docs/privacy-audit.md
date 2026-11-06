@@ -24,7 +24,7 @@ content said in the call never appears in a summary or an MCP result**.
 
 ## 1. Automated run (CLI + MCP)
 
-Needs macOS, the models (Settings › Models › Download, or `scripts/fetch-models.sh`) and Ollama with `qwen3:4b` and
+Needs macOS, the models (Settings › AI models › Download, or `scripts/fetch-models.sh`) and Ollama with `qwen3:4b` and
 `nomic-embed-text`.
 
 ```bash
@@ -38,7 +38,7 @@ it, and calls every MCP read tool plus `ask_meeting`, sampling every socket the 
 
 ## 2. The app, with Little Snitch (or LuLu)
 
-1. Settings → Models and MCP: privacy mode on. Quit and reopen Mirona.
+1. Settings › Privacy and storage: privacy mode on. Quit and reopen Mirona.
 2. In Little Snitch, set Mirona to *Deny all* with alerts on, and open its Network Monitor
    filtered to Mirona. (Without Little Snitch: `scripts/privacy-audit.sh watch $(pgrep -n Mirona) 600`.)
 3. Record a 3-minute call (a video in the browser is fine) in which someone says
