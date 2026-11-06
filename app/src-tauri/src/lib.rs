@@ -267,7 +267,13 @@ fn resolve(s: &mut Store, meeting_id: &str, r: &Review, accept: bool) -> Res<boo
             let mut a = s.meeting(meeting_id)?.answers.ok_or("no meeting answers")?;
             confirm_answer(&mut a, q, &r.value, accept);
             let draft = q == "follow_up" && accept && a.follow_up_draft.is_empty();
+            let label = if q == "meeting_type" {
+                a.meeting_type.value.clone()
+            } else {
+                (if a.follow_up { "yes" } else { "no" }).to_string()
+            };
             s.set_answers(meeting_id, a)?;
+            s.label_meeting(meeting_id, q, &label)?;
             return Ok(draft);
         }
         (None, q) => return Err(format!("nothing to review for {q}")),

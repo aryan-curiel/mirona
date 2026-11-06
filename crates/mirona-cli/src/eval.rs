@@ -99,8 +99,18 @@ fn questions(e: &Example) -> Vec<Question> {
     if e.labels.contains_key("meeting_type") {
         qs.push(meeting_type_question());
     }
-    if e.labels.contains_key("client") {
-        qs.push(client_question(PUBLIC_CLIENTS));
+    if e.labels.contains_key("follow_up")
+        && let Some(q) = mirona_providers::questions::meeting_questions([])
+            .into_iter()
+            .find(|q| q.id == "follow_up")
+    {
+        qs.push(q);
+    }
+    if let Some(c) = e.labels.get("client") {
+        // Your own clients (from corrections) join the public list as options.
+        let extra = (!PUBLIC_CLIENTS.iter().any(|(n, _)| n == c) && c != "none")
+            .then_some((c.as_str(), ""));
+        qs.push(client_question(PUBLIC_CLIENTS.into_iter().chain(extra)));
     }
     qs
 }

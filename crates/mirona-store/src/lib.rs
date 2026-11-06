@@ -596,6 +596,8 @@ impl Store {
         }
         m.client = client.into();
         self.save(i, false)?;
+        let value = if client.is_empty() { "none" } else { client };
+        self.label_meeting(meeting_id, "client", value)?;
         Ok(labeled(&self.entries[i]))
     }
 

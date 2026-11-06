@@ -196,6 +196,7 @@ impl Store {
             a.owner_confirmed = true;
         }
         self.save(i, true)?;
+        self.label_owner(meeting_id, &seg, owner)?;
         Ok(seg)
     }
 
@@ -222,6 +223,62 @@ impl Store {
         }
     }
 
+    /// A meeting-level correction (meeting type, client, follow-up) as a labelled example: the
+    /// meeting's transcript is the text, so `mirona eval` can re-ask the meeting questions.
+    pub fn label_meeting(&self, meeting_id: &str, question: &str, value: &str) -> Result<()> {
+        let m = &self.entries[self.idx(meeting_id)?].meeting;
+        let mut text = String::new();
+        for seg in m.segments.iter().filter(|s| !s.redacted) {
+            let who = m
+                .speakers
+                .iter()
+                .find(|p| p.id == seg.speaker_id)
+                .map_or(seg.speaker_id.as_str(), |p| p.name.as_str());
+            text.push_str(who);
+            text.push_str(": ");
+            text.push_str(&seg.text);
+            text.push('\n');
+            // ponytail: same cut as the meeting questions get (48k chars).
+            if text.len() > 48_000 {
+                break;
+            }
+        }
+        self.write_label(&serde_json::json!({
+            "id": format!("{meeting_id}-meeting"),
+            "meeting_id": meeting_id,
+            "text": text.trim_end(),
+            "labels": { question: value },
+            "at": jiff::Timestamp::now().to_string(),
+        }))
+    }
+
+    /// The owner the user picked for an action, kept with the segment's other labels.
+    fn label_owner(&self, meeting_id: &str, seg: &Segment, owner: &str) -> Result<()> {
+        let m = &self.entries[self.idx(meeting_id)?].meeting;
+        let who = m
+            .speakers
+            .iter()
+            .find(|p| p.id == seg.speaker_id)
+            .map_or(seg.speaker_id.as_str(), |p| p.name.as_str());
+        self.write_label(&serde_json::json!({
+            "id": seg.id,
+            "meeting_id": meeting_id,
+            "text": format!("{who}: {}", seg.text),
+            "labels": { "owner": owner },
+            "at": jiff::Timestamp::now().to_string(),
+        }))
+    }
+
+    fn write_label(&self, row: &serde_json::Value) -> Result<()> {
+        let path = self.labels_path();
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        writeln!(f, "{row}").map_err(|e| format!("{}: {e}", path.display()))
+    }
+
     /// One labelled example per correction, appended to [`Store::labels_path`].
     pub(crate) fn append_label(
         &self,
@@ -245,13 +302,7 @@ impl Store {
             "model_probability": model_probability,
             "at": jiff::Timestamp::now().to_string(),
         });
-        let path = self.labels_path();
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
-        writeln!(f, "{row}").map_err(|e| format!("{}: {e}", path.display()))
+        self.write_label(&row)
     }
 }
 

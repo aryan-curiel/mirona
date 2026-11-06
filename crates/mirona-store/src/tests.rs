@@ -602,3 +602,45 @@ fn refresh_picks_up_writes_from_another_process() {
     assert!(cli.refresh().unwrap(), "but the other store sees them");
     assert_eq!(cli.meeting(&id).unwrap().title, "Renamed");
 }
+
+#[test]
+fn meeting_level_and_owner_corrections_become_labels() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = Store::open(dir.path()).unwrap();
+    let id = new_meeting("Pilot review", &mut s);
+    let mut seg = live_seg(
+        &format!("{id}-0"),
+        "them",
+        0,
+        "I'll send the proposal by Thursday.",
+    );
+    seg.speaker_id = "them".into();
+    s.push_segment(&id, seg).unwrap();
+    s.confirm_client(&id, "Northwind Bank").unwrap();
+    s.label_meeting(&id, "meeting_type", "client_call").unwrap();
+    s.set_owner(&id, &format!("{id}-0"), "Nadia").unwrap();
+
+    let rows: Vec<serde_json::Value> = std::fs::read_to_string(s.labels_path())
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    let label = |k: &str| {
+        rows.iter()
+            .find_map(|r| r["labels"][k].as_str().map(String::from))
+    };
+    assert_eq!(label("client").as_deref(), Some("Northwind Bank"));
+    assert_eq!(label("meeting_type").as_deref(), Some("client_call"));
+    assert_eq!(label("owner").as_deref(), Some("Nadia"));
+    let meeting_row = rows
+        .iter()
+        .find(|r| r["labels"]["client"].is_string())
+        .unwrap();
+    assert_eq!(meeting_row["id"], format!("{id}-meeting"));
+    assert!(
+        meeting_row["text"]
+            .as_str()
+            .unwrap()
+            .contains("send the proposal")
+    );
+}
