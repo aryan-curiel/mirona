@@ -34,7 +34,26 @@ enum Cmd {
     /// Summary, action items, notes and transcript of one meeting
     Show { id: String },
     /// Keyword search over transcripts, titles, clients and notes
-    Search { query: Vec<String> },
+    /// Search by keywords and meaning; filter by client, dates, speaker or tag
+    Search {
+        query: Vec<String>,
+        #[arg(long)]
+        client: Option<String>,
+        /// First day, YYYY-MM-DD
+        #[arg(long)]
+        from: Option<String>,
+        /// Last day, YYYY-MM-DD
+        #[arg(long)]
+        to: Option<String>,
+        #[arg(long)]
+        speaker: Option<String>,
+        /// action, decision, open-question, small-talk or sensitive
+        #[arg(long)]
+        tag: Option<String>,
+        /// Show lines tagged sensitive too
+        #[arg(long)]
+        sensitive: bool,
+    },
     /// Action items across meetings
     Actions {
         /// Only this client (case-insensitive, part of the name is enough)
@@ -118,7 +137,26 @@ fn main() {
         Cmd::Stop => stop(&app_dir),
         Cmd::List => list(&app_dir),
         Cmd::Show { id } => show(&app_dir, &id),
-        Cmd::Search { query } => search(&app_dir, &query.join(" ")),
+        Cmd::Search {
+            query,
+            client,
+            from,
+            to,
+            speaker,
+            tag,
+            sensitive,
+        } => search(
+            &app_dir,
+            &mirona_mcp::SearchArgs {
+                query: query.join(" "),
+                client,
+                from,
+                to,
+                speaker,
+                tag,
+                include_sensitive: Some(sensitive),
+            },
+        ),
         Cmd::Actions { client, open } => actions(&app_dir, client.as_deref(), open),
         Cmd::Import { audio } => import(&app_dir, &audio),
         Cmd::Reindex => reindex(&app_dir),
@@ -211,14 +249,38 @@ fn print_item(a: &ActionItem) {
     println!("- [{done}] {} · {}{due}", a.text, a.owner);
 }
 
-fn search(app_dir: &Path, query: &str) -> Result {
+fn search(app_dir: &Path, args: &mirona_mcp::SearchArgs) -> Result {
     let store = snapshot(app_dir)?;
-    let hits = store.search_hits(query);
-    for m in store.search(query) {
-        println!("{} · {} · {} ({})", m.title, m.client, m.when, m.id);
-        for h in hits.iter().filter(|h| h.meeting_id == m.id) {
-            println!("  [{}] {}", at(h.start_ms), h.snippet);
+    let (cfg, _) = mirona_mcp::load(app_dir)?;
+    let emb = mirona_engine::search::embedder(&cfg);
+    let v = mirona_mcp::search(&store, emb.as_ref(), args)?;
+    let s = |v: &serde_json::Value| v.as_str().unwrap_or_default().to_string();
+    for m in v["moments"].as_array().into_iter().flatten() {
+        println!(
+            "{} · {} ({}) [{}] {}: {}",
+            s(&m["title"]),
+            s(&m["date"]),
+            s(&m["meeting_id"]),
+            s(&m["at"]),
+            s(&m["speaker"]),
+            s(&m["snippet"])
+        );
+    }
+    if v["moments"].as_array().is_some_and(Vec::is_empty) {
+        for m in v["meetings"].as_array().into_iter().flatten() {
+            println!(
+                "{} · {} · {} ({})",
+                s(&m["title"]),
+                s(&m["client"]),
+                s(&m["date"]),
+                s(&m["meeting_id"])
+            );
         }
+    }
+    if v["search_by_meaning"] == false && !args.query.trim().is_empty() {
+        eprintln!(
+            "(keywords only: run Ollama with `ollama pull nomic-embed-text` to search by meaning)"
+        );
     }
     Ok(())
 }

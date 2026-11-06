@@ -13,11 +13,13 @@ fn fixture() -> tempfile::TempDir {
 }
 
 fn config(tmp: &Path, models: Option<PathBuf>) {
-    let cfg = mirona_providers::config::Config {
+    let mut cfg = mirona_providers::config::Config {
         meetings_dir: Some(tmp.join("meetings")),
         models_dir: models,
         ..Default::default()
     };
+    // Keywords only: results must not depend on a local Ollama.
+    cfg.providers.insert("embeddings".into(), "off".into());
     cfg.save(&tmp.join("app/config.toml")).unwrap();
 }
 
@@ -53,7 +55,7 @@ fn list_show_search_actions_reindex() {
 
     let found = ok(t, &["search", "onboarding", "copy"]);
     assert!(found.contains("(corvo-review)"), "{found}");
-    assert!(found.contains("[6:45] [Onboarding] [copy]"), "{found}");
+    assert!(found.contains("[6:45] Andrés: [Onboarding] [copy]"), "{found}");
     assert_eq!(ok(t, &["search", "zebra"]), "");
 
     let actions = ok(t, &["actions", "--client", "CORVO", "--open"]);

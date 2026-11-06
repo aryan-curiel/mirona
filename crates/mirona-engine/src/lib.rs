@@ -8,6 +8,7 @@
 pub mod classify;
 mod diarize;
 mod llm;
+pub mod search;
 
 pub use llm::Llm;
 
@@ -320,6 +321,15 @@ impl Engine {
             llm.as_ref().map_err(Clone::clone),
             events,
         );
+        // Last: the tags decide which lines are sensitive, and those are never embedded.
+        if let Some(emb) = search::embedder(&cfg)
+            && let Err(e) = search::embed_meeting(&self.store, id, &emb)
+        {
+            notice(
+                format!("Search by meaning skipped ({e}); keywords still work."),
+                false,
+            );
+        }
     }
 
     /// Compress recordings still kept as WAV: sessions that crashed (or were killed) before

@@ -12,8 +12,9 @@
 //! ponytail: a full re-read per call; fine for hundreds of meetings, cache by folder mtime
 //! past that.
 
-use mirona_core::Meeting;
+use mirona_core::{Meeting, SearchFilters, TagKind};
 use mirona_engine::Paths;
+use mirona_engine::search::Embed;
 use mirona_providers::config::Config;
 use mirona_store::Store;
 use rmcp::handler::server::router::tool::ToolRouter;
@@ -94,11 +95,72 @@ impl Server {
     }
 }
 
-#[derive(Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct SearchArgs {
-    /// Keywords (every word is prefix-matched). Searches transcripts, titles, clients and
-    /// notes. Empty: lists every meeting, newest first.
+    /// What to look for: keywords (prefix-matched) and, when the local embedding model is
+    /// available, meaning ("pricing worries" finds "the budget is tight"). Searches
+    /// transcripts, titles, clients and notes. Empty: lists the meetings that pass the filters.
     pub query: String,
+    /// Only this client (case-insensitive, part of the name is enough).
+    pub client: Option<String>,
+    /// First day, YYYY-MM-DD.
+    pub from: Option<String>,
+    /// Last day, YYYY-MM-DD (inclusive).
+    pub to: Option<String>,
+    /// Only lines said by this person (part of the name is enough).
+    pub speaker: Option<String>,
+    /// Only lines tagged: `action`, `decision`, `open_question`, `small_talk` or `sensitive`.
+    pub tag: Option<String>,
+    /// Include lines tagged sensitive. Only when the user asked for that content.
+    pub include_sensitive: Option<bool>,
+}
+
+impl SearchArgs {
+    pub fn query(q: &str) -> Self {
+        Self {
+            query: q.into(),
+            ..Self::default()
+        }
+    }
+
+    fn filters(&self) -> Result<SearchFilters, String> {
+        let tag = match self
+            .tag
+            .as_deref()
+            .map(|t| t.to_lowercase().replace([' ', '-'], "_"))
+        {
+            None => None,
+            Some(t) => Some(match t.as_str() {
+                "action" | "action_item" => TagKind::Action,
+                "decision" => TagKind::Decision,
+                "open_question" | "question" | "openquestion" => TagKind::OpenQuestion,
+                "small_talk" | "smalltalk" => TagKind::SmallTalk,
+                "sensitive" => TagKind::Sensitive,
+                other => {
+                    return Err(format!(
+                        "unknown tag {other:?}: use action, decision, open_question, small_talk or sensitive"
+                    ));
+                }
+            }),
+        };
+        let day = |d: &Option<String>| -> Result<Option<String>, String> {
+            d.as_ref()
+                .map(|d| {
+                    d.trim()
+                        .parse::<jiff::civil::Date>()
+                        .map(|d| d.to_string())
+                        .map_err(|_| format!("bad date {d:?}: use YYYY-MM-DD"))
+                })
+                .transpose()
+        };
+        Ok(SearchFilters {
+            client: self.client.clone(),
+            from: day(&self.from)?,
+            to: day(&self.to)?,
+            speaker: self.speaker.clone(),
+            tag,
+        })
+    }
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -131,14 +193,17 @@ pub struct ActionArgs {
 #[tool_router]
 impl Server {
     #[tool(
-        description = "Keyword search over all meetings. Returns the matching transcript \
-        moments (meeting, timestamp, snippet with the hit in [brackets]) and the matching \
-        meetings. Use it first to find meeting ids.",
+        description = "Search all meetings by keywords and meaning. Returns the matching \
+        transcript moments, best first (meeting, timestamp, speaker, snippet with keyword hits \
+        in [brackets]), and the matching meetings. Filter by client, date range, speaker or \
+        tag. Use it first to find meeting ids.",
         annotations(read_only_hint = true)
     )]
     fn search_meetings(&self, Parameters(a): Parameters<SearchArgs>) -> Result<String, String> {
         let store = self.store()?;
-        Ok(search(&store, &a.query)?.to_string())
+        let (cfg, _) = load(&self.app_dir)?;
+        let emb = mirona_engine::search::embedder(&cfg);
+        Ok(search(&store, emb.as_ref(), &a)?.to_string())
     }
 
     #[tool(
@@ -236,35 +301,44 @@ impl Server {
     }
 }
 
-pub fn search(store: &Store, query: &str) -> Result<Value, String> {
-    let meetings = store.search(query);
-    let head = |id: &str| -> Result<Value, String> {
-        let m = store.meeting(id)?;
-        Ok(
-            json!({ "meeting_id": m.id, "title": m.title, "client": m.client, "date": m.date_label }),
-        )
-    };
-    let hits = store.search_hits(query);
-    let truncated = hits.len() > MAX_MOMENTS;
-    let mut moments = vec![];
-    let hidden = |h: &mirona_store::Hit| {
-        store.meeting(&h.meeting_id).is_ok_and(|m| {
-            m.segments
-                .iter()
-                .any(|s| s.start_ms == h.start_ms && sensitive(s))
-        })
-    };
-    for h in hits.into_iter().filter(|h| !hidden(h)).take(MAX_MOMENTS) {
-        let mut v = head(&h.meeting_id)?;
-        v["at"] = at(h.start_ms).into();
-        v["snippet"] = h.snippet.into();
-        moments.push(v);
-    }
-    let meetings: Vec<Value> = meetings
+/// `search_meetings`: the same hybrid search as the app (NGR-167). Sensitive moments are left
+/// out unless asked for.
+pub fn search(store: &Store, emb: Option<&impl Embed>, a: &SearchArgs) -> Result<Value, String> {
+    let filters = a.filters()?;
+    let all = a.include_sensitive.unwrap_or(false);
+    // Generous limit: sensitive moments are dropped after.
+    let r = mirona_engine::search::search_with(store, emb, &a.query, &filters, 4 * MAX_MOMENTS);
+    let mut moments: Vec<Value> = r
+        .moments
         .iter()
-        .map(|m| head(&m.id))
-        .collect::<Result<_, _>>()?;
-    Ok(json!({ "moments": moments, "moments_truncated": truncated, "meetings": meetings }))
+        .filter(|m| all || !m.sensitive)
+        .map(|m| {
+            let matched = match (m.by_keyword, m.by_meaning) {
+                (true, true) => "keywords and meaning",
+                (true, false) => "keywords",
+                _ => "meaning",
+            };
+            json!({ "meeting_id": m.meeting_id, "title": m.title, "client": m.client,
+                    "date": m.date, "at": at(m.start_ms), "speaker": m.speaker,
+                    "snippet": m.snippet, "matched": matched })
+        })
+        .collect();
+    let truncated = moments.len() > MAX_MOMENTS;
+    moments.truncate(MAX_MOMENTS);
+    let meetings: Vec<Value> = r
+        .meetings
+        .iter()
+        .map(|m| {
+            let d = store.meeting(&m.id)?;
+            Ok(json!({ "meeting_id": d.id, "title": d.title, "client": d.client, "date": d.date_label }))
+        })
+        .collect::<Result<_, String>>()?;
+    Ok(json!({
+        "moments": moments,
+        "moments_truncated": truncated,
+        "meetings": meetings,
+        "search_by_meaning": r.semantic,
+    }))
 }
 
 pub fn meeting(store: &Store, id: &str) -> Result<Value, String> {
@@ -515,8 +589,12 @@ mod tests {
             summary,
             meeting(&store, &id).unwrap().to_string(),
             transcript(&m, None, None, false),
-            search(&store, "Tulip").unwrap().to_string(),
-            search(&store, "salary").unwrap().to_string(),
+            search(&store, NO_EMB, &SearchArgs::query("Tulip"))
+                .unwrap()
+                .to_string(),
+            search(&store, NO_EMB, &SearchArgs::query("salary"))
+                .unwrap()
+                .to_string(),
         ];
         for out in &outputs {
             for s in SECRETS {
@@ -525,6 +603,37 @@ mod tests {
         }
         let asked = transcript(&m, None, None, true);
         assert!(SECRETS.iter().all(|s| asked.contains(s)), "{asked}");
+    }
+
+    const NO_EMB: Option<&mirona_providers::ollama::OllamaEmbedder> = None;
+
+    #[test]
+    fn search_filters_are_checked() {
+        let store = Store::sample();
+        let ok = |a: SearchArgs| search(&store, NO_EMB, &a);
+        assert!(
+            ok(SearchArgs {
+                tag: Some("vibes".into()),
+                ..SearchArgs::default()
+            })
+            .is_err()
+        );
+        assert!(
+            ok(SearchArgs {
+                from: Some("last tuesday".into()),
+                ..SearchArgs::default()
+            })
+            .is_err()
+        );
+        let v = ok(SearchArgs {
+            query: "SOW".into(),
+            tag: Some("action".into()),
+            from: Some("2000-01-01".into()),
+            ..SearchArgs::default()
+        })
+        .unwrap();
+        assert!(v["moments"].as_array().is_some(), "{v}");
+        assert_eq!(v["search_by_meaning"], false);
     }
 
     #[test]

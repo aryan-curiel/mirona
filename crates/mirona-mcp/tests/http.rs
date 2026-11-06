@@ -84,6 +84,8 @@ fn fixture() -> (tempfile::TempDir, PathBuf, Config) {
         ..Default::default()
     };
     cfg.mcp_tokens.insert("Test Agent".into(), "s3cret".into());
+    // Keywords only: results must not depend on a local Ollama.
+    cfg.providers.insert("embeddings".into(), "off".into());
     let app = tmp.path().join("app");
     cfg.save(&mirona_engine::config_path(&app)).unwrap();
     (tmp, app, cfg)

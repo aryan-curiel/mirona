@@ -4,6 +4,8 @@ import type { Correction } from "../bindings/Correction";
 import type { Meeting } from "../bindings/Meeting";
 import type { MeetingSummary } from "../bindings/MeetingSummary";
 import type { Review } from "../bindings/Review";
+import type { SearchFilters } from "../bindings/SearchFilters";
+import type { SearchResults } from "../bindings/SearchResults";
 import type { Segment } from "../bindings/Segment";
 import type { Speaker } from "../bindings/Speaker";
 
@@ -75,6 +77,7 @@ export type Template = { id: string; name: string };
 export const api = {
   listMeetings: () => invoke<MeetingSummary[]>("list_meetings"),
   refreshStore: () => invoke<boolean>("refresh_store"),
+  search: (query: string, filters: SearchFilters) => invoke<SearchResults>("search", { query, filters }),
   getMeeting: (id: string) => invoke<Meeting>("get_meeting", { id }),
   listActionItems: () => invoke<ActionItem[]>("list_action_items"),
   toggleActionItem: (id: string) => invoke<ActionItem>("toggle_action_item", { id }),

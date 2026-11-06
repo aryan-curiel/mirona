@@ -1,6 +1,10 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useEffect, useState } from "react";
+import type { SearchFilters } from "../bindings/SearchFilters";
+import type { SearchResults } from "../bindings/SearchResults";
+import type { TagKind } from "../bindings/TagKind";
 import { needsSetup, useStore, type View } from "../store";
-import { fmt } from "../lib/api";
+import { api, fmt } from "../lib/api";
 import { Icon, Logo, Toggle } from "./ui";
 
 const nav: { id: View; label: string; icon: Parameters<typeof Icon>[0]["name"] }[] = [
@@ -96,6 +100,119 @@ export function RecordButton() {
   );
 }
 
+const TAGS: [TagKind, string][] = [
+  ["action", "Action items"],
+  ["decision", "Decisions"],
+  ["openQuestion", "Open questions"],
+  ["sensitive", "Sensitive"],
+];
+
+/** "the [budget] is tight" with the keyword hits marked. */
+function Snippet({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(\[[^\]]*\])/).map((p, i) =>
+        p.startsWith("[") && p.endsWith("]") ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: parts of one fixed string
+          <mark key={i} className="rounded-sm bg-[var(--mi-accent-tint)] px-0.5 text-ink">
+            {p.slice(1, -1)}
+          </mark>
+        ) : (
+          p
+        ),
+      )}
+    </>
+  );
+}
+
+/**
+ * Search across meetings by keywords and meaning (NGR-167), with filters. Results are the
+ * moments that matched; a click opens the meeting at that line.
+ */
+function Search({ clients, onActive }: { clients: string[]; onActive: (on: boolean) => void }) {
+  const openAt = useStore((s) => s.openAt);
+  const showSensitive = useStore((s) => s.filters.showSensitive);
+  const [q, setQ] = useState("");
+  const [f, setF] = useState<SearchFilters>({ client: null, from: null, to: null, speaker: null, tag: null });
+  const [more, setMore] = useState(false);
+  const [r, setR] = useState<SearchResults | null>(null);
+  const active = q.trim() !== "" || Object.values(f).some((v) => v);
+  useEffect(() => {
+    onActive(active);
+    if (!active) {
+      setR(null);
+      return;
+    }
+    const t = setTimeout(() => api.search(q, f).then(setR, () => setR(null)), 250);
+    return () => clearTimeout(t);
+  }, [q, f, active, onActive]);
+  const set = (k: keyof SearchFilters, v: string) => setF({ ...f, [k]: v || null });
+  return (
+    <div className={`mx-1 mb-1.5 flex flex-col gap-1.5 ${active ? "min-h-0 flex-1" : ""}`}>
+      <div className="flex gap-1.5">
+        <input
+          type="search"
+          className="mi-field h-9 min-w-0 flex-1 text-[13px]"
+          placeholder="Search all meetings"
+          aria-label="Search all meetings"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <button type="button" className="mi-ghost h-9 px-2.5 text-[12px]" aria-expanded={more} onClick={() => setMore(!more)}>
+          Filters
+        </button>
+      </div>
+      {more && (
+        <div className="grid grid-cols-2 gap-1.5 text-[12px]">
+          <select className="mi-field h-8" aria-label="Client" value={f.client ?? ""} onChange={(e) => set("client", e.target.value)}>
+            <option value="">Any client</option>
+            {clients.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+          <select className="mi-field h-8" aria-label="Tag" value={f.tag ?? ""} onChange={(e) => set("tag", e.target.value)}>
+            <option value="">Any line</option>
+            {TAGS.map(([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <input className="mi-field h-8" type="date" aria-label="From" value={f.from ?? ""} onChange={(e) => set("from", e.target.value)} />
+          <input className="mi-field h-8" type="date" aria-label="To" value={f.to ?? ""} onChange={(e) => set("to", e.target.value)} />
+          <input className="mi-field col-span-2 h-8" placeholder="Speaker" aria-label="Speaker" value={f.speaker ?? ""} onChange={(e) => set("speaker", e.target.value)} />
+        </div>
+      )}
+      {r && (
+        <section className="-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1" aria-label="Search results">
+          <p className="px-1.5 text-[12px] text-muted">
+            {r.moments.length || r.meetings.length
+              ? `${r.moments.length} moments · ${r.meetings.length} meetings${q.trim() && !r.semantic ? " · keywords only" : ""}`
+              : "Nothing found"}
+          </p>
+          {r.moments.map((m) => (
+            <button type="button" key={`${m.meetingId}/${m.segmentId}`} className="mi-nav px-2.5 py-1.5 text-left" onClick={() => openAt(m.meetingId, m.startMs)}>
+              <div className="truncate text-[12px] text-muted">
+                {m.title} · {fmt(m.startMs)} · {m.speaker}
+              </div>
+              <div className="line-clamp-2 text-[13px] text-ink">
+                {m.sensitive && !showSensitive ? <i className="text-sensitive">Sensitive line hidden</i> : <Snippet text={m.snippet} />}
+              </div>
+            </button>
+          ))}
+          {r.moments.length === 0 &&
+            r.meetings.map((m) => (
+              <button type="button" key={m.id} className="mi-nav px-2.5 py-1.5 text-left" onClick={() => openAt(m.id, 0)}>
+                <div className="truncate text-[13px] font-semibold text-ink">{m.title}</div>
+                <div className="truncate text-[12px] text-muted">{[m.client, m.when].filter(Boolean).join(" · ")}</div>
+              </button>
+            ))}
+        </section>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar({ mac }: { mac: boolean }) {
   const s = useStore();
   const open = s.actionItems.filter((a) => !a.done).length;
@@ -104,6 +221,7 @@ export function Sidebar({ mac }: { mac: boolean }) {
   const clients = [...new Set(s.meetings.map((m) => m.client).filter(Boolean))].sort();
   const filter = s.clientFilter !== null && clients.includes(s.clientFilter) ? s.clientFilter : null;
   const shown = filter === null ? s.meetings : s.meetings.filter((m) => m.client === filter);
+  const [searching, setSearching] = useState(false);
   return (
     <aside className="mi-sidebar flex h-full w-[var(--mi-sidebar-w)] shrink-0 flex-col border-r border-white/60 px-3.5 pb-3.5">
       {/* macOS: room for the traffic lights, and the strip drags the window */}
@@ -145,7 +263,8 @@ export function Sidebar({ mac }: { mac: boolean }) {
           {s.importing ? "Importing…" : "Import audio…"}
         </button>
       </div>
-      {clients.length > 0 && (
+      <Search clients={clients} onActive={setSearching} />
+      {!searching && clients.length > 0 && (
         <select
           className="mi-field mx-1 mb-1.5 h-9 text-[13px]"
           aria-label="Show meetings for a client"
@@ -160,7 +279,7 @@ export function Sidebar({ mac }: { mac: boolean }) {
           ))}
         </select>
       )}
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1">
+      <div className={`-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1 ${searching ? "hidden" : ""}`}>
         <ImportProgress />
         {shown.map((m) => {
           const active = s.view === "meetings" && s.meeting?.id === m.id;

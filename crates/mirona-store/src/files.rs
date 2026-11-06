@@ -28,6 +28,8 @@ pub struct Entry {
     pub audio: Option<String>,
     pub items: Vec<ActionItem>,
     pub dir: PathBuf,
+    /// One embedding per transcript line, for search (NGR-167).
+    pub vectors: crate::search::Vectors,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -100,6 +102,7 @@ pub fn read(dir: &Path) -> Result<(Entry, Vec<String>)> {
         audio: f.audio,
         items: f.action_items,
         dir: dir.to_path_buf(),
+        vectors: read_vectors(dir),
     };
     normalize(&mut e);
     Ok((e, errors))
@@ -277,6 +280,19 @@ pub fn write_transcript(e: &Entry) -> Result<()> {
         s += "\n";
     }
     write_atomic(&e.dir.join(TRANSCRIPT), &s)
+}
+
+/// Missing or unreadable embeddings are just recomputed.
+fn read_vectors(dir: &Path) -> crate::search::Vectors {
+    std::fs::read_to_string(dir.join(crate::search::EMBEDDINGS))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+pub fn write_vectors(e: &Entry) -> Result<()> {
+    let s = serde_json::to_string(&e.vectors).map_err(|e| e.to_string())?;
+    write_atomic(&e.dir.join(crate::search::EMBEDDINGS), &s)
 }
 
 pub fn append_segment(dir: &Path, seg: &Segment) -> Result<()> {

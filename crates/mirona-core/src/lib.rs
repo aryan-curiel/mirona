@@ -276,6 +276,55 @@ pub struct ActionItem {
     pub owner_confirmed: bool,
 }
 
+/// Narrows a search (NGR-167). Every field is optional; text matches are case-insensitive and
+/// a part of the name is enough.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export)]
+pub struct SearchFilters {
+    pub client: Option<String>,
+    /// First day, `YYYY-MM-DD` (inclusive).
+    pub from: Option<String>,
+    /// Last day, `YYYY-MM-DD` (inclusive).
+    pub to: Option<String>,
+    pub speaker: Option<String>,
+    pub tag: Option<TagKind>,
+}
+
+/// One transcript moment a search found.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct Moment {
+    pub meeting_id: Id,
+    pub title: String,
+    pub client: String,
+    /// "Thu 5 Nov 2026 · 09:30".
+    pub date: String,
+    pub segment_id: Id,
+    pub start_ms: u32,
+    pub speaker: String,
+    /// The line, with keyword hits in `[brackets]`.
+    pub snippet: String,
+    /// Tagged sensitive or redacted: show only on request.
+    pub sensitive: bool,
+    /// Matched by keywords, by meaning (embeddings), or both.
+    pub by_keyword: bool,
+    pub by_meaning: bool,
+}
+
+/// What a search returns: the best moments first, and the meetings they (or the title, client
+/// or notes) come from.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SearchResults {
+    pub moments: Vec<Moment>,
+    pub meetings: Vec<MeetingSummary>,
+    /// Whether meaning (embeddings) took part; false when the embedder is off or unreachable.
+    pub semantic: bool,
+}
+
 /// Row in the sidebar's recent list.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

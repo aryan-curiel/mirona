@@ -5,6 +5,7 @@
 //! <root>/<YYYY-MM-DD-HHMM>-<slug>/transcript.jsonl  one Segment per line, appended while recording
 //! <root>/<YYYY-MM-DD-HHMM>-<slug>/audio.<ext>       written by capture; the store keeps its name
 //! <root>/.mirona/index.sqlite                       derived; `reindex` rebuilds it from the files
+//! <root>/<YYYY-MM-DD-HHMM>-<slug>/embeddings.json   one vector per line, for search (`search.rs`)
 //! <root>/.mirona/voices.json                        known people + voice embeddings (`people.rs`)
 //! ```
 //!
@@ -17,10 +18,12 @@ mod files;
 mod index;
 mod people;
 pub mod sample;
+mod search;
 
 pub use classify::review_tag;
 pub use index::Hit;
 pub use people::{Cluster, Person, Voices, replace_name};
+pub use search::{MIN_SIMILARITY, text_hash};
 
 use files::Entry;
 use mirona_core::{
@@ -268,6 +271,7 @@ impl Store {
             audio: None,
             items,
             dir,
+            vectors: search::Vectors::default(),
         };
         files::normalize(&mut e);
         files::write_transcript(&e)?;

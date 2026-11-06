@@ -88,6 +88,26 @@ fn list_meetings(st: St) -> Vec<MeetingSummary> {
     st.engine().store.lock().unwrap().list_meetings()
 }
 
+/// Keywords and meaning across every meeting (NGR-167), the same search MCP runs. Async so
+/// embedding the query never blocks the window.
+#[tauri::command]
+async fn search(
+    st: St<'_>,
+    query: String,
+    filters: mirona_core::SearchFilters,
+) -> Res<mirona_core::SearchResults> {
+    let engine = st.engine();
+    let emb = mirona_engine::search::embedder(&engine.config());
+    let store = engine.store.lock().unwrap();
+    Ok(mirona_engine::search::search_with(
+        &store,
+        emb.as_ref(),
+        &query,
+        &filters,
+        50,
+    ))
+}
+
 #[tauri::command]
 fn get_meeting(st: St, id: String) -> Res<Meeting> {
     st.engine().store.lock().unwrap().meeting(&id)
@@ -1253,11 +1273,18 @@ pub fn run() {
                 for e in engine.compress_recordings() {
                     eprintln!("mirona: compressing a recording: {e}");
                 }
+                // Meetings recorded before search by meaning (or while Ollama was off).
+                if let Some(emb) = mirona_engine::search::embedder(&engine.config())
+                    && let Err(e) = mirona_engine::search::backfill(&engine.store, &emb)
+                {
+                    eprintln!("mirona: search by meaning unavailable: {e}");
+                }
             });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             list_meetings,
+            search,
             refresh_store,
             get_meeting,
             list_action_items,

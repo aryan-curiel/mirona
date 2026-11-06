@@ -71,11 +71,13 @@ fn fixture(mcp_enabled: bool) -> tempfile::TempDir {
     let meetings = tmp.path().join("meetings");
     let mut store = mirona_store::Store::open(&meetings).unwrap();
     mirona_store::sample::seed(&mut store).unwrap();
-    let cfg = mirona_providers::config::Config {
+    let mut cfg = mirona_providers::config::Config {
         meetings_dir: Some(meetings),
         mcp_enabled,
         ..Default::default()
     };
+    // Keywords only: results must not depend on a local Ollama.
+    cfg.providers.insert("embeddings".into(), "off".into());
     cfg.save(&tmp.path().join("app/config.toml")).unwrap();
     tmp
 }

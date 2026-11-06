@@ -301,6 +301,82 @@ impl crate::LlmProvider for Ollama {
     }
 }
 
+/// Embeddings for search (NGR-167), from Ollama on this machine.
+pub const EMBED_URL: &str = "http://localhost:11434/api/embed";
+/// Small (270 MB), good at retrieval, wants `search_query:` / `search_document:` prefixes.
+pub const EMBED_MODEL: &str = "nomic-embed-text";
+
+pub struct OllamaEmbedder {
+    pub model: String,
+    url: String,
+    http: ureq::Agent,
+}
+
+impl Default for OllamaEmbedder {
+    fn default() -> Self {
+        Self::new(EMBED_MODEL, EMBED_URL)
+    }
+}
+
+impl OllamaEmbedder {
+    pub fn new(model: impl Into<String>, url: impl Into<String>) -> Self {
+        let http = ureq::Agent::config_builder()
+            .timeout_connect(Some(std::time::Duration::from_secs(2)))
+            .timeout_global(Some(std::time::Duration::from_secs(120)))
+            .build()
+            .into();
+        Self {
+            model: model.into(),
+            url: url.into(),
+            http,
+        }
+    }
+
+    /// One vector per text, in one call.
+    pub fn embed_many(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        crate::net::allow(&self.url, self.locality())?;
+        let err = |e: &dyn std::fmt::Display| Error::Provider(format!("ollama embed: {e}"));
+        let resp: Value = self
+            .http
+            .post(&self.url)
+            .send_json(json!({ "model": self.model, "input": texts }))
+            .and_then(|mut r| r.body_mut().read_json())
+            .map_err(|e| err(&e))?;
+        let out: Vec<Vec<f32>> = serde_json::from_value(resp["embeddings"].clone())
+            .map_err(|e| err(&format!("{e}: {resp}")))?;
+        if out.len() != texts.len() {
+            return Err(err(&format!(
+                "{} vectors for {} texts",
+                out.len(),
+                texts.len()
+            )));
+        }
+        Ok(out)
+    }
+}
+
+impl Provider for OllamaEmbedder {
+    fn id(&self) -> &'static str {
+        "ollama"
+    }
+    fn locality(&self) -> Locality {
+        if crate::net::is_loopback(&self.url) {
+            Locality::Local
+        } else {
+            Locality::Cloud
+        }
+    }
+}
+
+impl crate::Embedder for OllamaEmbedder {
+    fn embed(&self, text: &str) -> impl Future<Output = Result<Vec<f32>>> + Send {
+        let r = self
+            .embed_many(&[text.to_string()])
+            .map(|mut v| v.remove(0));
+        std::future::ready(r)
+    }
+}
+
 #[cfg(test)]
 mod llm_tests {
     use super::*;
