@@ -42,6 +42,14 @@
     .btn--accent { background: var(--mi-accent); color: #fff; box-shadow: 0 8px 24px rgba(14,116,102,.25); }
     .btn--accent:hover { background: var(--mi-accent-strong); }
     .hero :focus-visible { outline-color: #fff; }
+    .soon { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    .btn--soon { min-height: 40px; padding: 0 16px; font-size: 14px; font-weight: 500; cursor: default;
+      color: rgba(255,255,255,.85); border: 1px dashed rgba(255,255,255,.4); }
+    .btn--soon:hover { transform: none; }
+    .btn--soon em { font-style: normal; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.14); }
+    .get .soon { justify-content: center; }
+    .get .btn--soon { color: var(--mi-muted); border-color: var(--mi-control-line); }
+    .get .btn--soon em { background: var(--mi-neutral-tint); color: var(--mi-neutral-text); }
 
     /* Hero: the dark teal stage from the onboarding */
     .hero {
@@ -188,6 +196,10 @@
             <a class="btn btn--ghost" href="https://github.com/aryan-curiel/mirona">
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.56 9.56 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
               View on GitHub</a>
+          </div>
+          <div class="soon">
+            <span class="btn btn--soon" aria-disabled="true">Windows <em>Coming soon</em></span>
+            <span class="btn btn--soon" aria-disabled="true">Linux <em>Coming soon</em></span>
           </div>
           <p class="fine">Free · Apache 2.0 · macOS 14.6+ on Apple silicon</p>
         </div>
@@ -349,6 +361,10 @@ mirona actions</pre>
           <div class="ctas">
             <a class="btn btn--accent" href="https://github.com/aryan-curiel/mirona/releases/latest">Download for macOS</a>
             <a class="btn btn--outline" href="docs/">Read the docs</a>
+          </div>
+          <div class="soon">
+            <span class="btn btn--soon" aria-disabled="true">Windows <em>Coming soon</em></span>
+            <span class="btn btn--soon" aria-disabled="true">Linux <em>Coming soon</em></span>
           </div>
         </div>
       </div>
