@@ -1,7 +1,8 @@
 # Mirona docs
 
 The same pages are published as a website with the Rust API reference
-(`scripts/build-docs.sh` builds it locally into `target/book`).
+(`scripts/build-docs.sh` builds it locally into `target/book`). On GitHub Pages it lives under
+`docs/`, behind the landing page in `site/` (`scripts/build-site.sh` puts both into `target/site`).
 
 **Using Mirona**
 

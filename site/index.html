@@ -1,0 +1,369 @@
+<!doctype html>
+<!-- NGR-178: the landing page. Static, no build: scripts/build-site.sh copies it next to the
+     tokens, logo and screenshots it uses, with the docs site under docs/. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mirona · Meeting memory that stays on your Mac</title>
+  <meta name="description" content="Mirona records your calls, transcribes them on your Mac, works out who said what, and keeps every meeting as Markdown files you own. Open source.">
+  <meta property="og:title" content="Mirona · Meeting memory that stays on your Mac">
+  <meta property="og:description" content="Local transcription, speakers, summaries and action items, as files you own. Claude and other agents can search them over MCP, if you let them.">
+  <meta property="og:image" content="assets/meeting.png">
+  <link rel="icon" href="assets/mark-small.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/tokens.css">
+  <style>
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; color: var(--mi-ink); font: 400 17px/1.6 var(--mi-font-sans);
+      background: var(--mi-backdrop); background-color: var(--mi-backdrop-base);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--mi-accent); }
+    img { max-width: 100%; height: auto; display: block; }
+    code { font: 500 0.9em var(--mi-font-mono); }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 22px;
+      border-radius: 12px; font: 600 16px/1 var(--mi-font-sans); text-decoration: none;
+      transition: transform .15s ease, background .15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn svg { width: 18px; height: 18px; flex: none; }
+    .btn--light { background: #fff; color: var(--mi-accent-strong); box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+    .btn--ghost { color: #fff; border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.06); }
+    .btn--ghost:hover { background: rgba(255,255,255,.14); }
+    .btn--accent { background: var(--mi-accent); color: #fff; box-shadow: 0 8px 24px rgba(14,116,102,.25); }
+    .btn--accent:hover { background: var(--mi-accent-strong); }
+    .hero :focus-visible { outline-color: #fff; }
+
+    /* Hero: the dark teal stage from the onboarding */
+    .hero {
+      position: relative; color: #fff; overflow: hidden; padding-bottom: 220px;
+      background:
+        radial-gradient(700px 500px at 75% 45%, rgba(120, 220, 200, .22), transparent 65%),
+        radial-gradient(900px 600px at 0% 0%, rgba(40, 140, 120, .55), transparent 60%),
+        linear-gradient(180deg, #0E5F55 0%, #083F38 100%);
+    }
+    .hero::after { /* film grain */
+      content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .08; mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+    nav { position: relative; z-index: 1; display: flex; align-items: center; gap: 28px; padding: 22px 0; }
+    .brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; font-weight: 700; font-size: 19px; }
+    .brand img { width: 32px; height: 32px; }
+    nav .links { margin-left: auto; display: flex; gap: 24px; }
+    nav .links a { color: rgba(255,255,255,.85); text-decoration: none; font-weight: 500; font-size: 15px; }
+    nav .links a:hover { color: #fff; }
+    .hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: 1.25fr 1fr; gap: 48px; align-items: center; padding: 64px 0 40px; }
+    .eyebrow { font: 600 13px/1 var(--mi-font-sans); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.75); }
+    h1 { font-size: clamp(40px, 6vw, 64px); line-height: 1.05; letter-spacing: -0.03em; margin: 18px 0 20px; }
+    .lede { font-size: 19px; color: rgba(255,255,255,.86); max-width: 34em; margin: 0 0 32px; }
+    .ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+    .fine { margin-top: 18px; font-size: 14px; color: rgba(255,255,255,.7); }
+
+    /* The logo's bars speaking over their reflection */
+    .mirror { display: grid; justify-items: center; }
+    .bars { display: flex; align-items: flex-end; gap: 18px; height: 180px; }
+    .bars span { width: 30px; border-radius: 15px; background: #fff; transform-origin: bottom; animation: talk 2.4s ease-in-out infinite; }
+    .bars span:nth-child(1) { height: 50%; animation-delay: -.3s; }
+    .bars span:nth-child(2) { height: 100%; animation-delay: -1.1s; }
+    .bars span:nth-child(3) { height: 72%; animation-delay: -.7s; }
+    .bars span:nth-child(4) { height: 72%; animation-delay: -1.6s; }
+    .bars span:nth-child(5) { height: 56%; animation-delay: -.1s; }
+    .base { width: 270px; height: 32px; border-radius: 16px; background: #fff; margin-top: 10px; box-shadow: 0 0 60px rgba(160,240,225,.45); }
+    .base--echo { opacity: .25; box-shadow: none; margin-top: 12px; }
+    .reflection { transform: scaleY(-1); opacity: .3; margin-top: 10px; height: 120px; overflow: hidden; display: flex; align-items: flex-end;
+      -webkit-mask-image: linear-gradient(to top, #000, transparent 85%); mask-image: linear-gradient(to top, #000, transparent 85%); }
+    .reflection .bars { height: 180px; }
+    @keyframes talk { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(.62); } }
+
+    /* Product shot overlapping the hero */
+    .shot { position: relative; z-index: 2; margin-top: -190px; }
+    .shot img { border-radius: 14px; box-shadow: 0 40px 100px rgba(10, 40, 36, .35), 0 0 0 1px rgba(0,0,0,.06); }
+
+    /* Sections */
+    section { padding: 96px 0 0; }
+    .head { max-width: 640px; margin-bottom: 40px; }
+    .label { font: var(--mi-text-label); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--mi-accent); }
+    h2 { font-size: clamp(30px, 4vw, 40px); line-height: 1.15; letter-spacing: -0.02em; margin: 10px 0 14px; }
+    .head p { color: var(--mi-ink-3); margin: 0; }
+
+    .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .feature { padding: 26px; }
+    .feature svg { width: 26px; height: 26px; color: var(--mi-accent); }
+    .feature h3 { font-size: 18px; margin: 14px 0 6px; }
+    .feature p { margin: 0; color: var(--mi-ink-3); font-size: 15.5px; }
+
+    .tour-grid { display: grid; grid-template-columns: 1fr 1.5fr; gap: 48px; align-items: center; }
+    .tour { padding: 12px; margin: 0; }
+    .tour img { border-radius: 10px; width: 100%; }
+    .tour-list { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 14px; }
+    .tour-list li { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: baseline; color: var(--mi-ink-3); }
+    .tour-list .mi-chip { font-size: 13px; }
+    .caption { margin: 10px 4px 2px; font-size: 14px; color: var(--mi-muted); }
+
+    .privacy { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .privacy > * { min-width: 0; }
+    .privacy .mi-card { padding: 30px; }
+    .checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 16px; }
+    .checks li { display: grid; grid-template-columns: 24px 1fr; gap: 12px; }
+    .checks svg { width: 22px; height: 22px; color: var(--mi-accent); margin-top: 3px; }
+    .checks strong { display: block; }
+    .checks span { color: var(--mi-ink-3); font-size: 15.5px; }
+    .term { background: #13201E; color: #DDEDE9; border-radius: 12px; padding: 18px 20px; overflow-x: auto; font: 500 14px/1.7 var(--mi-font-mono); margin: 18px 0 0; }
+    .term .c { color: #7FA9A1; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .chips .mi-chip { font-size: 13px; padding: 4px 10px; }
+
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; counter-reset: s; }
+    .step { padding: 26px; counter-increment: s; }
+    .step::before { content: counter(s); display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+      background: var(--mi-accent-tint); color: var(--mi-accent-strong); font-weight: 700; }
+    .step h3 { font-size: 18px; margin: 14px 0 6px; }
+    .step p { margin: 0; color: var(--mi-ink-3); font-size: 15.5px; }
+    kbd { font: 500 13px var(--mi-font-mono); padding: 1px 6px; border-radius: 5px; background: var(--mi-neutral-tint); border: 1px solid var(--mi-control-line); }
+    .get { text-align: center; padding: 56px 24px; margin-top: 18px; }
+    .get h2 { margin-top: 0; }
+    .get p { color: var(--mi-ink-3); margin: 0 auto 26px; max-width: 36em; }
+    .get .ctas { justify-content: center; }
+    .btn--outline { color: var(--mi-ink); background: var(--mi-glass-control-bg); border: 1px solid var(--mi-control-line); }
+
+    footer { padding: 64px 0 48px; color: var(--mi-muted); font-size: 14px; }
+    footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; }
+    footer a { color: var(--mi-ink-3); text-decoration: none; }
+    footer a:hover { color: var(--mi-accent); }
+    footer .sp { margin-left: auto; }
+
+    @media (max-width: 860px) {
+      .hero-grid { grid-template-columns: 1fr; padding-top: 32px; }
+      .mirror { display: none; }
+      .hero { padding-bottom: 140px; }
+      .shot { margin-top: -110px; }
+      .features, .steps, .privacy, .tour-grid { grid-template-columns: 1fr; }
+      nav .links a:not(.gh) { display: none; }
+      section { padding-top: 72px; }
+      footer .sp { margin-left: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .bars span { animation: none; }
+      html { scroll-behavior: auto; }
+      .btn:hover { transform: none; }
+    }
+    @media (prefers-reduced-transparency: reduce) {
+      .mi-card { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <nav aria-label="Main">
+        <a class="brand" href="./"><img src="assets/app-icon.svg" alt="">Mirona</a>
+        <div class="links">
+          <a href="#features">Features</a>
+          <a href="#privacy">Privacy</a>
+          <a href="#agents">Agents</a>
+          <a href="docs/">Docs</a>
+          <a class="gh" href="https://github.com/aryan-curiel/mirona">GitHub</a>
+        </div>
+      </nav>
+      <div class="hero-grid">
+        <div>
+          <div class="eyebrow">Open source · for macOS</div>
+          <h1>A mirror for your meetings.</h1>
+          <p class="lede">Mirona records your calls, transcribes them on your Mac, works out who said what,
+            and keeps every meeting as Markdown files you own. Claude and other AI agents can search
+            them, if you let them.</p>
+          <div class="ctas">
+            <a class="btn btn--light" href="https://github.com/aryan-curiel/mirona/releases/latest">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+              Download for macOS</a>
+            <a class="btn btn--ghost" href="https://github.com/aryan-curiel/mirona">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.56 9.56 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
+              View on GitHub</a>
+          </div>
+          <p class="fine">Free · Apache 2.0 · macOS 14.6+ on Apple silicon</p>
+        </div>
+        <div class="mirror" aria-hidden="true">
+          <div class="bars"><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="base"></div>
+          <div class="base base--echo"></div>
+          <div class="reflection"><div class="bars"><span></span><span></span><span></span><span></span><span></span></div></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="wrap shot">
+      <img src="assets/meeting.png" width="1920" height="1226"
+        alt="A meeting in Mirona: the transcript with speakers and tags, what Mirona wants you to check, and a drafted follow-up email">
+    </div>
+
+    <section id="features">
+      <div class="wrap">
+        <div class="head">
+          <div class="label">What it does</div>
+          <h2>Calls are where work is promised. Mirona remembers it.</h2>
+          <p>Decisions and action items fade by the next day. Mirona keeps them, linked to the moment they were said.</p>
+        </div>
+        <div class="features">
+          <article class="mi-card feature">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.3 7.5 9.5 4.3-1.2 7.5-4.9 7.5-9.5V6L12 3Z"/></svg>
+            <h3>Private by default</h3>
+            <p>Speech-to-text, speaker detection and search run on your Mac. One switch blocks every cloud service.</p>
+          </article>
+          <article class="mi-card feature">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+            <h3>Files you own</h3>
+            <p>One folder per meeting: <code>meeting.md</code> and <code>transcript.jsonl</code>. Back them up, sync them, grep them.</p>
+          </article>
+          <article class="mi-card feature">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
+            <h3>Useful afterwards</h3>
+            <p>Action items, decisions and open questions, with summaries from templates you can edit and a drafted follow-up email.</p>
+          </article>
+          <article class="mi-card feature">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4.5a3.5 3.5 0 0 1 0 7M21 20c0-2.6-1.6-4.8-4-5.6"/></svg>
+            <h3>Knows who spoke</h3>
+            <p>Speakers are split after the call. Name a voice once and Mirona recognises it in later meetings.</p>
+          </article>
+          <article class="mi-card feature">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+            <h3>Search by meaning</h3>
+            <p>Find a meeting by keywords or by what was meant, across everything you have recorded. All local.</p>
+          </article>
+          <article class="mi-card feature">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0V8ZM12 17v4"/></svg>
+            <h3>Ready for your agents</h3>
+            <p>An MCP server, a CLI and a Claude Code skill. Off until you turn it on.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="tour">
+      <div class="wrap">
+        <div class="tour-grid">
+          <div>
+            <div class="label">A quick tour</div>
+            <h2>See why a line was tagged, then act on it.</h2>
+            <p style="color:var(--mi-ink-3);margin:0">Every line is read once and tagged on the spot. When Mirona isn't sure, it asks you instead of guessing.</p>
+            <ul class="tour-list">
+              <li><span class="mi-chip mi-chip--action">Action</span>Who owes what, and by when</li>
+              <li><span class="mi-chip mi-chip--decision">Decision</span>What was agreed</li>
+              <li><span class="mi-chip mi-chip--question">Open question</span>What is still open</li>
+              <li><span class="mi-chip mi-chip--review">To check</span>Answers Mirona wants you to confirm</li>
+            </ul>
+          </div>
+          <figure class="mi-card tour">
+            <img src="assets/demo.gif" width="960" height="613" loading="lazy"
+              alt="Inspecting a tagged line, the summary, action items across meetings, and search">
+            <figcaption class="caption">Inspector, summary, action items and search. Demo data.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="privacy">
+      <div class="wrap">
+        <div class="head">
+          <div class="label">Privacy</div>
+          <h2>Your meetings stay on your Mac.</h2>
+          <p>What people say in a call is theirs too. Mirona is built so nothing leaves your Mac unless you choose a cloud model.</p>
+        </div>
+        <div class="privacy">
+          <div class="mi-card">
+            <ul class="checks">
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+                <div><strong>Privacy mode, on from the start</strong><span>Every network request goes through one gate. In privacy mode only your own Mac gets through.</span></div></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+                <div><strong>No telemetry</strong><span>No analytics, no accounts. Update checks are opt-in.</span></div></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+                <div><strong>Encrypted at rest, if you want</strong><span>Transcripts, audio and voiceprints, with the key in your keychain.</span></div></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+                <div><strong>Retention rules</strong><span>Delete audio or whole meetings after the time you choose.</span></div></li>
+            </ul>
+          </div>
+          <div class="mi-card">
+            <strong>Sensitive lines stay out</strong>
+            <p style="color:var(--mi-ink-3);margin:6px 0 0">Passwords, salaries and account numbers are tagged on your Mac. They stay out of
+              summaries, cloud models, search and agents, which see <code>[redacted]</code> unless you allow it.</p>
+            <div class="chips">
+              <span class="mi-chip mi-chip--action">Action · Aryan · Thu</span>
+              <span class="mi-chip mi-chip--decision">Decision</span>
+              <span class="mi-chip mi-chip--question">Open question</span>
+              <span class="mi-chip mi-chip--sensitive">Sensitive</span>
+            </div>
+            <p style="margin:22px 0 0"><a href="docs/PRIVACY.html">What leaves your Mac, and when →</a></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="agents">
+      <div class="wrap">
+        <div class="privacy">
+          <div class="head" style="margin:0">
+            <div class="label">For your agents</div>
+            <h2>Ask Claude what the client agreed.</h2>
+            <p>Mirona serves your meetings over MCP, on stdio or localhost with a token per client.
+              Agents can search meetings, read transcripts, list action items and ask questions about a call.
+              Turn it on in Settings › Agents (MCP).</p>
+            <p style="margin-top:16px"><a href="docs/docs/cli-and-mcp.html">CLI and MCP guide →</a></p>
+          </div>
+          <div>
+            <pre class="term"><span class="c"># Claude Code, with the app installed</span>
+claude mcp add mirona -- \
+  /Applications/Mirona.app/Contents/MacOS/mirona-app mcp
+
+<span class="c"># or from the terminal</span>
+mirona search "insurer grouping"
+mirona actions</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="start">
+      <div class="wrap">
+        <div class="head">
+          <div class="label">Get started</div>
+          <h2>Recording in three steps.</h2>
+        </div>
+        <div class="steps">
+          <div class="mi-card step"><h3>Download</h3><p>Get the latest DMG from GitHub, open it and drag Mirona to Applications.</p></div>
+          <div class="mi-card step"><h3>Set up</h3><p>Allow the microphone and system audio. Mirona downloads the speech and speaker models once (about 1&nbsp;GB).</p></div>
+          <div class="mi-card step"><h3>Record</h3><p>From the sidebar, the menu bar, or <kbd>⌘⌥⇧R</kbd> from any app. Summaries use <a href="https://ollama.com">Ollama</a> on your Mac by default.</p></div>
+        </div>
+        <div class="mi-card get">
+          <h2>Remember every call.</h2>
+          <p>Free and open source. Read the code, build it yourself, or help shape what comes next.</p>
+          <div class="ctas">
+            <a class="btn btn--accent" href="https://github.com/aryan-curiel/mirona/releases/latest">Download for macOS</a>
+            <a class="btn btn--outline" href="docs/">Read the docs</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <a class="brand" href="./" style="color:var(--mi-ink)"><img src="assets/app-icon.svg" alt="" style="width:24px;height:24px">Mirona</a>
+      <a href="docs/">Docs</a>
+      <a href="docs/PRIVACY.html">Privacy</a>
+      <a href="docs/CONTRIBUTING.html">Contributing</a>
+      <a href="https://github.com/aryan-curiel/mirona">GitHub</a>
+      <span class="sp">Apache 2.0 · Windows and Linux capture are on the roadmap</span>
+    </div>
+  </footer>
+</body>
+</html>

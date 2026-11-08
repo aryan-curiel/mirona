@@ -1,4 +1,5 @@
-# NGR-176: the docs site (guides + Rust API) on GitHub Pages. Built on release tags and on
+# NGR-176, NGR-178: the landing page (site/) at the root of GitHub Pages and the docs site
+# (guides + Rust API) under docs/. Built on release tags and on
 # demand only, to save Actions minutes. Pages needs a public repo (or a paid plan) and
 # Settings › Pages › Source: GitHub Actions.
 name: Docs
@@ -44,9 +45,10 @@ jobs:
             | tar xz -C "$RUNNER_TEMP/mdbook"
           echo "$RUNNER_TEMP/mdbook" >> "$GITHUB_PATH"
       - run: scripts/build-docs.sh
+      - run: scripts/build-site.sh
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: target/book
+          path: target/site
 
   deploy:
     needs: build
