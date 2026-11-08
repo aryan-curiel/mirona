@@ -3,7 +3,7 @@ import type { MeetingSummary } from "./MeetingSummary";
 import type { Moment } from "./Moment";
 
 /**
- * What a search returns: the best moments first, and the meetings they (or the title, client
+ * What a search returns: the best moments first, and the meetings they (or the title, tags
  * or notes) come from.
  */
 export type SearchResults = { moments: Array<Moment>, meetings: Array<MeetingSummary>, 

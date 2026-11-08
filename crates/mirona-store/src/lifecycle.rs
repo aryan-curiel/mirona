@@ -140,12 +140,12 @@ impl Store {
             .is_ok_and(|a| a.is_some_and(|p| p.is_file()))
     }
 
-    /// Delete every meeting of a client (exact name, any case). Returns the deleted ids.
-    pub fn delete_client(&mut self, client: &str) -> Result<Vec<Id>> {
+    /// Delete every meeting with a tag (exact tag, any case). Returns the deleted ids.
+    pub fn delete_tagged(&mut self, tag: &str) -> Result<Vec<Id>> {
         let ids: Vec<Id> = self
             .list_meetings()
             .into_iter()
-            .filter(|m| m.client.eq_ignore_ascii_case(client.trim()))
+            .filter(|m| crate::has_tag(&m.tags, tag))
             .map(|m| m.id)
             .collect();
         for id in &ids {
@@ -282,14 +282,14 @@ mod tests {
     }
 
     #[test]
-    fn audio_goes_text_stays_and_clients_can_be_forgotten() {
+    fn audio_goes_text_stays_and_tags_can_be_forgotten() {
         let dir = tempfile::tempdir().unwrap();
         let mut s = Store::open(dir.path()).unwrap();
         for (id, client) in [("m-1", "Northwind"), ("m-2", "Northwind"), ("m-3", "Helio")] {
             s.start_meeting(id).unwrap();
             s.push_segment(id, line(id, 0, "hello")).unwrap();
             let i = s.idx(id).unwrap();
-            s.entries[i].meeting.client = client.into();
+            s.entries[i].meeting.tags = vec![format!("project:{client}")];
             std::fs::write(s.meeting_dir(id).unwrap().join("audio.caf"), b"a").unwrap();
             s.set_audio(id, "audio.caf").unwrap();
         }
@@ -304,7 +304,7 @@ mod tests {
             "{\"meeting_id\":\"m-1\",\"text\":\"hello\"}\n{\"meeting_id\":\"m-3\",\"text\":\"x\"}\n",
         )
         .unwrap();
-        let gone = s.delete_client("northwind").unwrap();
+        let gone = s.delete_tagged("Project:northwind").unwrap();
         assert_eq!(gone.len(), 2);
         assert_eq!(s.list_meetings().len(), 1);
         let labels = std::fs::read_to_string(s.labels_path()).unwrap();

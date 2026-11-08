@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../store";
-import { fmt, needsReview, priorityLabel, sure, toneLabel, typeLabel } from "../lib/api";
+import { allTags, fmt, needsReview, priorityLabel, sure, toneLabel, typeLabel } from "../lib/api";
 import { Label, Mono, Toggle } from "../components/ui";
 import type { Answer } from "../bindings/Answer";
 import type { ChoiceAnswer } from "../bindings/ChoiceAnswer";
@@ -100,8 +100,58 @@ const review = (question: string, value: string, c?: ChoiceAnswer): Review => ({
   threshold: c?.threshold ?? 0,
 });
 
-/** Meeting type or client: the answer, and option chips to confirm one when unsure. */
-function ChoiceRow({ question, title, c, label }: { question: "meeting_type" | "client"; title: string; c: ChoiceAnswer; label: (v: string) => string }) {
+/** The meeting's tags: remove one with its ×, add a known one or type a new one (it joins the
+ * list in Settings). Unsure ones wait in "To check". */
+function TagsRow() {
+  const m = useStore((s) => s.meeting);
+  const st = useStore((s) => s.settings);
+  const meetings = useStore((s) => s.meetings);
+  const setTags = useStore((s) => s.setTags);
+  const [draft, setDraft] = useState("");
+  if (!m) return null;
+  const known = allTags(st, meetings).filter((t) => !m.tags.includes(t));
+  const add = () => {
+    const t = draft.trim();
+    setDraft("");
+    if (t && !m.tags.some((x) => x.toLowerCase() === t.toLowerCase())) void setTags([...m.tags, t]);
+  };
+  return (
+    <div className="mt-3">
+      <div className="flex min-h-8 items-center gap-2 text-[14px]">
+        <span className="shrink-0 text-muted">Tags</span>
+        {m.tags.length === 0 && <span className="flex-1 text-right text-ink-3">None</span>}
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        {m.tags.map((t) => (
+          <span key={t} className="mi-chip mi-chip--neutral gap-1">
+            {t}
+            <button type="button" className="-mr-1 rounded px-1 text-muted hover:text-ink" aria-label={`Remove tag ${t}`} onClick={() => void setTags(m.tags.filter((x) => x !== t))}>
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          className="mi-field h-8 min-w-0 flex-1 text-[13px]"
+          list="mi-known-tags"
+          aria-label="Add a tag"
+          placeholder="Add a tag, e.g. project:setr"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+          onBlur={add}
+        />
+        <datalist id="mi-known-tags">
+          {known.map((t) => (
+            <option key={t} value={t} />
+          ))}
+        </datalist>
+      </div>
+    </div>
+  );
+}
+
+/** Meeting type: the answer, and option chips to confirm one when unsure. */
+function ChoiceRow({ question, title, c, label }: { question: "meeting_type"; title: string; c: ChoiceAnswer; label: (v: string) => string }) {
   const resolve = useStore((s) => s.resolve);
   const details = useStore((s) => s.modelDetails);
   const [open, setOpen] = useState(false);
@@ -111,7 +161,7 @@ function ChoiceRow({ question, title, c, label }: { question: "meeting_type" | "
   return (
     <div className="mt-3">
       <div className="flex min-h-8 items-center gap-2 text-[14px]">
-        {/* Long values (client names) are cut with "…"; the label, chip and link keep their size. */}
+        {/* Long values are cut with "…"; the label, chip and link keep their size. */}
         <span className="shrink-0 whitespace-nowrap text-muted">{title}</span>
         <span className="min-w-0 flex-1 truncate text-right font-semibold" title={c.value && c.value !== "none" ? label(c.value) : undefined}>
           {c.value && c.value !== "none" ? label(c.value) : "None"}
@@ -141,7 +191,7 @@ function ChoiceRow({ question, title, c, label }: { question: "meeting_type" | "
                 void resolve(review(question, o, c), true);
               }}
             >
-              {o === "none" ? "No client" : label(o)}
+              {label(o)}
             </button>
           ))}
         </div>
@@ -229,7 +279,8 @@ const reviewLabel: Record<string, string> = {
   follow_up: "Needs a follow-up email?",
   action_item: "Action item from the summary",
   meeting_type: "Meeting type",
-  client: "Client",
+  tag: "Tag this meeting?",
+  new_tag: "New tag? (only when none fits)",
 };
 
 /** Everything below its threshold, each settled in one click (NGR-158). */
@@ -245,7 +296,11 @@ function ReviewList() {
   const textAt = (r: Review) => {
     const seg = r.segmentId ? m.segments.find((x) => x.id === r.segmentId) : m.segments.find((x) => x.startMs === r.atMs);
     if (seg && (seg.redacted || seg.tags.some((t) => t.kind === "sensitive")) && !showSensitive) return "[sensitive: hidden]";
-    return r.segmentId ? seg?.text : r.question === "action_item" ? r.value : null;
+    if (r.question === "new_tag") {
+      const about = m.answers?.tags.find((t) => t.tag === r.value)?.about;
+      return about ? `${r.value}: ${about}` : r.value;
+    }
+    return r.segmentId ? seg?.text : r.question === "action_item" || r.question === "tag" ? r.value : null;
   };
   return (
     <section className="mb-6 rounded-lg border border-dashed border-[var(--mi-review-edge)] bg-[var(--mi-review-tint)] p-4">
@@ -257,7 +312,7 @@ function ReviewList() {
       <ul className="mt-2 flex flex-col">
         {items.map((r) => {
           const text = textAt(r);
-          const choice = r.question === "meeting_type" ? m.answers?.meetingType : r.question === "client" ? m.answers?.client : undefined;
+          const choice = r.question === "meeting_type" ? m.answers?.meetingType : undefined;
           return (
             <li key={`${r.question}-${r.segmentId ?? r.value}-${r.atMs}`} className="border-t border-[var(--mi-review-edge)]/40 py-2.5 first:border-t-0">
               <div className="flex items-center gap-2 text-[14px]">
@@ -272,9 +327,9 @@ function ReviewList() {
               {text && <p className="mt-1 line-clamp-2 text-[13px] text-ink-3">“{text}”</p>}
               {choice ? (
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {choice.options.map((o) => (
+                  {choice.options.map((o: string) => (
                     <button type="button" key={o} className="mi-option text-[13px]" aria-pressed={o === r.value} onClick={() => resolve({ ...r, value: o }, true)}>
-                      {o === "none" ? "No client" : r.question === "meeting_type" ? typeLabel(o) : o}
+                      {typeLabel(o)}
                     </button>
                   ))}
                 </div>
@@ -391,16 +446,16 @@ export function Inspector() {
       )}
 
       <Label>This meeting</Label>
+      <TagsRow />
       {a ? (
         <div className="mi-enter">
           <ChoiceRow question="meeting_type" title="Meeting type" c={a.meetingType} label={typeLabel} />
-          {(a.client.options.length > 0 || a.client.value) && <ChoiceRow question="client" title="Client" c={a.client} label={(v) => v} />}
           <Score label="Priority" value={priorityLabel(a.priority)} p={a.priority / 5} raw={`${a.priority.toFixed(1)} / 5`} />
           <Score label="Client tone" value={toneLabel(a.tone)} p={a.tone / 4} raw={`${a.tone.toFixed(1)} / 4`} />
           <FollowUp />
         </div>
       ) : (
-        <p className="mt-3 text-[13px] text-muted">Meeting type, client, priority, tone and follow-up are answered when you stop recording.</p>
+        <p className="mt-3 text-[13px] text-muted">Meeting type, tags, priority, tone and follow-up are answered when you stop recording.</p>
       )}
 
       {!seg && <p className="mt-6 text-[13px] text-muted">Click a line in the transcript to see what Mirona noted about it.</p>}

@@ -5,7 +5,11 @@ import type { TagKind } from "./TagKind";
  * Narrows a search (NGR-167). Every field is optional; text matches are case-insensitive and
  * a part of the name is enough.
  */
-export type SearchFilters = { client: string | null, 
+export type SearchFilters = { 
+/**
+ * A meeting tag, or part of one (`project:` matches the whole group).
+ */
+meetingTag: string | null, 
 /**
  * First day, `YYYY-MM-DD` (inclusive).
  */

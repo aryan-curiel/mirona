@@ -451,7 +451,7 @@ mod llm_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::questions::{meeting_questions, segment_questions};
+    use crate::questions::{Question, meeting_questions, segment_questions};
 
     fn fixture(name: &str) -> Value {
         let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
@@ -465,11 +465,11 @@ mod tests {
     const SEGMENT: &str = "Marco: Can you send Karen the revised SOW by Thursday?\nPriya: Sure, I'll do it.\nMarco: Great, then we go with fixed-price.";
     const MEETING: &str = "Karen: Thanks for joining. Our compliance audit is in two weeks and the export still drops rows.\nMarco: We found the bug, the fix ships Friday. I'll send you a written plan today.\nKaren: Please do, my director is not happy about the delay. Also, can you add the audit log to the export?\nPriya: Yes, we'll scope that and get back to you by Monday.";
 
-    fn clients() -> [(&'static str, &'static str); 2] {
-        [
-            ("Northwind Bank", "contact: Karen, compliance"),
-            ("Helio Health", "clinics, contact: Dr. Osei"),
-        ]
+    fn questions() -> Vec<Question> {
+        meeting_questions(
+            &crate::questions::tests::tags(),
+            &std::collections::BTreeMap::new(),
+        )
     }
 
     #[test]
@@ -485,7 +485,7 @@ mod tests {
         );
         assert_eq!(body["logprobs"], true);
         assert_eq!(body["messages"][1]["content"], "hi");
-        let body = request(MODEL, "hi", &meeting_questions(clients()));
+        let body = request(MODEL, "hi", &questions());
         let props = &body["format"]["properties"];
         assert_eq!(props["tone"]["enum"], json!(["0", "1", "2", "3", "4"]));
     }
@@ -514,16 +514,19 @@ mod tests {
 
     #[test]
     fn parses_a_recorded_meeting_response_with_scores() {
-        let qs = meeting_questions(clients());
+        let qs = questions();
         let replies = parse(&fixture("ollama-meeting.json"), &qs).unwrap();
-        let Reply::Choice { value, .. } = &replies[1] else {
-            panic!("client is a choice")
+        let p = |id: &str| {
+            replies[qs.iter().position(|q| q.id == id).unwrap()]
+                .p_yes()
+                .unwrap()
         };
-        assert_eq!(value, "Northwind Bank");
+        assert!(p("tag:project:Northwind Bank") >= 0.5, "{replies:?}");
+        assert!(p("tag:project:Helio Health") < 0.5, "{replies:?}");
         let Reply::Score {
             score,
             probabilities,
-        } = &replies[2]
+        } = &replies[1]
         else {
             panic!("priority is a score")
         };
@@ -578,7 +581,7 @@ mod tests {
                 SEGMENT,
                 segment_questions(&speakers()),
             ),
-            ("ollama-meeting.json", MEETING, meeting_questions(clients())),
+            ("ollama-meeting.json", MEETING, questions()),
         ] {
             let resp: Value = o
                 .http

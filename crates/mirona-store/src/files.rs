@@ -43,6 +43,9 @@ struct Front {
     #[serde(default)]
     language: String,
     #[serde(default)]
+    tags: Vec<String>,
+    /// Before tags: one client per meeting. Read as the tag `project:<client>`.
+    #[serde(default, skip_serializing)]
     client: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     audio: Option<String>,
@@ -82,7 +85,11 @@ pub fn read(dir: &Path, key: Option<&Key>) -> Result<(Entry, Vec<String>)> {
         meeting: Meeting {
             id: f.id,
             title: f.title,
-            client: f.client,
+            tags: if f.tags.is_empty() {
+                legacy_tags(&f.client)
+            } else {
+                f.tags
+            },
             when: String::new(),
             date_label: String::new(),
             duration_min: f.duration_min,
@@ -109,12 +116,21 @@ pub fn read(dir: &Path, key: Option<&Key>) -> Result<(Entry, Vec<String>)> {
     Ok((e, errors))
 }
 
-/// Action items repeat their meeting's id, title and client; the meeting wins.
+/// A meeting written before tags: its client becomes `project:<client>` ("Unsorted": none).
+fn legacy_tags(client: &str) -> Vec<String> {
+    let c = client.trim();
+    if c.is_empty() || c == "Unsorted" {
+        return vec![];
+    }
+    vec![format!("{}:{c}", mirona_providers::config::PROJECT_GROUP)]
+}
+
+/// Action items repeat their meeting's id, title and tags; the meeting wins.
 pub fn normalize(e: &mut Entry) {
     for a in &mut e.items {
         a.meeting_id.clone_from(&e.meeting.id);
         a.meeting_title.clone_from(&e.meeting.title);
-        a.client.clone_from(&e.meeting.client);
+        a.tags.clone_from(&e.meeting.tags);
     }
 }
 
@@ -195,7 +211,8 @@ pub fn render(e: &Entry) -> Result<String> {
         created: e.created.clone(),
         duration_min: m.duration_min,
         language: m.language.clone(),
-        client: m.client.clone(),
+        tags: m.tags.clone(),
+        client: String::new(),
         audio: e.audio.clone(),
         sample: m.sample,
         speakers: m.speakers.clone(),

@@ -95,6 +95,23 @@ pub fn app_dir() -> PathBuf {
     base.join(APP_ID)
 }
 
+/// A tag as kept: `group:name` or `name`, trimmed around the colon, at most 40 characters.
+pub fn clean_tag(tag: &str) -> Result<String> {
+    let parts: Vec<&str> = tag.split(':').map(str::trim).collect();
+    let ok = match parts.as_slice() {
+        [name] => !name.is_empty(),
+        [group, name] => !group.is_empty() && !name.is_empty(),
+        _ => false,
+    };
+    let tag = parts.join(":");
+    if !ok || tag.chars().count() > 40 {
+        return Err(format!(
+            "“{tag}”: a tag is a name or group:name, up to 40 characters."
+        ));
+    }
+    Ok(tag)
+}
+
 /// Where meetings go by default: `~/Documents/Mirona`.
 pub fn documents_dir() -> PathBuf {
     let home =
@@ -167,6 +184,48 @@ impl Engine {
         cfg.save(&config_path(app_dir))?;
         self.set_config(cfg);
         Ok(())
+    }
+
+    /// Add a tag to the list (an accepted proposal). An existing tag keeps its description.
+    pub fn add_tag(&self, app_dir: &Path, tag: &str, about: &str) -> Result<()> {
+        let tag = clean_tag(tag)?;
+        let mut cfg = self.config();
+        if cfg.tags.keys().any(|t| t.eq_ignore_ascii_case(&tag)) {
+            return Ok(());
+        }
+        cfg.tags.insert(tag, about.trim().into());
+        self.save_config(app_dir, cfg)
+    }
+
+    /// Rename a tag everywhere: the list, the rules keyed by it, and every meeting.
+    pub fn rename_tag(&self, app_dir: &Path, old: &str, new: &str) -> Result<usize> {
+        let new = clean_tag(new)?;
+        let mut cfg = self.config();
+        let same = |t: &String| t.eq_ignore_ascii_case(old.trim());
+        if cfg
+            .tags
+            .keys()
+            .any(|t| t.eq_ignore_ascii_case(&new) && !same(t))
+        {
+            return Err(format!("There is already a tag {new}."));
+        }
+        let old_key = cfg.tags.keys().find(|t| same(t)).cloned();
+        let about = old_key
+            .and_then(|k| cfg.tags.remove(&k))
+            .unwrap_or_default();
+        cfg.tags.insert(new.clone(), about);
+        if let Some(k) = cfg.retention.tags.keys().find(|t| same(t)).cloned() {
+            let d = cfg.retention.tags.remove(&k).unwrap_or_default();
+            cfg.retention.tags.insert(new.clone(), d);
+        }
+        for t in cfg.auto_record.iter_mut().chain(&mut cfg.consent_given) {
+            if same(t) {
+                t.clone_from(&new);
+            }
+        }
+        let n = self.store.lock().unwrap().rename_tag(old, &new)?;
+        self.save_config(app_dir, cfg)?;
+        Ok(n)
     }
 
     pub fn config(&self) -> Config {

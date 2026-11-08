@@ -4,7 +4,7 @@ import type { SearchFilters } from "../bindings/SearchFilters";
 import type { SearchResults } from "../bindings/SearchResults";
 import type { TagKind } from "../bindings/TagKind";
 import { needsSetup, useStore, type View } from "../store";
-import { api, dayGroup, fmt } from "../lib/api";
+import { allTags, api, dayGroup, fmt } from "../lib/api";
 import { Icon, Logo, Reveal, Toggle, useLast } from "./ui";
 
 const nav: { id: View; label: string; icon: Parameters<typeof Icon>[0]["name"] }[] = [
@@ -167,11 +167,11 @@ function Snippet({ text }: { text: string }) {
  * Search across meetings by keywords and meaning (NGR-167), with filters. Results are the
  * moments that matched; a click opens the meeting at that line.
  */
-function Search({ clients, onActive }: { clients: string[]; onActive: (on: boolean) => void }) {
+function Search({ tags, onActive }: { tags: string[]; onActive: (on: boolean) => void }) {
   const openAt = useStore((s) => s.openAt);
   const showSensitive = useStore((s) => s.filters.showSensitive);
   const [q, setQ] = useState("");
-  const [f, setF] = useState<SearchFilters>({ client: null, from: null, to: null, speaker: null, tag: null });
+  const [f, setF] = useState<SearchFilters>({ meetingTag: null, from: null, to: null, speaker: null, tag: null });
   const [more, setMore] = useState(false);
   const [r, setR] = useState<SearchResults | null>(null);
   const active = q.trim() !== "" || Object.values(f).some((v) => v);
@@ -202,10 +202,10 @@ function Search({ clients, onActive }: { clients: string[]; onActive: (on: boole
       </div>
       {more && (
         <div className="grid grid-cols-2 gap-1.5 text-[12px]">
-          <select className="mi-field h-8" aria-label="Client" value={f.client ?? ""} onChange={(e) => set("client", e.target.value)}>
-            <option value="">Any client</option>
-            {clients.map((c) => (
-              <option key={c}>{c}</option>
+          <select className="mi-field h-8" aria-label="Meeting tag" value={f.meetingTag ?? ""} onChange={(e) => set("meetingTag", e.target.value)}>
+            <option value="">Any meeting tag</option>
+            {tags.map((t) => (
+              <option key={t}>{t}</option>
             ))}
           </select>
           <select className="mi-field h-8" aria-label="Tag" value={f.tag ?? ""} onChange={(e) => set("tag", e.target.value)}>
@@ -242,7 +242,7 @@ function Search({ clients, onActive }: { clients: string[]; onActive: (on: boole
             r.meetings.map((m) => (
               <button type="button" key={m.id} className="mi-nav px-2.5 py-1.5 text-left" onClick={() => openAt(m.id, 0)}>
                 <div className="truncate text-[13px] font-semibold text-ink">{m.title}</div>
-                <div className="truncate text-[12px] text-muted">{[m.client, m.when].filter(Boolean).join(" · ")}</div>
+                <div className="truncate text-[12px] text-muted">{[...m.tags, m.when].filter(Boolean).join(" · ")}</div>
               </button>
             ))}
         </section>
@@ -258,7 +258,7 @@ export function Sidebar({ mac }: { mac: boolean }) {
   const s = useStore();
   const open = s.actionItems.filter((a) => !a.done).length;
   const rec = s.recording;
-  const clients = [...new Set(s.meetings.map((m) => m.client).filter(Boolean))].sort();
+  const tags = allTags(s.settings, s.meetings);
   // The newest few, by day; everything else is one click away in All meetings.
   const shown = s.meetings.slice(0, RECENT);
   const groups: [string, typeof shown][] = [];
@@ -313,7 +313,7 @@ export function Sidebar({ mac }: { mac: boolean }) {
           {s.importing ? "Importing…" : "Import audio…"}
         </button>
       </div>
-      <Search clients={clients} onActive={setSearching} />
+      <Search tags={tags} onActive={setSearching} />
       <div className={`-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1 ${searching ? "hidden" : ""}`}>
         <ImportProgress />
         {groups.map(([g, ms]) => (
@@ -335,7 +335,7 @@ export function Sidebar({ mac }: { mac: boolean }) {
                 <span className="truncate">{m.title}</span>
               </div>
               <div className="truncate text-[12px] text-muted">
-                {busy ? "Writing the summary…" : [m.client, m.when].filter(Boolean).join(" · ")}
+                {busy ? "Writing the summary…" : [...m.tags, m.when].filter(Boolean).join(" · ")}
               </div>
             </button>
           );
@@ -412,7 +412,7 @@ export function CallBanner() {
       <Icon name="mic" className="text-accent" />
       <span className="flex-1 text-ink">
         <span className="font-semibold">{call.app}</span> is using the microphone. Record this call?
-        {call.title && <span className="text-ink-3"> It will be named “{call.title}”{call.client ? ` for ${call.client}` : ""}.</span>}
+        {call.title && <span className="text-ink-3"> It will be named “{call.title}”{call.tag ? ` and tagged ${call.tag}` : ""}.</span>}
       </span>
       <button type="button" className="mi-ghost min-h-11! px-4" onClick={dismiss}>
         Dismiss
@@ -484,7 +484,7 @@ export function RecordingBar() {
 
 /**
  * Before recording (NGR-169): who the call is with, a message to paste in the meeting chat,
- * and "they already agreed" so the reminder stays quiet for that client from then on.
+ * and "they already agreed" so the reminder stays quiet for that tag from then on.
  */
 export function ConsentSheet() {
   const consent = useStore((s) => s.consent);
@@ -493,7 +493,7 @@ export function ConsentSheet() {
   const call = useStore((s) => s.call);
   const confirm = useStore((s) => s.confirmConsent);
   const cancel = useStore((s) => s.cancelConsent);
-  const [client, setClient] = useState("");
+  const [tag, setTag] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [never, setNever] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -511,7 +511,7 @@ export function ConsentSheet() {
   }
   useEffect(() => {
     if (!consent) return;
-    setClient(call?.client ?? "");
+    setTag(call?.tag ?? "");
     setAgreed(false);
     setNever(false);
     setCopied(false);
@@ -524,8 +524,8 @@ export function ConsentSheet() {
     return () => window.removeEventListener("keydown", onKey);
   }, [consent, call, cancel]);
   if (!shown || !st) return null;
-  const clients = [...new Set([...Object.keys(st.clients), ...meetings.map((m) => m.client)])].filter((c) => c && c !== "Unsorted").sort();
-  const given = client !== "" && st.consentGiven.includes(client);
+  const tags = allTags(st, meetings);
+  const given = tag !== "" && st.consentGiven.includes(tag);
   const copy = async () => {
     await navigator.clipboard.writeText(st.consentMessage).catch(() => {});
     setCopied(true);
@@ -542,16 +542,16 @@ export function ConsentSheet() {
         </h2>
         <p className="mt-1 text-[14px] text-ink-3">Recording rules differ by country: in many places everyone on the call has to agree.</p>
         <label className="mt-4 flex flex-col gap-1 text-[13px] text-muted">
-          Who is the call with?
-          <select className="mi-field h-10 text-[14px] text-ink" value={client} onChange={(e) => setClient(e.target.value)}>
+          What is the call about?
+          <select className="mi-field h-10 text-[14px] text-ink" value={tag} onChange={(e) => setTag(e.target.value)}>
             <option value="">Not sure yet</option>
-            {clients.map((c) => (
-              <option key={c}>{c}</option>
+            {tags.map((t) => (
+              <option key={t}>{t}</option>
             ))}
           </select>
         </label>
         {given ? (
-          <p className="mt-4 text-[14px] text-accent-strong">{client} already agreed to be recorded.</p>
+          <p className="mt-4 text-[14px] text-accent-strong">People on {tag} calls already agreed to be recorded.</p>
         ) : (
           <>
             <p className="mt-4 text-[13px] text-muted">Paste this in the meeting chat:</p>
@@ -561,10 +561,10 @@ export function ConsentSheet() {
                 {copied ? "Copied" : "Copy"}
               </button>
             </div>
-            {client && (
+            {tag && (
               <label className="mt-3 flex items-center gap-2 text-[14px]">
                 <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
-                {client} agreed: don't remind me for them again
+                They agreed: don't remind me again for {tag} calls
               </label>
             )}
           </>
@@ -578,7 +578,7 @@ export function ConsentSheet() {
             Cancel
           </button>
           {/* biome-ignore lint/a11y/noAutofocus: the dialog's main action takes focus when it opens */}
-          <button type="button" autoFocus className="mi-btn-primary flex h-11 items-center gap-2 px-5" onClick={() => void confirm(client || null, agreed, never)}>
+          <button type="button" autoFocus className="mi-btn-primary flex h-11 items-center gap-2 px-5" onClick={() => void confirm(tag || null, agreed, never)}>
             <Icon name="mic" /> Start recording
           </button>
         </div>

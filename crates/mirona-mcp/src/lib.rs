@@ -103,10 +103,11 @@ impl Server {
 pub struct SearchArgs {
     /// What to look for: keywords (prefix-matched) and, when the local embedding model is
     /// available, meaning ("pricing worries" finds "the budget is tight"). Searches
-    /// transcripts, titles, clients and notes. Empty: lists the meetings that pass the filters.
+    /// transcripts, titles, meeting tags and notes. Empty: lists the meetings that pass the filters.
     pub query: String,
-    /// Only this client (case-insensitive, part of the name is enough).
-    pub client: Option<String>,
+    /// Only meetings with this tag, like `project:setr` (case-insensitive, part of it is
+    /// enough: `project:` matches every project).
+    pub meeting_tag: Option<String>,
     /// First day, YYYY-MM-DD.
     pub from: Option<String>,
     /// Last day, YYYY-MM-DD (inclusive).
@@ -159,7 +160,7 @@ impl SearchArgs {
                 .transpose()
         };
         Ok(SearchFilters {
-            client: self.client.clone(),
+            meeting_tag: self.meeting_tag.clone(),
             from: day(&self.from)?,
             to: day(&self.to)?,
             speaker: self.speaker.clone(),
@@ -198,8 +199,9 @@ pub struct TranscriptArgs {
 
 #[derive(Deserialize, schemars::JsonSchema)]
 pub struct ActionArgs {
-    /// Only items for this client (case-insensitive, part of the name is enough).
-    pub client: Option<String>,
+    /// Only items from meetings with this tag, like `project:setr` (case-insensitive, part of
+    /// it is enough).
+    pub meeting_tag: Option<String>,
     /// Only items not done yet.
     pub open_only: Option<bool>,
 }
@@ -209,8 +211,8 @@ impl Server {
     #[tool(
         description = "Search all meetings by keywords and meaning. Returns the matching \
         transcript moments, best first (meeting, timestamp, speaker, snippet with keyword hits \
-        in [brackets]), and the matching meetings. Filter by client, date range, speaker or \
-        tag. Use it first to find meeting ids.",
+        in [brackets]), and the matching meetings. Filter by meeting tag (`project:setr`), date \
+        range, speaker or line tag. Use it first to find meeting ids.",
         annotations(read_only_hint = true)
     )]
     fn search_meetings(&self, Parameters(a): Parameters<SearchArgs>) -> Result<String, String> {
@@ -251,7 +253,7 @@ impl Server {
         description = "One meeting, compact: summary overview, decisions, action items, open \
         questions, the user's notes and enhanced notes, each with its timestamp. No transcript \
         (use get_transcript). `unconfirmed` lists classifier guesses below their threshold \
-        (meeting type, client, tags, action items): never treat them as fact.",
+        (meeting type, meeting tags, line tags, action items): never treat them as fact.",
         annotations(read_only_hint = true)
     )]
     fn get_meeting(&self, Parameters(a): Parameters<MeetingArgs>) -> Result<String, String> {
@@ -275,23 +277,24 @@ impl Server {
 
     #[tool(
         description = "Action items across all meetings, newest meeting first: text, owner, \
-        due date, done, client and the meeting it came from. Filter by client and/or open only. \
+        due date, done, meeting tags and the meeting it came from. Filter by meeting tag and/or \
+        open only. \
         Items with needs_review: true are unconfirmed guesses: never treat them as fact.",
         annotations(read_only_hint = true)
     )]
     fn list_action_items(&self, Parameters(a): Parameters<ActionArgs>) -> Result<String, String> {
         let store = self.store()?;
-        let client = a.client.unwrap_or_default().to_lowercase();
+        let tag = a.meeting_tag.unwrap_or_default().to_lowercase();
         let items: Vec<Value> = store
             .action_items()
             .into_iter()
-            .filter(|i| i.client.to_lowercase().contains(&client))
+            .filter(|i| tag.is_empty() || i.tags.iter().any(|t| t.to_lowercase().contains(&tag)))
             .filter(|i| !(a.open_only.unwrap_or(false) && i.done))
             .map(|i| {
                 let m = store.meeting(&i.meeting_id).ok();
                 json!({
                     "id": i.id, "text": item_text(m.as_ref(), &i), "owner": i.owner, "due": i.due, "done": i.done,
-                    "client": i.client, "meeting_id": i.meeting_id, "meeting": i.meeting_title,
+                    "tags": i.tags, "meeting_id": i.meeting_id, "meeting": i.meeting_title,
                     "at": i.at_ms.map(at), "needs_review": i.needs_review,
                 })
             })
@@ -360,7 +363,7 @@ pub fn search(store: &Store, emb: Option<&impl Embed>, a: &SearchArgs) -> Result
                 (true, false) => "keywords",
                 _ => "meaning",
             };
-            json!({ "meeting_id": m.meeting_id, "title": m.title, "client": m.client,
+            json!({ "meeting_id": m.meeting_id, "title": m.title, "tags": m.tags,
                     "date": m.date, "at": at(m.start_ms), "speaker": m.speaker,
                     "snippet": m.snippet, "matched": matched })
         })
@@ -372,7 +375,7 @@ pub fn search(store: &Store, emb: Option<&impl Embed>, a: &SearchArgs) -> Result
         .iter()
         .map(|m| {
             let d = store.meeting(&m.id)?;
-            Ok(json!({ "meeting_id": d.id, "title": d.title, "client": d.client, "date": d.date_label }))
+            Ok(json!({ "meeting_id": d.id, "title": d.title, "tags": d.tags, "date": d.date_label }))
         })
         .collect::<Result<_, String>>()?;
     Ok(json!({
@@ -410,7 +413,7 @@ pub fn meeting(store: &Store, id: &str) -> Result<Value, String> {
     Ok(json!({
         "id": m.id,
         "title": m.title,
-        "client": m.client,
+        "tags": m.tags,
         "date": m.date_label,
         "duration_min": m.duration_min,
         "speakers": m.speakers.iter().map(|p| json!({ "id": p.id, "name": p.name })).collect::<Vec<_>>(),
@@ -439,7 +442,7 @@ pub fn transcript(
     to: Option<u32>,
     include_sensitive: bool,
 ) -> String {
-    let mut out = format!("# {} · {} · {}\n", m.title, m.client, m.date_label);
+    let mut out = format!("# {} · {} · {}\n", m.title, m.tags.join(", "), m.date_label);
     for s in &m.segments {
         if from.is_some_and(|f| s.start_ms < f) || to.is_some_and(|t| s.start_ms >= t) {
             continue;

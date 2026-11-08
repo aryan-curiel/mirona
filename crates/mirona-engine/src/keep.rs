@@ -40,31 +40,30 @@ fn key_or_new() -> Result<Key> {
 /// One thing retention will do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Forget {
-    /// The whole meeting (a client rule).
+    /// The whole meeting (a tag rule).
     Meeting { id: String, why: String },
     /// Only the recording (`audio_days`).
     Audio { id: String, why: String },
 }
 
-/// What the rules say to remove now. A client rule wins over the audio rule.
+/// What the rules say to remove now. A tag rule wins over the audio rule; with several
+/// tags, the shortest rule applies.
 pub fn plan(store: &Store, rules: &Retention) -> Vec<Forget> {
     let mut out = vec![];
     for m in store.list_meetings() {
         let Ok(age) = store.age_days(&m.id) else {
             continue;
         };
-        let client_days = rules
-            .clients
+        let tag_rule = rules
+            .tags
             .iter()
-            .find(|(c, _)| c.eq_ignore_ascii_case(m.client.trim()))
-            .map(|(_, d)| i64::from(*d));
-        if let Some(days) = client_days.filter(|d| age >= *d) {
+            .filter(|(t, _)| mirona_store::has_tag(&m.tags, t))
+            .map(|(t, d)| (i64::from(*d), t))
+            .min();
+        if let Some((days, tag)) = tag_rule.filter(|(d, _)| age >= *d) {
             out.push(Forget::Meeting {
                 id: m.id.clone(),
-                why: format!(
-                    "“{}” ({}), {age} days old; rule: {days} days",
-                    m.title, m.client
-                ),
+                why: format!("“{}” ({tag}), {age} days old; rule: {days} days", m.title),
             });
         } else if let Some(days) = rules.audio_days.map(i64::from).filter(|d| age >= *d)
             && store.has_audio(&m.id)
@@ -123,10 +122,10 @@ impl Engine {
         Ok(done)
     }
 
-    /// Delete every meeting of a client, logged like retention.
-    pub fn delete_client(&self, client: &str) -> Result<usize> {
+    /// Delete every meeting with a tag, logged like retention.
+    pub fn delete_tagged(&self, tag: &str) -> Result<usize> {
         let mut store = self.store.lock().unwrap();
-        let ids = store.delete_client(client)?;
+        let ids = store.delete_tagged(tag)?;
         let path = store.root().join(".mirona").join("retention.log");
         if let Ok(mut log) = std::fs::OpenOptions::new()
             .create(true)
@@ -136,7 +135,7 @@ impl Engine {
             let now = jiff::Timestamp::now();
             writeln!(
                 log,
-                "{now} deleted {} meetings of {client} (by hand)",
+                "{now} deleted {} meetings tagged {tag} (by hand)",
                 ids.len()
             )
             .ok();
@@ -151,11 +150,11 @@ mod tests {
     use mirona_core::{Meeting, Note};
     use std::sync::{Arc, Mutex};
 
-    fn meeting(id: &str, client: &str) -> Meeting {
+    fn meeting(id: &str, tags: &[&str]) -> Meeting {
         Meeting {
             id: id.into(),
             title: format!("Call {id}"),
-            client: client.into(),
+            tags: tags.iter().map(|t| (*t).into()).collect(),
             when: String::new(),
             date_label: String::new(),
             duration_min: 30,
@@ -175,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn retention_drops_old_audio_and_old_client_meetings_and_logs_it() {
+    fn retention_drops_old_audio_and_old_tagged_meetings_and_logs_it() {
         let dir = tempfile::tempdir().unwrap();
         let mut store = Store::open(dir.path()).unwrap();
         let day = |n: i64| {
@@ -184,21 +183,27 @@ mod tests {
                 .strftime("%Y-%m-%dT%H:%M:%S%:z")
                 .to_string()
         };
-        for (id, client, age) in [
-            ("m-new", "Helio", 1),
-            ("m-old", "Helio", 40),
-            ("m-bank", "Northwind Bank", 100),
-            ("m-bank-new", "Northwind Bank", 5),
+        let bank: &[&str] = &["topic:billing", "project:Northwind Bank"];
+        for (id, tags, age) in [
+            ("m-new", &["project:Helio"][..], 1),
+            ("m-old", &["project:Helio"], 40),
+            ("m-bank", bank, 100),
+            ("m-bank-new", bank, 5),
         ] {
             store
-                .add_meeting(meeting(id, client), &day(age), vec![])
+                .add_meeting(meeting(id, tags), &day(age), vec![])
                 .unwrap();
             std::fs::write(store.meeting_dir(id).unwrap().join("audio.caf"), b"a").unwrap();
             store.set_audio(id, "audio.caf").unwrap();
         }
         let rules = Retention {
             audio_days: Some(30),
-            clients: [("northwind bank".to_string(), 90)].into(),
+            tags: [
+                ("project:northwind bank".to_string(), 90),
+                ("topic:billing".to_string(), 365),
+            ]
+            .into(),
+            ..Retention::default()
         };
         let p = plan(&store, &rules);
         assert_eq!(p.len(), 2, "{p:?}");
@@ -227,7 +232,7 @@ mod tests {
         let log = std::fs::read_to_string(dir.path().join(".mirona/retention.log")).unwrap();
         assert_eq!(log.lines().count(), 2, "{log}");
         assert!(
-            log.contains("Northwind Bank") && log.contains("recording of"),
+            log.contains("project:northwind bank") && log.contains("recording of"),
             "{log}"
         );
         drop(s);

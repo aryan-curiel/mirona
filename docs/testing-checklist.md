@@ -135,10 +135,13 @@ For each call: record the whole call, then check the transcript has both "Me" an
   Correct one → the tag and action items update at once.
 - [ ] **Needs review:** items below threshold are in the inspector's review list; Confirm / Not
   this settles them.
-- [ ] **Meeting chips:** type, client (add your clients in Settings › Clients first), priority, tone,
+- [ ] **Meeting chips:** type, tags (add your tags in Settings › Tags first), priority, tone,
   follow-up. The summary uses the template matching the meeting type.
+- [ ] **Tags:** in the inspector's This meeting › Tags, add a known tag, type a new one (it shows
+  in Settings › Tags) and remove one with ×. Rename a tag in Settings › Tags → every meeting shows
+  the new name. A meeting no tag fits gets a "New tag?" item to check; Confirm adds it to the list.
 - [ ] **Follow-up draft:** shown with Copy when a follow-up is needed.
-- [ ] **Action items view:** filter by client and status; links jump to the moment.
+- [ ] **Action items view:** filter by tag and status; links jump to the moment.
 - [ ] **Claude Code:** "What do I owe Northwind?" returns action items, with unconfirmed ones marked.
 
 ## 6c. Milestone 3: privacy and search
@@ -147,7 +150,7 @@ For each call: record the whole call, then check the transcript has both "Me" an
   says on. Off in the app → `mirona privacy` says off.
 - [ ] **Search:** `ollama pull nomic-embed-text`, restart Mirona (older meetings are embedded in
   the background). Sidebar search "pricing worries" finds a line that says "the budget is tight";
-  filters (client, dates, speaker, tag) narrow it; a click opens the meeting at that line.
+  filters (meeting tag, dates, speaker, tag) narrow it; a click opens the meeting at that line.
 - [ ] **Sensitive:** say a password in a call: the line is hidden in the transcript, missing from
   the summary, and Claude Code can't quote it.
 - [ ] **Encryption:** Settings › Privacy and storage → Encryption on. In Finder, `transcript.jsonl` is unreadable;
@@ -155,8 +158,8 @@ For each call: record the whole call, then check the transcript has both "Me" an
 - [ ] **Retention:** Settings › Privacy and storage, set "Delete old recordings" to 1 day, Apply rules now: recordings older than a
   day are gone, their transcripts stay; `.mirona/retention.log` lists them.
 - [ ] **Delete:** Delete meeting → it's gone from the list, search and the folder.
-- [ ] **Consent:** Start recording → the reminder shows; pick a client and tick "agreed" → the
-  next recording with that client shows "already agreed".
+- [ ] **Consent:** Start recording → the reminder shows; pick a tag and tick "agreed" → the
+  next recording with that tag shows "already agreed".
 - [ ] **Call detection:** start a Zoom/Meet test call → "Record this call?" banner and
   notification; nothing records without a click.
 - [ ] **MCP over HTTP:** Settings › Agents (MCP), turn it on, create a token, paste the `claude mcp add` line; Claude Code

@@ -664,7 +664,7 @@ mod tests {
             text: "Send the SOW".into(),
             owner: owner.into(),
             due: None,
-            client: String::new(),
+            tags: vec![],
             done: false,
             needs_review: false,
             owner_confirmed: false,

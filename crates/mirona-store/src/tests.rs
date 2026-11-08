@@ -1,5 +1,5 @@
 use super::*;
-use mirona_core::{Tag, TagKind};
+use mirona_core::{Tag, TagAnswer, TagKind};
 use std::fs;
 use tempfile::TempDir;
 
@@ -80,7 +80,8 @@ fn corrections_enroll_and_search() {
 fn files_round_trip() {
     let (_d, mut s) = seeded();
     s.toggle_action_item("a4").unwrap();
-    s.confirm_client("claims-desk", "Corvo").unwrap();
+    s.set_tags("claims-desk", &["project:Corvo".into(), "hiring".into()])
+        .unwrap();
     s.set_notes(
         "corvo-review",
         vec!["line one".into(), String::new(), "- [ ] todo".into()],
@@ -355,8 +356,12 @@ fn summary_and_demo_finish() {
     s.toggle_action_item("x").unwrap_err();
     let m = sample::demo_finish(&mut s, "m", 125_000, "Ollama (local)").unwrap();
     assert_eq!(
-        (m.title.as_str(), m.client.as_str(), m.duration_min),
-        ("Evaluation dashboard follow-up", "Lumenix", 2)
+        (m.title.as_str(), m.tags.join(","), m.duration_min),
+        (
+            "Evaluation dashboard follow-up",
+            "project:Lumenix".into(),
+            2
+        )
     );
     assert_eq!(
         s.action_items()[0].meeting_title,
@@ -540,24 +545,81 @@ fn classification_review_list_and_labels() {
 }
 
 #[test]
-fn clients_below_threshold_are_not_filed() {
+fn tags_below_threshold_wait_for_review_and_user_choices_stick() {
     let (_d, mut s) = seeded();
-    let mut a = s.meeting("claims-desk").unwrap().answers.unwrap();
-    let before = s.meeting("claims-desk").unwrap().client;
-    a.client.value = "Elsewhere".into();
-    a.client.probability = 0.3;
-    a.client.confirmed = false;
-    s.set_answers("claims-desk", a.clone()).unwrap();
-    assert_eq!(s.meeting("claims-desk").unwrap().client, before);
-    assert!(
+    let tags = |s: &Store| s.meeting("claims-desk").unwrap().tags;
+    let reviews = |s: &Store| -> Vec<(String, String)> {
         s.review("claims-desk")
             .unwrap()
+            .into_iter()
+            .filter(|r| r.question.ends_with("tag"))
+            .map(|r| (r.question, r.value))
+            .collect()
+    };
+    // The demo: billing at 0.66 is below 0.75, so it is suggested, not added.
+    assert_eq!(tags(&s), ["project:Alder Restoration"]);
+    assert_eq!(reviews(&s), [("tag".into(), "topic:billing".into())]);
+
+    // A new run: billing clears its threshold, hiring is a "no", a new tag is proposed.
+    let mut a = s.meeting("claims-desk").unwrap().answers.unwrap();
+    let answer = |tag: &str, p: f32, proposed: bool| TagAnswer {
+        tag: tag.into(),
+        probability: p,
+        threshold: 0.6,
+        confirmed: false,
+        proposed,
+        about: String::new(),
+    };
+    a.tags = vec![
+        answer("topic:billing", 0.9, false),
+        answer("hiring", 0.2, false),
+        answer("project:Insurers", 0.0, true),
+    ];
+    s.set_answers("claims-desk", a.clone()).unwrap();
+    assert_eq!(tags(&s), ["project:Alder Restoration", "topic:billing"]);
+    assert_eq!(reviews(&s), [("new_tag".into(), "project:Insurers".into())]);
+    assert_eq!(
+        s.action_items()
             .iter()
-            .any(|r| r.question == "client" && r.value == "Elsewhere")
+            .find(|i| i.meeting_id == "claims-desk")
+            .unwrap()
+            .tags
+            .len(),
+        2,
+        "action items carry the meeting's tags"
     );
-    a.client.probability = 0.9;
+
+    // Accept the proposal; remove billing by hand. A rerun adds neither back nor re-asks.
+    s.answer_tag("claims-desk", "project:Insurers", true)
+        .unwrap();
+    s.set_tags(
+        "claims-desk",
+        &[
+            "project:Alder Restoration".into(),
+            "project:Insurers".into(),
+        ],
+    )
+    .unwrap();
     s.set_answers("claims-desk", a).unwrap();
-    assert_eq!(s.meeting("claims-desk").unwrap().client, "Elsewhere");
+    assert_eq!(tags(&s), ["project:Alder Restoration", "project:Insurers"]);
+    assert_eq!(reviews(&s), []);
+}
+
+#[test]
+fn meetings_from_before_tags_read_their_client_as_a_project_tag() {
+    let (_d, s) = seeded();
+    let path = s.meeting_dir("claims-desk").unwrap().join("meeting.md");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let old = text.replacen(
+        "tags:\n- project:Alder Restoration\n",
+        "client: Bingham\n",
+        1,
+    );
+    assert_ne!(old, text, "{text}");
+    std::fs::write(&path, old).unwrap();
+    let s = Store::open(s.root()).unwrap();
+    assert!(s.load_errors().is_empty(), "{:?}", s.load_errors());
+    assert_eq!(s.meeting("claims-desk").unwrap().tags, ["project:Bingham"]);
 }
 
 #[test]
@@ -659,7 +721,7 @@ fn meeting_level_and_owner_corrections_become_labels() {
     );
     seg.speaker_id = "them".into();
     s.push_segment(&id, seg).unwrap();
-    s.confirm_client(&id, "Northwind Bank").unwrap();
+    s.set_tags(&id, &["project:Northwind Bank".into()]).unwrap();
     s.label_meeting(&id, "meeting_type", "client_call").unwrap();
     s.set_owner(&id, &format!("{id}-0"), "Nadia").unwrap();
 
@@ -672,12 +734,12 @@ fn meeting_level_and_owner_corrections_become_labels() {
         rows.iter()
             .find_map(|r| r["labels"][k].as_str().map(String::from))
     };
-    assert_eq!(label("client").as_deref(), Some("Northwind Bank"));
+    assert_eq!(label("tags").as_deref(), Some("project:Northwind Bank"));
     assert_eq!(label("meeting_type").as_deref(), Some("client_call"));
     assert_eq!(label("owner").as_deref(), Some("Nadia"));
     let meeting_row = rows
         .iter()
-        .find(|r| r["labels"]["client"].is_string())
+        .find(|r| r["labels"]["tags"].is_string())
         .unwrap();
     assert_eq!(meeting_row["id"], format!("{id}-meeting"));
     assert!(

@@ -43,14 +43,19 @@ pub struct Config {
     pub shortcut: String,
     /// Question id → threshold, overriding the defaults in [`default_threshold`] (NGR-158).
     pub thresholds: BTreeMap<String, f32>,
-    /// The user's clients/projects: name → short description (contact, what they do). The
-    /// classifier picks one per meeting (NGR-157).
+    /// The user's tags: `group:name` (or `name`) → what it is about. The classifier asks one
+    /// yes/no per tag over each meeting; a meeting can have many.
+    pub tags: BTreeMap<String, String>,
+    /// Tag group (`project`) → what its tags have in common. Optional, helps the classifier.
+    pub tag_groups: BTreeMap<String, String>,
+    /// Before tags: client name → description. Read once and moved to `project:<name>` tags.
+    #[serde(skip_serializing)]
     pub clients: BTreeMap<String, String>,
     /// Suggest recording when a call app starts using the mic (NGR-170).
     pub detect_calls: bool,
     /// Read the title of the calendar event happening now to name the meeting (NGR-170).
     pub calendar_titles: bool,
-    /// Clients whose calls (matched by calendar title) start recording without a click.
+    /// Tags whose calls (calendar title names the tag) start recording without a click.
     pub auto_record: Vec<String>,
     /// Encrypt recordings, transcripts, embeddings and voiceprints at rest (NGR-165). The key
     /// is in the OS keychain (account [`STORE_KEY`]).
@@ -60,7 +65,7 @@ pub struct Config {
     pub consent_reminder: bool,
     /// What to paste in the meeting chat.
     pub consent_message: String,
-    /// Clients who already agreed: no reminder when recording them.
+    /// Tags whose people already agreed: no reminder when recording them.
     pub consent_given: Vec<String>,
     /// Check GitHub for a new version on start and daily. Off until the user turns it on.
     pub check_updates: bool,
@@ -68,6 +73,9 @@ pub struct Config {
 
 pub const DEFAULT_CONSENT_MESSAGE: &str = "Heads-up: I'm recording this call to take notes. The \
 recording and transcript stay on my computer. Tell me if you'd rather I didn't.";
+
+/// The group clients move into (`project:<client>`).
+pub const PROJECT_GROUP: &str = "project";
 
 /// Keychain account of the meeting store's encryption key.
 pub const STORE_KEY: &str = "store-key";
@@ -78,7 +86,10 @@ pub const STORE_KEY: &str = "store-key";
 pub struct Retention {
     /// Delete recordings this many days old; transcripts, notes and summaries stay.
     pub audio_days: Option<u32>,
-    /// Client name → delete that client's meetings entirely once this many days old.
+    /// Tag → delete meetings with that tag entirely once this many days old.
+    pub tags: BTreeMap<String, u32>,
+    /// Before tags (client → days); moved to `tags` on load.
+    #[serde(skip_serializing)]
     pub clients: BTreeMap<String, u32>,
 }
 
@@ -119,6 +130,8 @@ impl Default for Config {
             mcp_sensitive: false,
             shortcut: DEFAULT_SHORTCUT.into(),
             thresholds: BTreeMap::new(),
+            tags: BTreeMap::new(),
+            tag_groups: BTreeMap::new(),
             clients: BTreeMap::new(),
             detect_calls: true,
             calendar_titles: false,
@@ -166,7 +179,37 @@ impl Config {
         if std::env::var_os(PRIVACY_ENV).is_some_and(|v| v == "1") {
             cfg.privacy = true;
         }
+        cfg.migrate_clients();
         Ok(cfg)
+    }
+
+    /// Clients (before tags) become `project:<name>` tags, and the rules keyed by client
+    /// follow them. Saved in the new shape on the next save.
+    pub fn migrate_clients(&mut self) {
+        let clients = std::mem::take(&mut self.clients);
+        let days = std::mem::take(&mut self.retention.clients);
+        if clients.is_empty() && days.is_empty() {
+            return;
+        }
+        let tag = |c: &str| format!("{PROJECT_GROUP}:{}", c.trim());
+        let known = |c: &str| clients.keys().any(|k| k.eq_ignore_ascii_case(c.trim()));
+        for (c, about) in &clients {
+            self.tags.entry(tag(c)).or_insert_with(|| about.clone());
+        }
+        for (c, d) in days {
+            self.retention.tags.entry(tag(&c)).or_insert(d);
+        }
+        for list in [&mut self.auto_record, &mut self.consent_given] {
+            for c in list.iter_mut().filter(|c| known(c)) {
+                *c = tag(c);
+            }
+        }
+        self.tag_groups
+            .entry(PROJECT_GROUP.into())
+            .or_insert_with(|| "Clients and projects a meeting is for.".into());
+        if let Some(t) = self.thresholds.remove("client") {
+            self.thresholds.entry("tag".into()).or_insert(t);
+        }
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
@@ -181,6 +224,34 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clients_become_project_tags_with_their_rules() {
+        let mut cfg: Config = toml::from_str(
+            r#"
+auto_record = ["Northwind", "standup"]
+consent_given = ["northwind"]
+[clients]
+Northwind = "a bank"
+[thresholds]
+client = 0.7
+[retention.clients]
+Northwind = 90
+"#,
+        )
+        .unwrap();
+        cfg.migrate_clients();
+        assert!(cfg.clients.is_empty() && cfg.retention.clients.is_empty());
+        assert_eq!(cfg.tags["project:Northwind"], "a bank");
+        assert!(cfg.tag_groups.contains_key("project"));
+        assert_eq!(cfg.retention.tags["project:Northwind"], 90);
+        assert_eq!(cfg.auto_record, ["project:Northwind", "standup"]);
+        assert_eq!(cfg.consent_given, ["project:northwind"]);
+        assert!((cfg.threshold("tag", false) - 0.7).abs() < 1e-6);
+        // The old keys are never written back.
+        let s = toml::to_string_pretty(&cfg).unwrap();
+        assert!(!s.contains("[clients]") && !s.contains("retention.clients"));
+    }
 
     #[test]
     fn missing_file_is_default_and_round_trips() {
@@ -203,10 +274,11 @@ mod tests {
         cfg.save(&path).unwrap();
         assert_eq!(Config::load(&path).unwrap(), cfg);
 
-        // Thresholds and clients round-trip; unset thresholds keep their defaults.
+        // Thresholds and tags round-trip; unset thresholds keep their defaults.
         cfg.thresholds.insert("action".into(), 0.8);
-        cfg.clients
-            .insert("Northwind Bank".into(), "contact: Karen".into());
+        cfg.tags
+            .insert("project:Northwind Bank".into(), "contact: Karen".into());
+        cfg.tag_groups.insert("project".into(), "Clients".into());
         cfg.save(&path).unwrap();
         let back = Config::load(&path).unwrap();
         assert_eq!(back, cfg);
@@ -240,7 +312,9 @@ mod tests {
         cfg.consent_given = vec!["Helio Health".into()];
         cfg.encrypt = true;
         cfg.retention.audio_days = Some(30);
-        cfg.retention.clients.insert("Northwind Bank".into(), 90);
+        cfg.retention
+            .tags
+            .insert("project:Northwind Bank".into(), 90);
         cfg.save(&path).unwrap();
         assert_eq!(Config::load(&path).unwrap(), cfg);
 

@@ -3,7 +3,7 @@
 /**
  * Row in the sidebar's recent list.
  */
-export type MeetingSummary = { id: string, title: string, client: string, when: string, 
+export type MeetingSummary = { id: string, title: string, tags: Array<string>, when: string, 
 /**
  * RFC 3339 start time, for sorting and grouping by day.
  */

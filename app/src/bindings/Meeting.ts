@@ -5,4 +5,8 @@ import type { Segment } from "./Segment";
 import type { Speaker } from "./Speaker";
 import type { Summary } from "./Summary";
 
-export type Meeting = { id: string, title: string, client: string, when: string, dateLabel: string, durationMin: number, language: string, sample: boolean, speakers: Array<Speaker>, segments: Array<Segment>, answers: MeetingAnswers | null, notes: Note, summary: Summary | null, };
+export type Meeting = { id: string, title: string, 
+/**
+ * `group:name` or `name`, e.g. `project:setr`.
+ */
+tags: Array<string>, when: string, dateLabel: string, durationMin: number, language: string, sample: boolean, speakers: Array<Speaker>, segments: Array<Segment>, answers: MeetingAnswers | null, notes: Note, summary: Summary | null, };

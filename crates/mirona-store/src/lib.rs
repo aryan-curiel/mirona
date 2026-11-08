@@ -107,12 +107,15 @@ impl Store {
     /// ponytail: for the CLI/MCP/tests until NGR-148/149 point them at the real root; leaves a
     /// small dir in the OS temp dir per call.
     pub fn sample() -> Self {
+        // The counter keeps parallel tests apart when the clock gives two of them one value.
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir =
-            std::env::temp_dir().join(format!("mirona-sample-{}-{nanos}", std::process::id()));
+            std::env::temp_dir().join(format!("mirona-sample-{}-{nanos}-{n}", std::process::id()));
         let mut s = Self::open(dir).expect("sample store");
         sample::seed(&mut s).expect("seed sample store");
         s
@@ -208,7 +211,7 @@ impl Store {
                 MeetingSummary {
                     id: m.id.clone(),
                     title: m.title.clone(),
-                    client: m.client.clone(),
+                    tags: m.tags.clone(),
                     when,
                     created: e.created.clone(),
                     duration_min: m.duration_min,
@@ -266,7 +269,7 @@ impl Store {
         Ok(e.audio.as_ref().map(|a| e.dir.join(a)))
     }
 
-    /// Full-text search over titles, clients, notes and transcripts (FTS5, prefix match on
+    /// Full-text search over titles, tags, notes and transcripts (FTS5, prefix match on
     /// every word). Meetings come back newest first; an empty query returns all of them.
     pub fn search(&self, query: &str) -> Vec<MeetingSummary> {
         if query.trim().is_empty() {
@@ -331,7 +334,7 @@ impl Store {
         let m = Meeting {
             id: id.into(),
             title: "New meeting".into(),
-            client: "Unsorted".into(),
+            tags: vec![],
             when: String::new(),
             date_label: String::new(),
             duration_min: 0,
@@ -526,15 +529,22 @@ impl Store {
         self.save(i, false)
     }
 
-    /// Meeting-level answers (type, client, priority, follow-up). The client answer becomes
-    /// the meeting's client only when confirmed or at/above its threshold (NGR-158).
-    pub fn set_answers(&mut self, meeting_id: &str, answers: MeetingAnswers) -> Result<()> {
+    /// Meeting-level answers (type, tags, priority, follow-up). A tag the classifier says yes
+    /// to at/above its threshold is added; tags are never removed here (NGR-158). Decisions
+    /// the user already made stay.
+    pub fn set_answers(&mut self, meeting_id: &str, mut answers: MeetingAnswers) -> Result<()> {
         let i = self.idx(meeting_id)?;
         let m = &mut self.entries[i].meeting;
-        let c = &answers.client;
-        if (c.confirmed || c.probability >= c.threshold) && !c.value.is_empty() && c.value != "none"
-        {
-            m.client.clone_from(&c.value);
+        if let Some(old) = &m.answers {
+            for t in old.tags.iter().filter(|t| t.confirmed) {
+                answers.tags.retain(|n| !n.tag.eq_ignore_ascii_case(&t.tag));
+                answers.tags.push(t.clone());
+            }
+        }
+        for t in answers.tags.iter().filter(|t| !t.confirmed && t.assigned()) {
+            if !has_tag(&m.tags, &t.tag) {
+                m.tags.push(t.tag.clone());
+            }
         }
         m.answers = Some(answers);
         self.save(i, false)
@@ -641,18 +651,73 @@ impl Store {
         Ok(seg)
     }
 
-    pub fn confirm_client(&mut self, meeting_id: &str, client: &str) -> Result<Meeting> {
+    /// The user set the meeting's tags: every tag answer counts as decided, so a rerun of the
+    /// classifier never adds back a tag the user removed.
+    pub fn set_tags(&mut self, meeting_id: &str, tags: &[String]) -> Result<Meeting> {
         let i = self.idx(meeting_id)?;
         let m = &mut self.entries[i].meeting;
-        if let Some(a) = m.answers.as_mut() {
-            a.client.value = client.into();
-            a.client.confirmed = true;
-            a.client.probability = 1.0;
+        m.tags.clear();
+        for t in tags.iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
+            if !has_tag(&m.tags, t) {
+                m.tags.push(t.into());
+            }
         }
-        m.client = client.into();
+        if let Some(a) = m.answers.as_mut() {
+            for t in &mut a.tags {
+                t.confirmed = true;
+            }
+        }
+        files::normalize(&mut self.entries[i]);
         self.save(i, false)?;
-        let value = if client.is_empty() { "none" } else { client };
-        self.label_meeting(meeting_id, "client", value)?;
+        let value = self.entries[i].meeting.tags.join(", ");
+        self.label_meeting(meeting_id, "tags", &value)?;
+        Ok(labeled(&self.entries[i]))
+    }
+
+    /// Rename a tag in every meeting that has it (and in its answers). Returns how many changed.
+    pub fn rename_tag(&mut self, old: &str, new: &str) -> Result<usize> {
+        let mut n = 0;
+        for i in 0..self.entries.len() {
+            let m = &mut self.entries[i].meeting;
+            if !has_tag(&m.tags, old) {
+                continue;
+            }
+            m.tags.retain(|t| !t.eq_ignore_ascii_case(old.trim()));
+            if !has_tag(&m.tags, new) {
+                m.tags.push(new.trim().into());
+            }
+            for t in m.answers.iter_mut().flat_map(|a| &mut a.tags) {
+                if t.tag.eq_ignore_ascii_case(old.trim()) {
+                    t.tag = new.trim().into();
+                }
+            }
+            files::normalize(&mut self.entries[i]);
+            self.save(i, false)?;
+            n += 1;
+        }
+        Ok(n)
+    }
+
+    /// Keep (`yes`) or drop one tag the classifier was unsure of, or a proposed new tag.
+    pub fn answer_tag(&mut self, meeting_id: &str, tag: &str, yes: bool) -> Result<Meeting> {
+        let i = self.idx(meeting_id)?;
+        let m = &mut self.entries[i].meeting;
+        if let Some(t) = m
+            .answers
+            .as_mut()
+            .and_then(|a| a.tags.iter_mut().find(|t| t.tag.eq_ignore_ascii_case(tag)))
+        {
+            t.confirmed = true;
+        }
+        if yes && !has_tag(&m.tags, tag) {
+            m.tags.push(tag.trim().into());
+        } else if !yes {
+            m.tags.retain(|t| !t.eq_ignore_ascii_case(tag.trim()));
+        }
+        files::normalize(&mut self.entries[i]);
+        self.save(i, false)?;
+        let value = self.entries[i].meeting.tags.join(", ");
+        self.label_meeting(meeting_id, "tags", &value)?;
         Ok(labeled(&self.entries[i]))
     }
 
@@ -719,6 +784,11 @@ fn timestamp(created: &str) -> Option<jiff::Timestamp> {
 }
 
 /// ("today" | "yesterday" | "Tue" | "last week" | "5 Nov", "Thu 5 Nov 2026 · 09:30").
+/// Tags compare without case: `Project:Setr` is `project:setr`.
+pub fn has_tag(tags: &[String], tag: &str) -> bool {
+    tags.iter().any(|t| t.eq_ignore_ascii_case(tag.trim()))
+}
+
 fn count<T>(it: impl Iterator<Item = T>) -> u32 {
     u32::try_from(it.count()).unwrap_or(u32::MAX)
 }

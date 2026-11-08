@@ -1,7 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { type SettingsTab, useStore } from "../store";
-import { api, LLM_LOCAL, type Settings } from "../lib/api";
+import { allTags, api, LLM_LOCAL, type Settings } from "../lib/api";
 import { applyPlatform, detected } from "../lib/platform";
 import { CopyLine, Folder, ModelDownload } from "./Setup";
 import { Icon, type IconName, Logo, Toggle } from "../components/ui";
@@ -177,7 +177,7 @@ const QUESTION_LABELS: [string, string][] = [
   ["due", "Is a due date said?"],
   ["owner", "Who owns it?"],
   ["meeting_type", "Meeting type"],
-  ["client", "Client"],
+  ["tag", "Is the meeting about this tag?"],
   ["follow_up", "Needs a follow-up email?"],
   ["coverage", "Summary covers every action item"],
 ];
@@ -231,50 +231,100 @@ function ThresholdRow({ label, value, def, onSave }: { label: string; value?: nu
   );
 }
 
-/** Client list: name + short description, saved on blur. */
-function Clients({ clients, onSave }: { clients: Record<string, string>; onSave: (c: Record<string, string>) => void }) {
-  const [rows, setRows] = useState<[string, string][]>(() => Object.entries(clients));
-  useEffect(() => setRows(Object.entries(clients)), [clients]);
-  const commit = (next: [string, string][]) => {
-    const named = next.filter(([n]) => n.trim());
-    const out = Object.fromEntries(named.map(([n, d]) => [n.trim(), d.trim()]));
-    if (JSON.stringify(out) !== JSON.stringify(clients)) onSave(out);
+type Row = { orig: string | null; name: string; about: string };
+const toRows = (m: Record<string, string>): Row[] => Object.entries(m).map(([name, about]) => ({ orig: name, name, about }));
+
+/** Name → description rows, saved on blur. A changed name of an existing row is a rename
+ * (`onRename`); everything else saves the whole map. */
+function Described({ items, onSave, onRename, noun, namePlaceholder, aboutPlaceholder }: {
+  items: Record<string, string>;
+  onSave: (m: Record<string, string>) => void;
+  onRename?: (old: string, next: string) => void;
+  noun: string;
+  namePlaceholder: string;
+  aboutPlaceholder: string;
+}) {
+  const [rows, setRows] = useState<Row[]>(() => toRows(items));
+  useEffect(() => setRows(toRows(items)), [items]);
+  const commit = (next: Row[]) => {
+    const renamed = next.find((r) => r.orig && r.name.trim() && r.name.trim() !== r.orig);
+    if (onRename && renamed?.orig) return onRename(renamed.orig, renamed.name.trim());
+    const out = Object.fromEntries(next.filter((r) => r.name.trim()).map((r) => [r.name.trim(), r.about.trim()]));
+    if (JSON.stringify(out) !== JSON.stringify(items)) onSave(out);
   };
-  const edit = (i: number, k: 0 | 1, v: string) => setRows(rows.map((r, j) => (j === i ? (k ? [r[0], v] : [v, r[1]]) : r)));
+  const edit = (i: number, patch: Partial<Row>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   return (
     <div className="flex flex-col gap-2">
-      {rows.map(([name, about], i) => (
+      {rows.map((r, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: rows are edited in place; a name can change while typing
         <div key={i} className="flex gap-2">
-          <input className="mi-field w-48 text-[14px]" aria-label="Client name" placeholder="Client name" value={name} onChange={(e) => edit(i, 0, e.target.value)} onBlur={() => commit(rows)} />
+          <input className="mi-field w-52 text-[14px]" aria-label={`${noun} name`} placeholder={namePlaceholder} value={r.name} onChange={(e) => edit(i, { name: e.target.value })} onBlur={() => commit(rows)} />
           <input
             className="mi-field min-w-0 flex-1 text-[14px]"
-            aria-label={`What ${name || "this client"} is`}
-            placeholder="Contact, what they do, project names"
-            value={about}
-            onChange={(e) => edit(i, 1, e.target.value)}
+            aria-label={`What ${r.name || `this ${noun}`} covers`}
+            placeholder={aboutPlaceholder}
+            value={r.about}
+            onChange={(e) => edit(i, { about: e.target.value })}
             onBlur={() => commit(rows)}
           />
-          <button type="button" className="mi-ghost text-[13px]" aria-label={`Remove ${name || "client"}`} onClick={() => {
+          <button
+            type="button"
+            className="mi-ghost text-[13px]"
+            aria-label={`Remove ${r.name || noun}`}
+            onClick={() => {
               const next = rows.filter((_, j) => j !== i);
               setRows(next);
               commit(next);
-            }}>
+            }}
+          >
             Remove
           </button>
         </div>
       ))}
       <div>
-        <button type="button" className="mi-ghost text-[13px]" onClick={() => setRows([...rows, ["", ""]])}>
-          Add client
+        <button type="button" className="mi-ghost text-[13px]" onClick={() => setRows([...rows, { orig: null, name: "", about: "" }])}>
+          Add {noun}
         </button>
       </div>
-      <p className="text-[12px] text-muted">Meetings are filed under the client the classifier picks (filter by client in the sidebar and action items, or over MCP).</p>
     </div>
   );
 }
 
-/** Call detection (NGR-170): suggest, name from the calendar, and per-client auto-record. */
+/** Tags and their optional groups. Renaming a tag renames it on every meeting. */
+function Tags({ st, save }: { st: Settings; save: (patch: Partial<Settings>) => Promise<boolean> }) {
+  const flash = useStore((s) => s.flash);
+  const rename = async (old: string, next: string) => {
+    try {
+      const n = await api.renameTag(old, next);
+      flash(`Renamed ${old} to ${next}${n ? ` in ${n} meeting${n === 1 ? "" : "s"}` : ""}.`);
+    } catch (e) {
+      flash(String(e), true);
+    }
+  };
+  return (
+    <>
+      <Row title="Tags" sub="A meeting can have several. The classifier asks about each one after every call; describe them so it can tell them apart">
+        <Described
+          items={st.tags}
+          onSave={(tags) => void save({ tags })}
+          onRename={(o, n) => void rename(o, n)}
+          noun="tag"
+          namePlaceholder="project:setr"
+          aboutPlaceholder="What it covers: product, people, keywords"
+        />
+        <p className="mt-2 text-[12px] text-muted">
+          Write tags as group:name, or just a name. Keep the list short: when no tag fits a meeting, Mirona suggests one new tag under To check, and adds it only if you
+          say yes. Removing a tag here leaves it on past meetings.
+        </p>
+      </Row>
+      <Row title="Groups" sub="Optional. What the tags in a group have in common, e.g. project: client work">
+        <Described items={st.tagGroups} onSave={(tagGroups) => void save({ tagGroups })} noun="group" namePlaceholder="project" aboutPlaceholder="What its tags have in common" />
+      </Row>
+    </>
+  );
+}
+
+/** Call detection (NGR-170): suggest, name from the calendar, and per-tag auto-record. */
 function CallSettings({ st, onSave }: { st: Settings; onSave: (patch: Partial<Settings>) => Promise<boolean> }) {
   const flash = useStore((s) => s.flash);
   const calendar = async (on: boolean) => {
@@ -284,7 +334,7 @@ function CallSettings({ st, onSave }: { st: Settings; onSave: (patch: Partial<Se
     }
     await onSave({ calendarTitles: on });
   };
-  const clients = Object.keys(st.clients);
+  const tags = Object.keys(st.tags);
   const auto = (c: string, on: boolean) => onSave({ autoRecord: on ? [...st.autoRecord, c] : st.autoRecord.filter((x) => x !== c) });
   return (
     <div className="flex flex-col gap-3 text-[14px]">
@@ -296,10 +346,10 @@ function CallSettings({ st, onSave }: { st: Settings; onSave: (patch: Partial<Se
         <Toggle on={st.calendarTitles} onChange={(on) => void calendar(on)} label="Use calendar event titles" />
         <span>Use calendar event titles</span>
       </div>
-      {st.calendarTitles && clients.length > 0 && (
+      {st.calendarTitles && tags.length > 0 && (
         <fieldset className="flex flex-col gap-1.5">
-          <legend className="mb-1 text-[13px] text-ink-3">Record without asking when the event names this client:</legend>
-          {clients.map((c) => (
+          <legend className="mb-1 text-[13px] text-ink-3">Record without asking when the event title names this tag (project:setr matches “Setr”):</legend>
+          {tags.map((c) => (
             <label key={c} className="flex items-center gap-2">
               <input type="checkbox" checked={st.autoRecord.includes(c)} onChange={(e) => void auto(c, e.target.checked)} />
               {c}
@@ -307,7 +357,7 @@ function CallSettings({ st, onSave }: { st: Settings; onSave: (patch: Partial<Se
           ))}
         </fieldset>
       )}
-      <p className="text-[12px] text-muted">Mirona never records a call on its own unless you tick its client here. A browser using the microphone counts as a call, since Meet can't be told apart from other tabs.</p>
+      <p className="text-[12px] text-muted">Mirona never records a call on its own unless you tick its tag here. A browser using the microphone counts as a call, since Meet can't be told apart from other tabs.</p>
     </div>
   );
 }
@@ -436,7 +486,7 @@ function ConsentSettings({ st, save }: { st: Settings; save: (patch: Partial<Set
 }
 
 /** Encryption at rest and retention (NGR-165). */
-function Storage({ st, save, clients }: { st: Settings; save: (patch: Partial<Settings>) => Promise<boolean>; clients: string[] }) {
+function Storage({ st, save, tags }: { st: Settings; save: (patch: Partial<Settings>) => Promise<boolean>; tags: string[] }) {
   const flash = useStore((s) => s.flash);
   const reload = useStore((s) => s.reload);
   const [busy, setBusy] = useState(false);
@@ -457,18 +507,18 @@ function Storage({ st, save, clients }: { st: Settings; save: (patch: Partial<Se
     return raw.trim() === "" || Number.isNaN(n) ? null : n;
   };
   const rule = (c: string, raw: string) => {
-    const next = { ...st.retentionClients };
+    const next = { ...st.retentionTags };
     const n = days(raw);
     if (n == null) delete next[c];
     else next[c] = n;
-    return save({ retentionClients: next });
+    return save({ retentionTags: next });
   };
   const forget = async (c: string) => {
     if (sure !== c) return setSure(c);
     setSure(null);
     try {
-      const n = await api.deleteClient(c);
-      flash(`Deleted ${n} meetings of ${c}.`);
+      const n = await api.deleteTagged(c);
+      flash(`Deleted ${n} meetings tagged ${c}.`);
       await reload();
     } catch (e) {
       flash(String(e), true);
@@ -496,19 +546,19 @@ function Storage({ st, save, clients }: { st: Settings; save: (patch: Partial<Se
           <Field label="After days (empty: keep)" value={st.retentionAudioDays?.toString() ?? ""} placeholder="Keep" onSave={(v) => save({ retentionAudioDays: days(v) })} />
         </div>
       </Row>
-      <Row title="Per client" sub="Delete a client's meetings entirely after some days, or right now">
+      <Row title="Per tag" sub="Delete a tag's meetings entirely after some days, or right now. With several tags, the shortest rule wins">
         <div className="flex flex-col gap-2">
-          {clients.length === 0 && <p className="text-[13px] text-muted">No clients yet.</p>}
-          {/* One line per client: name, days to keep, and the rare "delete everything" as a quiet link. */}
-          {clients.length > 0 && (
+          {tags.length === 0 && <p className="text-[13px] text-muted">No tags yet.</p>}
+          {/* One line per tag: name, days to keep, and the rare "delete everything" as a quiet link. */}
+          {tags.length > 0 && (
             <div className="grid grid-cols-[minmax(0,1fr)_6rem_auto] items-center gap-x-4 gap-y-1.5">
-              <span className="text-[12px] text-muted">Client</span>
+              <span className="text-[12px] text-muted">Tag</span>
               <span className="text-[12px] text-muted">Delete after (days)</span>
               <span />
-              {clients.map((c) => (
+              {tags.map((c) => (
                 <div key={c} className="contents">
                   <span className="truncate text-[14px]" title={c}>{c}</span>
-                  <Field hideLabel label={`Delete ${c} meetings after days`} value={st.retentionClients[c]?.toString() ?? ""} placeholder="Keep" onSave={(v) => void rule(c, v)} />
+                  <Field hideLabel label={`Delete ${c} meetings after days`} value={st.retentionTags[c]?.toString() ?? ""} placeholder="Keep" onSave={(v) => void rule(c, v)} />
                   <button
                     type="button"
                     className="min-h-9 whitespace-nowrap rounded px-1 text-[13px] font-medium text-record-text hover:underline"
@@ -539,7 +589,7 @@ const SETTINGS_TABS: [SettingsTab, string, IconName][] = [
   ["general", "General", "sliders"],
   ["privacy", "Privacy and storage", "shield"],
   ["models", "AI models", "mic"],
-  ["clients", "Clients", "people"],
+  ["tags", "Tags", "tag"],
   ["agents", "Agents (MCP)", "plug"],
   ["advanced", "Advanced", "list"],
   ["about", "About", "info"],
@@ -710,7 +760,7 @@ function SettingsView() {
   const privacy = st.privacy;
   const d = llmDefaults[st.llm];
   const desktop = JSON.stringify({ mcpServers: { mirona: { command: status.cli, args: ["mcp"] } } }, null, 2);
-  const clientNames = [...new Set([...Object.keys(st.clients), ...s.meetings.map((m) => m.client)])].filter((c) => c && c !== "Unsorted").sort();
+  const tagNames = allTags(st, s.meetings);
   return (
     <div className="px-8 pb-10">
 
@@ -751,7 +801,7 @@ function SettingsView() {
           </div>
         </Row>
       </section>
-          <Storage st={st} save={save} clients={clientNames} />
+          <Storage st={st} save={save} tags={tagNames} />
         </>
       )}
 
@@ -845,11 +895,9 @@ function SettingsView() {
         </>
       )}
 
-      {tab === "clients" && (
+      {tab === "tags" && (
         <section className="mi-card overflow-hidden">
-          <Row title="Clients" sub="The classifier picks one per meeting; describe each so it can tell them apart">
-            <Clients clients={st.clients} onSave={(clients) => save({ clients })} />
-          </Row>
+          <Tags st={st} save={save} />
         </section>
       )}
 

@@ -3,7 +3,7 @@
 /**
  * One transcript moment a search found.
  */
-export type Moment = { meetingId: string, title: string, client: string, 
+export type Moment = { meetingId: string, title: string, tags: Array<string>, 
 /**
  * "Thu 5 Nov 2026 · 09:30".
  */

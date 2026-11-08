@@ -9,7 +9,7 @@ import type { PipelineEvent } from "./bindings/PipelineEvent";
 import type { Review } from "./bindings/Review";
 
 export type View = "meetings" | "all" | "actions" | "people" | "activity";
-export type SettingsTab = "general" | "privacy" | "models" | "clients" | "agents" | "advanced" | "about";
+export type SettingsTab = "general" | "privacy" | "models" | "tags" | "agents" | "advanced" | "about";
 export type Tab = "transcript" | "notes" | "summary";
 
 type Recording = { meetingId: string; elapsedMs: number; levels: number[] };
@@ -56,8 +56,6 @@ type State = {
   review: Review[];
   /** Meetings whose speakers or tags are being redone, with what is running. */
   rerunning: Record<string, string>;
-  /** Sidebar: only meetings for this client (null: all). */
-  clientFilter: string | null;
   corrections: number;
   recording: Recording | null;
   /** Meetings being summarized after their recording stopped. */
@@ -101,7 +99,7 @@ type State = {
   setPrivacy: (on: boolean) => Promise<void>;
   toggleAction: (id: string) => Promise<void>;
   correct: (segmentId: string, answerId: string, value: boolean) => Promise<void>;
-  confirmClient: (client: string) => Promise<void>;
+  setTags: (tags: string[]) => Promise<void>;
   rename: (title: string) => Promise<void>;
   editSegment: (segmentId: string, text: string) => Promise<void>;
   enroll: (speakerId: string, name: string) => Promise<void>;
@@ -112,7 +110,6 @@ type State = {
   setOwner: (segmentId: string, owner: string) => Promise<void>;
   rerun: (what: "diarization" | "classification") => Promise<void>;
   openAt: (meetingId: string, ms: number) => Promise<void>;
-  setClientFilter: (client: string | null) => void;
   regenerate: (template: string) => Promise<void>;
   addDemo: () => Promise<void>;
   /** Reload the lists after meetings were deleted; reopens one if the open one is gone. */
@@ -121,8 +118,8 @@ type State = {
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   recordCall: () => Promise<void>;
-  /** From the consent reminder: start, optionally filing the call under `client`. */
-  confirmConsent: (client: string | null, agreed: boolean, stopReminding: boolean) => Promise<void>;
+  /** From the consent reminder: start, optionally tagging the call with `tag`. */
+  confirmConsent: (tag: string | null, agreed: boolean, stopReminding: boolean) => Promise<void>;
   cancelConsent: () => void;
   dismissCall: () => void;
   installUpdate: () => Promise<void>;
@@ -172,11 +169,11 @@ export const useStore = create<State>((set, get) => {
     await reloadLists();
   };
 
-  /** Start recording now; `client` files it under that client right away. */
-  const startNow = async (client: string | null) => {
+  /** Start recording now; `tag` tags the meeting right away. */
+  const startNow = async (tag: string | null) => {
     try {
       const m = await api.startRecording();
-      if (client) await api.confirmClient(m.id, client);
+      if (tag) await api.setMeetingTags(m.id, [tag]);
     } catch (e) {
       await get().refreshStatus();
       if (needsSetup(get().status)) get().openOnboarding(1);
@@ -188,7 +185,7 @@ export const useStore = create<State>((set, get) => {
     const call = get().call;
     if (!call) return;
     set({ call: null });
-    await api.startCallRecording(call.title, call.client);
+    await api.startCallRecording(call.title, call.tag);
     // Named after the calendar event once it started: show the new title.
     await reloadLists();
     await reloadMeeting();
@@ -278,7 +275,6 @@ export const useStore = create<State>((set, get) => {
     people: [],
     review: [],
     rerunning: {},
-    clientFilter: null,
     corrections: 0,
     recording: null,
     processing: [],
@@ -380,7 +376,6 @@ export const useStore = create<State>((set, get) => {
       get().jump(ms);
     },
 
-    setClientFilter: (clientFilter) => set({ clientFilter }),
 
     selectSegment: (id) => set({ segmentId: id }),
 
@@ -429,11 +424,11 @@ export const useStore = create<State>((set, get) => {
         get().flash("Correction saved as a labelled example.");
       }),
 
-    confirmClient: (client) =>
+    setTags: (tags) =>
       run(async () => {
         const m = get().meeting;
         if (!m) return;
-        await api.confirmClient(m.id, client);
+        await api.setMeetingTags(m.id, tags);
         await afterFix();
       }),
 
@@ -554,19 +549,19 @@ export const useStore = create<State>((set, get) => {
         await startNow(null);
       }),
 
-    confirmConsent: (client, agreed, stopReminding) =>
+    confirmConsent: (tag, agreed, stopReminding) =>
       run(async () => {
         const c = get().consent;
         set({ consent: null });
         const st = get().settings;
-        if (st && ((agreed && client && !st.consentGiven.includes(client)) || stopReminding)) {
+        if (st && ((agreed && tag && !st.consentGiven.includes(tag)) || stopReminding)) {
           await get().saveSettings({
-            consentGiven: agreed && client ? [...st.consentGiven, client] : st.consentGiven,
+            consentGiven: agreed && tag ? [...st.consentGiven, tag] : st.consentGiven,
             consentReminder: !stopReminding,
           });
         }
         if (c?.call) await recordCallNow();
-        else await startNow(client);
+        else await startNow(tag);
       }),
 
     cancelConsent: () => set({ consent: null }),
@@ -578,7 +573,7 @@ export const useStore = create<State>((set, get) => {
         const call = get().call;
         if (!call) return;
         const st = get().settings;
-        if (st?.consentReminder && !(call.client && st.consentGiven.includes(call.client))) {
+        if (st?.consentReminder && !(call.tag && st.consentGiven.includes(call.tag))) {
           set({ consent: { call: true } });
           return;
         }

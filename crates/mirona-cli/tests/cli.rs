@@ -61,7 +61,7 @@ fn list_show_search_actions_reindex() {
     );
     assert_eq!(ok(t, &["search", "zebra"]), "");
 
-    let actions = ok(t, &["actions", "--client", "CORVO", "--open"]);
+    let actions = ok(t, &["actions", "--tag", "CORVO", "--open"]);
     assert_eq!(actions.lines().count(), 1, "{actions}");
 
     // reindex rebuilds the app's index file from the meeting folders.

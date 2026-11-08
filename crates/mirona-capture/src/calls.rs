@@ -51,17 +51,20 @@ pub fn app_name(bundle_id: &str) -> Option<&'static str> {
         .map(|(_, name)| *name)
 }
 
-/// The client whose name appears in a calendar title (case-insensitive); the longest name wins
-/// so "Acme Labs" beats "Acme".
-pub fn client_in_title<'a>(
-    title: &str,
-    clients: impl IntoIterator<Item = &'a String>,
-) -> Option<String> {
+/// The tag whose name (`project:acme` → "acme") appears in a calendar title, any case; the
+/// longest name wins so "Acme Labs" beats "Acme".
+pub fn tag_in_title<'a>(title: &str, tags: impl IntoIterator<Item = &'a String>) -> Option<String> {
     let title = title.to_lowercase();
-    clients
-        .into_iter()
-        .filter(|c| !c.trim().is_empty() && title.contains(&c.trim().to_lowercase()))
-        .max_by_key(|c| c.len())
+    let name = |t: &str| {
+        t.rsplit(':')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_lowercase()
+    };
+    tags.into_iter()
+        .filter(|t| !name(t).is_empty() && title.contains(&name(t)))
+        .max_by_key(|t| name(t).len())
         .cloned()
 }
 
@@ -263,17 +266,21 @@ mod tests {
     }
 
     #[test]
-    fn calendar_titles_match_clients() {
-        let clients = ["Acme".to_string(), "Acme Labs".into(), "Northwind".into()];
+    fn calendar_titles_match_tags() {
+        let tags = [
+            "project:Acme".to_string(),
+            "project:Acme Labs".into(),
+            "Northwind".into(),
+        ];
         assert_eq!(
-            client_in_title("Weekly sync / ACME LABS", &clients),
-            Some("Acme Labs".into())
+            tag_in_title("Weekly sync / ACME LABS", &tags),
+            Some("project:Acme Labs".into())
         );
         assert_eq!(
-            client_in_title("northwind kickoff", &clients),
+            tag_in_title("northwind kickoff", &tags),
             Some("Northwind".into())
         );
-        assert_eq!(client_in_title("1:1 with Sam", &clients), None);
+        assert_eq!(tag_in_title("1:1 with Sam", &tags), None);
     }
 
     /// Prints what's using the mic and the calendar event now. Run with a call open:

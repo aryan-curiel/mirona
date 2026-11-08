@@ -4,14 +4,32 @@
 use mirona_core::{
     ActionItem, AgentCall, Answer, AnswerSource, Choice, ChoiceAnswer, Decision, EnhancedNote,
     Locality, McpStatus, Meeting, MeetingAnswers, NameSuggestion, Note, ProviderOption,
-    QuestionKind, Segment, Speaker, Stage, Summary, Tag, TagKind, Tint, Voiceprint,
+    QuestionKind, Segment, Speaker, Stage, Summary, Tag, TagAnswer, TagKind, Tint, Voiceprint,
 };
 use mirona_providers::questions::SEGMENT_QUESTIONS;
 
 use crate::{Result, Store};
 
 pub const THRESHOLD: f32 = 0.6;
-pub const CLIENTS: [&str; 4] = ["Alder Restoration", "Juniper Apparel", "Corvo", "Lumenix"];
+/// The demo's tags: one project each, plus a topic two meetings share.
+pub const TAGS: [(&str, &str); 5] = [
+    (
+        "project:Alder Restoration",
+        "Claims Desk for water-damage restoration crews",
+    ),
+    (
+        "project:Juniper Apparel",
+        "online clothing shop; product tagging",
+    ),
+    ("project:Corvo", "live shopping app"),
+    ("project:Lumenix", "evaluation dashboard for a board"),
+    ("topic:billing", "invoices, pricing, payments"),
+];
+
+/// `project:<name>`.
+fn project(name: &str) -> Vec<String> {
+    vec![format!("project:{name}")]
+}
 
 pub fn ms(mmss: &str) -> u32 {
     let (m, s) = mmss.split_once(':').expect("mm:ss");
@@ -131,7 +149,7 @@ fn choice(value: &str, p: f32, threshold: f32, options: &[&str]) -> ChoiceAnswer
 
 fn meeting_answers(
     kind: (&str, f32),
-    client: (&str, f32),
+    tags: &[(&str, f32)],
     priority: f32,
     follow_up: (bool, f32),
     draft: &str,
@@ -143,7 +161,17 @@ fn meeting_answers(
             THRESHOLD,
             &["Client call", "Internal", "Planning", "Review"],
         ),
-        client: choice(client.0, client.1, 0.75, &CLIENTS),
+        tags: tags
+            .iter()
+            .map(|(t, p)| TagAnswer {
+                tag: (*t).into(),
+                probability: *p,
+                threshold: 0.75,
+                confirmed: false,
+                proposed: false,
+                about: String::new(),
+            })
+            .collect(),
         priority,
         follow_up: follow_up.0,
         follow_up_probability: follow_up.1,
@@ -187,7 +215,7 @@ pub fn meetings() -> Vec<Meeting> {
     let claims = Meeting {
         id: "claims-desk".into(),
         title: "Claims Desk weekly sync".into(),
-        client: "Alder Restoration".into(),
+        tags: project("Alder Restoration"),
         when: "today".into(),
         date_label: "Thu 5 Nov 2026 · 09:30".into(),
         duration_min: 8,
@@ -205,7 +233,7 @@ pub fn meetings() -> Vec<Meeting> {
             seg("c8", "s3", "07:30", "What happens to claims that were already paid before the migration?", [0.10, 0.04, 0.81, 0.01, 0.01], vec![tag(OpenQuestion, "Open question")], &[]),
             seg("c9", "aryan", "08:05", "Let me think about whether we migrate those or archive them.", [0.48, 0.10, 0.20, 0.02, 0.01], vec![tag(Review, "Needs review · action? 0.48")], &[("Aryan", 0.71), ("Nadia", 0.18), ("Speaker 3", 0.11)]),
         ],
-        answers: Some(meeting_answers(("Client call", 0.93), ("Alder Restoration", 0.71), 3.6, (true, 0.86),
+        answers: Some(meeting_answers(("Client call", 0.93), &[("project:Alder Restoration", 0.93), ("topic:billing", 0.66)], 3.6, (true, 0.86),
             "Hi Nadia,\n\nThanks for today. Confirming: the insurer grouping ships to the field team on Monday, Speaker 3 announces it by Friday, and I'll send a preview build with the overdue filter by Thursday.\n\nStill open: what we do with claims paid before the migration.\n\nAryan")),
         notes: Note {
             raw_at_ms: vec![],
@@ -231,7 +259,7 @@ pub fn meetings() -> Vec<Meeting> {
     let sprint = Meeting {
         id: "sprint-planning".into(),
         title: "Sprint planning".into(),
-        client: "Juniper Apparel".into(),
+        tags: project("Juniper Apparel"),
         when: "Tue".into(),
         date_label: "Tue 3 Nov 2026 · 14:00".into(),
         duration_min: 24,
@@ -245,7 +273,7 @@ pub fn meetings() -> Vec<Meeting> {
             seg("s4", "aryan", "05:10", "Yes, I'll share it Monday morning.", [0.88, 0.05, 0.01, 0.02, 0.01], vec![tag(Action, "Action · Aryan · Mon")], &[("Aryan", 0.91), ("Greta", 0.09)]),
             seg("s5", "greta", "11:30", "Do we still need the size guide in this sprint?", [0.12, 0.05, 0.74, 0.01, 0.01], vec![tag(OpenQuestion, "Open question")], &[]),
         ],
-        answers: Some(meeting_answers(("Planning", 0.88), ("Juniper Apparel", 0.95), 2.8, (false, 0.22), "")),
+        answers: Some(meeting_answers(("Planning", 0.88), &[("project:Juniper Apparel", 0.95)], 2.8, (false, 0.22), "")),
         notes: Note { raw_at_ms: vec![], raw: vec!["tagging estimate".into(), "size guide?".into()], enhanced: vec![
             note(Dec, "Sprint goal: product tagging for the spring catalogue.", "00:40"),
             note(Action, "Aryan shares the tagging estimate by Monday.", "05:10"),
@@ -264,7 +292,7 @@ pub fn meetings() -> Vec<Meeting> {
     let corvo = Meeting {
         id: "corvo-review".into(),
         title: "Corvo Live product review".into(),
-        client: "Corvo".into(),
+        tags: vec!["project:Corvo".into(), "topic:billing".into()],
         when: "Mon".into(),
         date_label: "Mon 2 Nov 2026 · 16:30".into(),
         duration_min: 31,
@@ -276,7 +304,7 @@ pub fn meetings() -> Vec<Meeting> {
             seg("t2", "andres", "06:45", "Onboarding copy in the mobile app still reads like a draft.", [0.35, 0.05, 0.05, 0.02, 0.01], vec![], &[]),
             seg("t3", "aryan", "07:02", "I'll review the onboarding copy and send suggestions Wednesday.", [0.90, 0.06, 0.01, 0.02, 0.01], vec![tag(Action, "Action · Aryan · Wed")], &[("Aryan", 0.93), ("Andrés", 0.07)]),
         ],
-        answers: Some(meeting_answers(("Review", 0.81), ("Corvo", 0.97), 2.1, (true, 0.64), "Hi Andrés,\n\nThanks for the review. I'll send onboarding copy suggestions on Wednesday.\n\nAryan")),
+        answers: Some(meeting_answers(("Review", 0.81), &[("project:Corvo", 0.97), ("topic:billing", 0.81)], 2.1, (true, 0.64), "Hi Andrés,\n\nThanks for the review. I'll send onboarding copy suggestions on Wednesday.\n\nAryan")),
         notes: Note { raw_at_ms: vec![], raw: vec!["onboarding copy".into()], enhanced: vec![note(Action, "Aryan reviews the mobile onboarding copy by Wednesday.", "07:02")], enhanced_by: "Ollama (local)".into() },
         summary: Some(Summary {
             template: "Review".into(),
@@ -291,7 +319,7 @@ pub fn meetings() -> Vec<Meeting> {
     let roadmap = Meeting {
         id: "roadmap-checkin".into(),
         title: "Roadmap check-in".into(),
-        client: "Lumenix".into(),
+        tags: project("Lumenix"),
         when: "last week".into(),
         date_label: "Wed 28 Oct 2026 · 11:00".into(),
         duration_min: 19,
@@ -320,7 +348,7 @@ pub fn meetings() -> Vec<Meeting> {
         ],
         answers: Some(meeting_answers(
             ("Planning", 0.77),
-            ("Lumenix", 0.92),
+            &[("project:Lumenix", 0.92)],
             3.0,
             (false, 0.31),
             "",
@@ -354,7 +382,7 @@ pub fn action_items() -> Vec<ActionItem> {
                 text: &str,
                 owner: &str,
                 due: Option<&str>,
-                client: &str,
+                project: &str,
                 review: bool| ActionItem {
         id: id.into(),
         meeting_id: m.into(),
@@ -363,7 +391,7 @@ pub fn action_items() -> Vec<ActionItem> {
         text: text.into(),
         owner: owner.into(),
         due: due.map(Into::into),
-        client: client.into(),
+        tags: self::project(project),
         done: false,
         needs_review: review,
         owner_confirmed: false,
@@ -649,7 +677,7 @@ pub fn demo_finish(store: &mut Store, id: &str, elapsed_ms: u32, llm: &str) -> R
             text: "Prepare a short demo script".into(),
             owner: "Aryan".into(),
             due: Some("Tue".into()),
-            client: String::new(),
+            tags: vec![],
             done: false,
             needs_review: false,
             owner_confirmed: false,
@@ -657,7 +685,7 @@ pub fn demo_finish(store: &mut Store, id: &str, elapsed_ms: u32, llm: &str) -> R
         .collect();
     let sample = meetings();
     let mut ans = sample[0].answers.clone().unwrap();
-    ans.client = sample[3].answers.clone().unwrap().client;
+    ans.tags = sample[3].answers.clone().unwrap().tags;
     ans.priority = 3.2;
     ans.follow_up_draft = "Hi Keiko,\n\nThanks for the call. The evaluation dashboard demo is set for the board on the 20th, and I'll send a short demo script by Tuesday.\n\nStill open: who owns the data export for legal.\n\nAryan".into();
     store.set_title(id, "Evaluation dashboard follow-up")?;

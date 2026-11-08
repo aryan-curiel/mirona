@@ -109,7 +109,11 @@ function MeetingHeader({ m }: { m: Meeting }) {
       <div className="flex flex-wrap items-center gap-2">
         {/* Plain answers; scores live in the inspector under "Show model details". */}
         {a?.meetingType.value && <Chip kind={sure(a.meetingType) ? "neutral" : "review"}>{typeLabel(a.meetingType.value)}{sure(a.meetingType) ? "" : "?"}</Chip>}
-        {a?.client.value && a.client.value !== "none" && <Chip kind={sure(a.client) ? "neutral" : "review"}>{a.client.value}{sure(a.client) ? "" : "?"}</Chip>}
+        {m.tags.map((t) => (
+          <Chip key={t} kind="neutral">
+            {t}
+          </Chip>
+        ))}
         {reviews > 0 && <Chip kind="review">{reviews} to check</Chip>}
         {m.sample && <span className="text-[12px] font-medium text-muted">Sample data</span>}
         {busy && <span className="mi-chip mi-chip--review mi-pulse">Writing the summary on this device…</span>}
@@ -192,7 +196,7 @@ function RemoveDialog({ m, onClose }: { m: Meeting; onClose: () => void }) {
     { id: "audio", label: "Recording", detail: `${m.durationMin} min of audio. The transcript stays.`, has: !!row?.hasAudio },
     { id: "summary", label: "Summary and action items", detail: `${items} action item${items === 1 ? "" : "s"}. Write a new one any time.`, has: !!m.summary },
     { id: "enhanced", label: "Enhanced notes", detail: `${m.notes.enhanced.length} lines. Your own notes stay.`, has: m.notes.enhanced.length > 0 },
-    { id: "classification", label: "Tags and classification", detail: `${tagged} tagged lines, meeting type, client, follow-up. Sensitive lines stay hidden.`, has: tagged > 0 || !!m.answers },
+    { id: "classification", label: "Tags and classification", detail: `${tagged} tagged lines, meeting type, meeting tags, follow-up. Sensitive lines stay hidden.`, has: tagged > 0 || !!m.answers },
   ];
   const [picked, setPicked] = useState<MeetingPart[]>([]);
   const [whole, setWhole] = useState(false);

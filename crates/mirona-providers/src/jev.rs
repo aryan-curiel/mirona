@@ -180,8 +180,17 @@ mod tests {
         assert!(sent["sensitive"]["criteria"]["true"].is_string());
         assert_eq!(sent["owner"]["type"], "choice");
         assert!(sent["owner"]["criteria"][NO_OWNER].is_string());
-        let mq = meeting_questions([("Northwind Bank", "contact: Karen")]);
+        let tags = [(
+            "project:Northwind Bank".to_string(),
+            "contact: Karen".to_string(),
+        )]
+        .into();
+        let mq = meeting_questions(&tags, &std::collections::BTreeMap::new());
         let body = request(MODEL, "x", &mq);
+        assert_eq!(
+            body["questions"]["tag:project:Northwind Bank"]["type"],
+            "noul"
+        );
         assert_eq!(body["questions"]["priority"]["type"], "score");
         assert_eq!(
             body["questions"]["priority"]["criteria"][5],
@@ -207,26 +216,24 @@ mod tests {
 
     #[test]
     fn parses_a_recorded_meeting_response() {
-        let qs = meeting_questions([
-            ("Northwind Bank", "contact: Karen, compliance"),
-            ("Helio Health", "clinics, contact: Dr. Osei"),
-        ]);
+        // Recorded before tags (it still carries a `client` answer, ignored here); tag answers
+        // are `noul`, parsed like the segment ones above. Re-record with `live_records_fixtures`.
+        let qs = meeting_questions(
+            &std::collections::BTreeMap::new(),
+            &std::collections::BTreeMap::new(),
+        );
         let replies = parse(&fixture("jev-meeting.json"), &qs).unwrap();
-        let Reply::Choice { value, .. } = &replies[1] else {
-            panic!("client is a choice")
-        };
-        assert_eq!(value, "Northwind Bank");
         let Reply::Score {
             score,
             probabilities,
-        } = &replies[2]
+        } = &replies[1]
         else {
             panic!("priority is a score")
         };
         assert_eq!(probabilities.len(), 6);
         assert!((0.0..=5.0).contains(score));
         assert!(
-            replies[4].p_yes().unwrap() >= 0.5,
+            replies[3].p_yes().unwrap() >= 0.5,
             "client call wants a follow-up"
         );
     }
@@ -264,10 +271,10 @@ mod tests {
             (
                 "jev-meeting.json",
                 MEETING,
-                meeting_questions([
-                    ("Northwind Bank", "contact: Karen, compliance"),
-                    ("Helio Health", "clinics, contact: Dr. Osei"),
-                ]),
+                meeting_questions(
+                    &crate::questions::tests::tags(),
+                    &std::collections::BTreeMap::new(),
+                ),
             ),
         ] {
             let body = request(MODEL, text, &qs);

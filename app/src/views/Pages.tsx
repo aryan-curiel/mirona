@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store";
-import { api, dayGroup, fmt, typeLabel, type McpActivity, type Person } from "../lib/api";
+import { allTags, api, dayGroup, fmt, typeLabel, type McpActivity, type Person } from "../lib/api";
 import { Avatar, Icon, PageHeader } from "../components/ui";
 
 const TINTS = ["mi-chip--action", "mi-chip--decision", "mi-chip--question"];
-/** A stable tint per client name. */
-const clientChip = (c: string) => (c ? TINTS[[...c].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 997, 0) % TINTS.length] : "mi-chip--neutral");
+/** A stable tint per tag. */
+const tagChip = (c: string) => (c ? TINTS[[...c].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 997, 0) % TINTS.length] : "mi-chip--neutral");
 
 type Status = "all" | "open" | "done" | "review";
 const STATUS: [Status, string][] = [
@@ -33,25 +33,25 @@ function Pills<T extends string | null>({ value, options, onPick, label }: { val
   );
 }
 
-type Sort = "date" | "title" | "client" | "length";
+type Sort = "date" | "title" | "tags" | "length";
 
 /** Every meeting in one sortable table, with bulk delete (the sidebar lists only the newest). */
 export function AllMeetingsView() {
   const s = useStore();
   const [q, setQ] = useState("");
-  const [client, setClient] = useState("");
+  const [tag, setTag] = useState("");
   const [type, setType] = useState("");
   const [sort, setSort] = useState<{ by: Sort; asc: boolean }>({ by: "date", asc: false });
   const [picked, setPicked] = useState<string[]>([]);
   const [sure, setSure] = useState<"picked" | "samples" | null>(null);
-  const clients = [...new Set(s.meetings.map((m) => m.client).filter(Boolean))].sort();
+  const tags = allTags(null, s.meetings);
   const types = [...new Set(s.meetings.map((m) => m.meetingType).filter(Boolean))].sort();
   const samples = s.meetings.filter((m) => m.sample).map((m) => m.id);
   const needle = q.trim().toLowerCase();
   const key = (m: (typeof s.meetings)[number]) =>
-    sort.by === "date" ? m.created : sort.by === "title" ? m.title.toLowerCase() : sort.by === "client" ? m.client.toLowerCase() : m.durationMin;
+    sort.by === "date" ? m.created : sort.by === "title" ? m.title.toLowerCase() : sort.by === "tags" ? m.tags.join(" ").toLowerCase() : m.durationMin;
   const rows = s.meetings
-    .filter((m) => (!needle || m.title.toLowerCase().includes(needle)) && (!client || m.client === client) && (!type || m.meetingType === type))
+    .filter((m) => (!needle || m.title.toLowerCase().includes(needle)) && (!tag || m.tags.includes(tag)) && (!type || m.meetingType === type))
     .sort((a, b) => {
       const [x, y] = [key(a), key(b)];
       return (x < y ? -1 : x > y ? 1 : 0) * (sort.asc ? 1 : -1);
@@ -82,10 +82,10 @@ export function AllMeetingsView() {
       </PageHeader>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input type="search" className="mi-field w-64 text-[14px]" placeholder="Filter by title" aria-label="Filter by title" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className="mi-field text-[14px]" aria-label="Client" value={client} onChange={(e) => setClient(e.target.value)}>
-          <option value="">All clients</option>
-          {clients.map((c) => (
-            <option key={c}>{c}</option>
+        <select className="mi-field text-[14px]" aria-label="Tag" value={tag} onChange={(e) => setTag(e.target.value)}>
+          <option value="">All tags</option>
+          {tags.map((t) => (
+            <option key={t}>{t}</option>
           ))}
         </select>
         {types.length > 0 && (
@@ -118,7 +118,7 @@ export function AllMeetingsView() {
                 <input type="checkbox" aria-label="Select all shown" checked={allPicked} onChange={() => setPicked(allPicked ? picked.filter((id) => !visible.includes(id)) : [...new Set([...picked, ...visible])])} />
               </th>
               {head("title", "Title")}
-              {head("client", "Client")}
+              {head("tags", "Tags")}
               <th className="px-3 py-2.5 text-left font-medium">Type</th>
               {head("date", "Date")}
               {head("length", "Length", "text-right")}
@@ -148,7 +148,7 @@ export function AllMeetingsView() {
                     </button>
                     {m.sample && <span className="ml-2 text-[12px] text-muted">Sample</span>}
                   </td>
-                  <td className="px-3 py-2.5 text-ink-3">{m.client || "—"}</td>
+                  <td className="max-w-[220px] px-3 py-2.5 text-ink-3">{m.tags.join(", ") || "—"}</td>
                   <td className="px-3 py-2.5 text-ink-3">{m.meetingType ? typeLabel(m.meetingType) : "—"}</td>
                   <td className="px-3 py-2.5 whitespace-nowrap text-ink-3">{m.when}</td>
                   <td className="px-3 py-2.5 text-right whitespace-nowrap text-ink-3">{m.durationMin} min</td>
@@ -171,16 +171,16 @@ export function AllMeetingsView() {
   );
 }
 
-/** Across meetings, filtered like MCP's `list_action_items`: client is a case-insensitive part
- * of the name, "Open" is `open_only`; "Needs review" lists the unconfirmed ones (NGR-161). */
+/** Across meetings, filtered like MCP's `list_action_items`: a meeting tag, "Open" is
+ * `open_only`; "Needs review" lists the unconfirmed ones (NGR-161). */
 export function ActionItemsView() {
   const s = useStore();
-  const [client, setClient] = useState<string | null>(null);
+  const [tag, setTag] = useState("");
   const [status, setStatus] = useState<Status>("all");
-  const clients = [...new Set(s.actionItems.map((a) => a.client))].sort();
+  const tags = allTags(null, s.actionItems);
   const rows = s.actionItems.filter(
     (a) =>
-      (client === null || a.client.toLowerCase().includes(client.toLowerCase())) &&
+      (!tag || a.tags.includes(tag)) &&
       (status === "all" || (status === "open" && !a.done) || (status === "done" && a.done) || (status === "review" && a.needsReview)),
   );
   return (
@@ -190,7 +190,12 @@ export function ActionItemsView() {
         “needs review” reach them as unconfirmed.
       </PageHeader>
       <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-3">
-        <Pills label="Filter by client" value={client} options={[[null, "All clients"], ...clients.map((c): [string, string] => [c, c || "No client"])]} onPick={setClient} />
+        <select className="mi-field text-[14px]" aria-label="Filter by tag" value={tag} onChange={(e) => setTag(e.target.value)}>
+          <option value="">All tags</option>
+          {tags.map((t) => (
+            <option key={t}>{t}</option>
+          ))}
+        </select>
         <Pills label="Filter by status" value={status} options={STATUS} onPick={setStatus} />
       </div>
       <p className="mb-3 text-[13px] text-muted" aria-live="polite">
@@ -218,7 +223,17 @@ export function ActionItemsView() {
               {a.owner || <span className="text-muted">No owner</span>}
             </span>
             <span className="truncate text-[13px] text-ink-3">{a.due ?? "—"}</span>
-            <span className={`mi-chip justify-self-end ${clientChip(a.client)}`}>{a.client || "No client"}</span>
+            <span className="flex flex-wrap justify-end gap-1 justify-self-end">
+              {a.tags.length ? (
+                a.tags.map((t) => (
+                  <span key={t} className={`mi-chip ${tagChip(t)}`}>
+                    {t}
+                  </span>
+                ))
+              ) : (
+                <span className="mi-chip mi-chip--neutral">No tag</span>
+              )}
+            </span>
           </div>
         ))}
         {!rows.length && <p className="px-6 py-10 text-center text-[14px] text-muted">{s.actionItems.length ? "No action items match these filters." : "No action items yet. They come from each meeting's summary."}</p>}

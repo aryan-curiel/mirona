@@ -6,7 +6,7 @@
 //! `mirona eval` reads it next to the public `eval/chunks.jsonl`.
 
 use crate::files::Entry;
-use crate::{Result, Store};
+use crate::{Result, Store, has_tag};
 use mirona_core::{ActionItem, Answer, Choice, Meeting, Review, Segment, Tag, TagKind};
 use mirona_providers::questions::NO_OWNER;
 use std::io::Write;
@@ -102,7 +102,8 @@ impl Store {
     }
 
     /// Everything in a meeting that is below its threshold and not yet confirmed (NGR-158):
-    /// segment answers, meeting type, client, follow-up, and action items needing review.
+    /// segment answers, meeting type, tags (and a proposed new tag), follow-up, and action
+    /// items needing review.
     pub fn review(&self, meeting_id: &str) -> Result<Vec<Review>> {
         let e = &self.entries[self.idx(meeting_id)?];
         let m = &e.meeting;
@@ -124,17 +125,30 @@ impl Store {
             })
             .collect();
         if let Some(a) = &m.answers {
-            for (q, c) in [("meeting_type", &a.meeting_type), ("client", &a.client)] {
-                if !c.confirmed && c.probability < c.threshold && !c.value.is_empty() {
-                    out.push(Review {
-                        segment_id: None,
-                        at_ms: None,
-                        question: q.into(),
-                        value: c.value.clone(),
-                        probability: c.probability,
-                        threshold: c.threshold,
-                    });
-                }
+            let c = &a.meeting_type;
+            if !c.confirmed && c.probability < c.threshold && !c.value.is_empty() {
+                out.push(Review {
+                    segment_id: None,
+                    at_ms: None,
+                    question: "meeting_type".into(),
+                    value: c.value.clone(),
+                    probability: c.probability,
+                    threshold: c.threshold,
+                });
+            }
+            for t in a
+                .tags
+                .iter()
+                .filter(|t| t.needs_review() && !has_tag(&m.tags, &t.tag))
+            {
+                out.push(Review {
+                    segment_id: None,
+                    at_ms: None,
+                    question: if t.proposed { "new_tag" } else { "tag" }.into(),
+                    value: t.tag.clone(),
+                    probability: t.probability,
+                    threshold: t.threshold,
+                });
             }
             if a.follow_up_probability >= 0.5 && a.follow_up_probability < a.follow_up_threshold {
                 out.push(Review {
@@ -223,7 +237,7 @@ impl Store {
         }
     }
 
-    /// A meeting-level correction (meeting type, client, follow-up) as a labelled example: the
+    /// A meeting-level correction (meeting type, tags, follow-up) as a labelled example: the
     /// meeting's transcript is the text, so `mirona eval` can re-ask the meeting questions.
     pub fn label_meeting(&self, meeting_id: &str, question: &str, value: &str) -> Result<()> {
         let m = &self.entries[self.idx(meeting_id)?].meeting;
@@ -338,7 +352,7 @@ pub(crate) fn item_from(m: &Meeting, seg: &Segment) -> ActionItem {
         text: seg.text.clone(),
         owner,
         due: seg.due.clone(),
-        client: m.client.clone(),
+        tags: m.tags.clone(),
         done: false,
         needs_review: false,
         owner_confirmed: false,

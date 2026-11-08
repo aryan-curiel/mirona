@@ -64,8 +64,9 @@ sequenceDiagram
     E->>S: finish the meeting, compress audio to Opus
     E->>P: diarize the recording (speakrs)
     E->>S: match voiceprints, join split sentences
-    E->>P: meeting questions (type, client, priority, tone, follow-up)
+    E->>P: meeting questions (type, tags, priority, tone, follow-up)
     E->>P: summary + enhanced notes (LLM, template by meeting type)
+    E->>P: propose one new tag if no tag fits
     E->>P: check the summary covers every action item, draft follow-up email if needed
     E->>P: embed non-sensitive lines for search
     E->>S: save everything
@@ -81,7 +82,8 @@ sequenceDiagram
 4. **After stop.** Tagging catches up, the audio is compressed to Opus, the recording is
    diarized (speakrs), speakers are matched against known voiceprints and split sentences are
    joined. Lines still untagged are tagged. Then the meeting-level questions are answered (type,
-   client, priority, tone, follow-up), the LLM writes the summary and enhanced notes, a check
+   priority, tone, follow-up, and a yes/no per tag), the LLM writes the summary and enhanced notes
+   (and, when no tag fits, proposes one new tag for the user to accept), a check
    makes sure every action item is covered, and a follow-up email is drafted if one is needed.
    Last, lines that aren't sensitive are embedded for search.
 
@@ -94,7 +96,7 @@ The folders are the source of truth. The index can always be rebuilt from them (
 ```
 ~/Documents/Mirona/
   2026-11-05-0930-claims-desk-weekly-sync/
-    meeting.md          YAML front matter (type, client, speakers, action items…) + ## Notes
+    meeting.md          YAML front matter (type, tags, speakers, action items…) + ## Notes
     transcript.jsonl    one line per segment, append-only
     audio.caf           Opus (audio.wav while recording)
     embeddings.json     per-line search vectors

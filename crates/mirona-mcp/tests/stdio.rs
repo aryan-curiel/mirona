@@ -128,7 +128,7 @@ fn initialize_list_and_call_every_tool() {
     let (text, err) = c.call("get_meeting", json!({ "id": "corvo-review" }));
     assert!(!err, "{text}");
     let v: Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(v["client"], "Corvo");
+    assert_eq!(v["tags"], json!(["project:Corvo", "topic:billing"]));
     assert!(v["overview"].as_str().unwrap().contains("Corvo Live"));
     assert_eq!(v["action_items"][0]["owner"], "Aryan");
     assert!(v.get("segments").is_none());
@@ -143,9 +143,12 @@ fn initialize_list_and_call_every_tool() {
     assert_eq!(part.lines().count(), 2, "{part}");
     assert!(part.contains("[6:45]"));
 
-    // list_action_items: client filter is case-insensitive.
+    // list_action_items: the tag filter is case-insensitive; part of a tag is enough.
     let count = |t: &str| serde_json::from_str::<Value>(t).unwrap()["count"].clone();
-    let (text, _) = c.call("list_action_items", json!({ "client": "corvo" }));
+    let (text, _) = c.call(
+        "list_action_items",
+        json!({ "meeting_tag": "project:corvo" }),
+    );
     let v: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(v["count"], 1);
     assert_eq!(v["items"][0]["meeting_id"], "corvo-review");
@@ -154,7 +157,7 @@ fn initialize_list_and_call_every_tool() {
     let mut store = mirona_store::Store::open(tmp.path().join("meetings")).unwrap();
     store.toggle_action_item("a5").unwrap();
     store.set_title("corvo-review", "Renamed review").unwrap();
-    let args = json!({ "client": "corvo", "open_only": true });
+    let args = json!({ "meeting_tag": "corvo", "open_only": true });
     assert_eq!(count(&c.call("list_action_items", args).0), 0);
     let (text, _) = c.call("get_meeting", json!({ "id": "corvo-review" }));
     assert!(text.contains("Renamed review"), "{text}");

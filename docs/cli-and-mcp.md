@@ -26,15 +26,15 @@ checkout: `brew install --HEAD --formula ./packaging/homebrew/mirona.rb`.
 |---|---|
 | `mirona record` | Records mic + system audio, prints segments as they arrive; Ctrl-C or `mirona stop` ends it, then it summarizes. Needs Microphone and Screen & System Audio Recording access for the terminal app (asks once, fails with where to allow it if denied). Refuses if a recording is already running. |
 | `mirona stop` | Stops a recording running in another terminal (`recording.lock` / `recording.stop` files in the app folder, so it works the same on Windows). Clears a stale lock if no recorder answers within 5 s. |
-| `mirona list` | Meetings, newest first: id, date, title, client |
+| `mirona list` | Meetings, newest first: id, date, title, tags |
 | `mirona show <id>` | Summary, decisions, open questions, action items, notes, transcript |
-| `mirona search <words…> [--client X] [--from YYYY-MM-DD] [--to …] [--speaker X] [--tag action\|decision\|open-question\|small-talk\|sensitive] [--sensitive]` | Transcript moments by keywords and meaning (hybrid search, NGR-167), best first; with no moments, the matching meetings. Sensitive lines only with `--sensitive`. Without Ollama's `nomic-embed-text` it searches keywords only and says so |
-| `mirona actions [--client X] [--open]` | Action items across meetings (`--client` is case-insensitive, part of the name is enough) |
+| `mirona search <words…> [--meeting-tag X] [--from YYYY-MM-DD] [--to …] [--speaker X] [--tag action\|decision\|open-question\|small-talk\|sensitive] [--sensitive]` | Transcript moments by keywords and meaning (hybrid search, NGR-167), best first; with no moments, the matching meetings. Sensitive lines only with `--sensitive`. Without Ollama's `nomic-embed-text` it searches keywords only and says so. `--meeting-tag` filters by meeting tag (`project:setr`); `--tag` is the line tag |
+| `mirona actions [--tag X] [--open]` | Action items across meetings (`--tag` is a meeting tag, case-insensitive; part of it is enough, `project:` matches every project) |
 | `mirona import <audio>` | Transcribes (wav/mp3/m4a/flac) and summarizes a file into a new meeting |
 | `mirona reindex` | Rebuilds `<meetings>/.mirona/index.sqlite` from the files |
 | `mirona privacy [on\|off]` | Shows or sets privacy mode, the same setting as the app's switch. `--privacy` on any command forces it on for that run without saving it |
-| `mirona retention` | Applies the retention rules now (old recordings, old meetings per client) and prints what it removed; also logged to `<meetings>/.mirona/retention.log` |
-| `mirona delete <id>` / `mirona delete --client X` | Deletes a meeting (or every meeting of a client) everywhere: folder, index, embeddings, voices heard only there, corrections |
+| `mirona retention` | Applies the retention rules now (old recordings, old meetings per tag) and prints what it removed; also logged to `<meetings>/.mirona/retention.log` |
+| `mirona delete <id>` / `mirona delete --tag X` | Deletes a meeting (or every meeting with that tag) everywhere: folder, index, embeddings, voices heard only there, corrections |
 | `mirona compress` | Compresses recordings still kept as `audio.wav` (older meetings, crashed sessions) to `audio.caf` (Opus); the app does this at start |
 | `mirona mcp [--http [--port N]]` | The MCP server on stdio, or on `http://127.0.0.1:N/mcp` (default `mcp_port`, 7337) |
 | `mirona eval [--with jev\|local-llm\|fake]… [--set file] [--no-labels] [--context] [--limit N]` | Scores the classifiers on the public synthetic set (`eval/chunks.jsonl`, or `--set`) plus your own corrections (`<meetings>/.mirona/labels.jsonl`, local only; `--no-labels` leaves them out): accuracy and precision/recall per question, latency per call. `--with` is repeatable; default: the configured classifier (Jev, unless privacy mode is on) plus the local baseline. `--with fake` needs no network (CI). `--context` puts the previous example's last two lines in front. Jev uses the keychain key, or `TYPESAFE_API_KEY` |
@@ -72,14 +72,15 @@ marked (`needs_review`, `unconfirmed`), never served as fact.
 Results are compact JSON, except the transcript, which is plain text. Times are `m:ss` (or
 `h:mm:ss`) from the start of the recording. Read tools:
 
-- `search_meetings { query, client?, from?, to?, speaker?, tag?, include_sensitive? }`:
+- `search_meetings { query, meeting_tag?, from?, to?, speaker?, tag?, include_sensitive? }`:
   transcript moments by keywords (prefix-matched) and meaning, best first, at most 30. Returns
-  `moments` (`meeting_id`, `title`, `client`, `date`, `at`, `speaker`, `snippet` with keyword
+  `moments` (`meeting_id`, `title`, `tags`, `date`, `at`, `speaker`, `snippet` with keyword
   hits in `[brackets]`, `matched`: keywords, meaning or both), `moments_truncated`, `meetings`
-  (`meeting_id`, `title`, `client`, `date`) and `search_by_meaning` (false without Ollama's
+  (`meeting_id`, `title`, `tags`, `date`) and `search_by_meaning` (false without Ollama's
   `nomic-embed-text`). An empty `query` lists the meetings that pass the filters, newest first.
   `from`/`to` are `YYYY-MM-DD` (inclusive); `tag` is `action`, `decision`, `open_question`,
-  `small_talk` or `sensitive`; `client` and `speaker` match part of the name.
+  `small_talk` or `sensitive` (a line tag); `meeting_tag` matches part of a meeting tag
+  (`project:` matches every project) and `speaker` part of the name.
 - `ask_meeting { question, meeting_id? }`: a plain question, routed by the classifier (a keyword
   rule when classification is off or unreachable). Returns `route`, `routed_by` and, per route:
   `search` → `moments` (up to 10); `decisions` → `meetings` with their `decisions`;
@@ -88,15 +89,15 @@ Results are compact JSON, except the transcript, which is plain text. Times are 
   `open_question` calls the configured LLM, with up to ~24k characters of transcript from up to
   3 meetings. Without `meeting_id` it uses the meetings the question's search hits come from,
   else the newest.
-- `get_meeting { id }`: `id`, `title`, `client`, `date`, `duration_min`, `speakers` (`id`,
+- `get_meeting { id }`: `id`, `title`, `tags`, `date`, `duration_min`, `speakers` (`id`,
   `name`), `transcript_segments`, `overview`, `decisions`, `open_questions`, `action_items`
   (`id`, `text`, `owner`, `due`, `done`, `at`, `needs_review`), `notes`, `enhanced_notes`,
   `summary_by`, `meeting_type` (only when confirmed or above threshold) and `unconfirmed`
-  (classifier guesses below threshold). No transcript.
-- `get_transcript { id, from?, to?, include_sensitive? }`: a `# title · client · date` line, then
+  (classifier guesses below threshold; tag guesses have the id `tag`, a proposed new tag `new_tag`). No transcript.
+- `get_transcript { id, from?, to?, include_sensitive? }`: a `# title · tags · date` line, then
   `[m:ss] Speaker: text` lines. `from`/`to` (`to` exclusive) take `m:ss`, `h:mm:ss` or seconds.
-- `list_action_items { client?, open_only? }`: `count` and `items` (`id`, `text`, `owner`,
-  `due`, `done`, `client`, `meeting_id`, `meeting`, `at`, `needs_review`), newest meeting first.
+- `list_action_items { meeting_tag?, open_only? }`: `count` and `items` (`id`, `text`, `owner`,
+  `due`, `done`, `tags`, `meeting_id`, `meeting`, `at`, `needs_review`), newest meeting first.
 
 Write tools, listed and callable only with `mcp_write = true` (Settings › Agents (MCP) ›
 Write tools; off by default). They change the meeting files the way the app does, and the open

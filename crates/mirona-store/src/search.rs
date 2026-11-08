@@ -1,5 +1,5 @@
 //! Hybrid search (NGR-167): keywords (`SQLite` FTS5) plus meaning (one embedding per transcript
-//! line), merged with reciprocal rank fusion and narrowed by client, dates, speaker and tag.
+//! line), merged with reciprocal rank fusion and narrowed by meeting tag, dates, speaker and tag.
 //!
 //! Embeddings live next to the transcript in `<meeting>/embeddings.json`, so deleting a
 //! meeting deletes them and moving the folder keeps them. Each vector carries a hash of the
@@ -83,7 +83,7 @@ fn speaker_name<'a>(e: &'a Entry, s: &'a Segment) -> &'a str {
         .map_or(s.speaker_id.as_str(), |p| p.name.as_str())
 }
 
-/// Client and date range: the filters that apply to a whole meeting.
+/// Meeting tag and date range: the filters that apply to a whole meeting.
 fn meeting_ok(e: &Entry, f: &SearchFilters) -> bool {
     let day = crate::timestamp(&e.created).map(|t| {
         t.to_zoned(jiff::tz::TimeZone::system())
@@ -91,8 +91,12 @@ fn meeting_ok(e: &Entry, f: &SearchFilters) -> bool {
             .to_string()
     });
     let day = day.unwrap_or_default();
-    has(&e.meeting.client, f.client.as_ref())
-        && f.from.as_ref().is_none_or(|from| day >= *from)
+    f.meeting_tag.as_ref().is_none_or(|_| {
+        e.meeting
+            .tags
+            .iter()
+            .any(|t| has(t, f.meeting_tag.as_ref()))
+    }) && f.from.as_ref().is_none_or(|from| day >= *from)
         && f.to.as_ref().is_none_or(|to| day <= *to)
 }
 
@@ -261,7 +265,7 @@ impl Store {
                     Moment {
                         meeting_id: mid,
                         title: e.meeting.title.clone(),
-                        client: e.meeting.client.clone(),
+                        tags: e.meeting.tags.clone(),
                         date: when_labels(&e.created).1,
                         segment_id: sid,
                         start_ms: s.start_ms,
@@ -384,7 +388,7 @@ mod tests {
                 store.push_segment(id, s).unwrap();
             }
             let i = store.idx(id).unwrap();
-            store.entries[i].meeting.client = client.into();
+            store.entries[i].meeting.tags = vec![format!("project:{client}")];
         }
         for id in ["m-a", "m-b"] {
             let todo = store.embedding_todo(id, "toy").unwrap();
@@ -410,12 +414,12 @@ mod tests {
         let r = store.hybrid_search("cost", Some(&q), &SearchFilters::default(), 10);
         assert!(r.moments[0].by_keyword && r.moments[0].by_meaning);
         assert_eq!(r.moments[0].start_ms, 1000);
-        assert_eq!(r.moments[0].client, "Helio");
+        assert_eq!(r.moments[0].tags, ["project:Helio"]);
 
-        // Filters: client, speaker, tag, dates.
+        // Filters: meeting tag, speaker, tag, dates.
         let only = |f: SearchFilters| store.hybrid_search("price", Some(&q), &f, 10).moments;
         let northwind = only(SearchFilters {
-            client: Some("north".into()),
+            meeting_tag: Some("north".into()),
             ..SearchFilters::default()
         });
         assert_eq!(northwind.len(), 1);

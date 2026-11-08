@@ -2,9 +2,11 @@
 //!
 //! Jev and the local LLM fallback get exactly the same wording. The segment and meeting-type /
 //! client wording is the one measured in the NGR-130 spike (`docs/spikes/ngr-130-jev.md`), so
-//! change it only with a rerun of `mirona eval`.
+//! change it only with a rerun of `mirona eval`. Meeting tags are one yes/no each: Jev has no
+//! multi-label type, and a `choice` spreads one unit of probability over all its options.
 
 use mirona_core::{Answer, AnswerSource, Choice, QuestionKind};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Kind {
@@ -199,8 +201,11 @@ pub const MEETING_TYPES: [(&str, &str); 5] = [
     ),
 ];
 
-/// The client option for "none of them".
+/// The client option for "none of them" (the eval's client question).
 pub const NO_CLIENT: &str = "none";
+
+/// Question ids of tag questions: `tag:` + the tag (`tag:project:setr`).
+pub const TAG_PREFIX: &str = "tag:";
 
 pub fn meeting_type_question() -> Question {
     Question {
@@ -216,7 +221,8 @@ pub fn meeting_type_question() -> Question {
     }
 }
 
-/// Client name → a short description (contact, what they do), as kept in Settings.
+/// The NGR-130 client question, kept for `mirona eval` (its labelled set has one client per
+/// chunk). Meetings ask [`tag_question`]s instead.
 pub fn client_question<'a>(clients: impl IntoIterator<Item = (&'a str, &'a str)>) -> Question {
     let mut options: Vec<(String, String)> = clients
         .into_iter()
@@ -241,17 +247,55 @@ pub fn client_question<'a>(clients: impl IntoIterator<Item = (&'a str, &'a str)>
     }
 }
 
-/// Asked once over the whole meeting after the call (NGR-157). Without clients, no client
-/// question.
-pub fn meeting_questions<'a>(
-    clients: impl IntoIterator<Item = (&'a str, &'a str)>,
+/// Does the meeting talk about this tag? `about` and the group's description (if any) tell
+/// the classifier what the tag covers.
+pub fn tag_question(tag: &str, about: &str, group_about: &str) -> Question {
+    let (group, name) = tag.split_once(':').unwrap_or(("", tag));
+    let group = match (group, group_about) {
+        ("", _) => String::new(),
+        (g, "") => format!(" (a {g})"),
+        (g, a) => format!(" (a {g}: {a})"),
+    };
+    let about = if about.is_empty() {
+        String::new()
+    } else {
+        format!(". {name}: {about}")
+    };
+    let yes = format!(
+        "The meeting discusses {name}{group}{about}. A meeting can be about several topics; \
+         a real part of it is enough."
+    );
+    Question {
+        id: format!("{TAG_PREFIX}{tag}"),
+        question: format!("About {tag}?"),
+        instructions: format!("Is any real part of this meeting about {name}?"),
+        kind: Kind::YesNo {
+            yes,
+            no: format!("{name} is not discussed, or only named in passing."),
+        },
+    }
+}
+
+/// One [`tag_question`] per tag, with its group's description.
+pub fn tag_questions(
+    tags: &BTreeMap<String, String>,
+    groups: &BTreeMap<String, String>,
+) -> Vec<Question> {
+    tags.iter()
+        .map(|(t, about)| {
+            let group = t.split_once(':').map_or("", |(g, _)| g);
+            tag_question(t, about, groups.get(group).map_or("", String::as_str))
+        })
+        .collect()
+}
+
+/// Asked once over the whole meeting after the call (NGR-157), then one yes/no per tag.
+pub fn meeting_questions(
+    tags: &BTreeMap<String, String>,
+    groups: &BTreeMap<String, String>,
 ) -> Vec<Question> {
     let levels = |l: &[&str]| l.iter().map(|s| (*s).to_string()).collect();
-    let client = client_question(clients);
     let mut qs = vec![meeting_type_question()];
-    if matches!(&client.kind, Kind::Choice(o) if o.len() > 1) {
-        qs.push(client);
-    }
     qs.extend([
         Question {
             id: "priority".into(),
@@ -288,6 +332,7 @@ pub fn meeting_questions<'a>(
             },
         },
     ]);
+    qs.extend(tag_questions(tags, groups));
     qs
 }
 
@@ -347,7 +392,7 @@ pub fn options(q: &Question) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -370,13 +415,40 @@ mod tests {
         assert_eq!(segment_questions(&[]).len(), 6);
     }
 
+    /// Two project tags for the provider fixtures (Karen is Northwind's contact).
+    pub(crate) fn tags() -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (
+                "project:Northwind Bank".to_string(),
+                "bank; contact: Karen, compliance".to_string(),
+            ),
+            (
+                "project:Helio Health".to_string(),
+                "clinics; contact: Dr. Osei".to_string(),
+            ),
+        ])
+    }
+
     #[test]
-    fn meeting_questions_skip_the_client_without_clients() {
-        assert!(!meeting_questions([]).iter().any(|q| q.id == "client"));
-        let qs = meeting_questions([("Northwind Bank", "contact: Karen")]);
-        let client = qs.iter().find(|q| q.id == "client").unwrap();
-        assert_eq!(options(client), ["Northwind Bank", NO_CLIENT]);
-        assert_eq!(options(&qs[2]).len(), 6, "priority has six levels");
+    fn meeting_questions_ask_one_yes_no_per_tag() {
+        let none = BTreeMap::new();
+        assert_eq!(meeting_questions(&none, &none).len(), 4);
+        let tags = BTreeMap::from([
+            ("project:setr".to_string(), "live streaming app".to_string()),
+            ("hiring".to_string(), String::new()),
+        ]);
+        let groups = BTreeMap::from([("project".to_string(), "client work".to_string())]);
+        let qs = meeting_questions(&tags, &groups);
+        assert_eq!(options(&qs[1]).len(), 6, "priority has six levels");
+        let ids: Vec<&str> = qs[4..].iter().map(|q| q.id.as_str()).collect();
+        assert_eq!(ids, ["tag:hiring", "tag:project:setr"]);
+        let Kind::YesNo { yes, .. } = &qs[5].kind else {
+            panic!("tags are yes/no")
+        };
+        assert!(
+            yes.contains("setr (a project: client work). setr: live streaming app"),
+            "{yes}"
+        );
     }
 
     #[test]

@@ -38,24 +38,26 @@ export type Settings = {
   thresholds: Record<string, number>;
   /** Defaults for the classifier in use (read-only). */
   thresholdDefaults: Record<string, number>;
-  /** Client name → short description. */
-  clients: Record<string, string>;
+  /** Tag (`group:name` or `name`) → what it covers. The classifier asks one yes/no per tag. */
+  tags: Record<string, string>;
+  /** Tag group (`project`) → what its tags have in common. */
+  tagGroups: Record<string, string>;
   /** Suggest recording when a call app opens the mic (NGR-170). */
   detectCalls: boolean;
   /** Name meetings after the calendar event happening now. */
   calendarTitles: boolean;
-  /** Clients whose calls start recording without a click. */
+  /** Tags whose calls start recording without a click (the tag's name in the event title). */
   autoRecord: string[];
   /** Encryption at rest; change it with `setEncryption` (NGR-165). */
   encrypt: boolean;
   /** Delete recordings this many days old (text stays); null keeps them. */
   retentionAudioDays: number | null;
-  /** Client → delete its meetings this many days old. */
-  retentionClients: Record<string, number>;
+  /** Tag → delete its meetings this many days old. */
+  retentionTags: Record<string, number>;
   /** Remind to get consent before each recording (NGR-169). */
   consentReminder: boolean;
   consentMessage: string;
-  /** Clients who already agreed: no reminder for them. */
+  /** Tags whose people already agreed: no reminder for them. */
   consentGiven: string[];
   /** Check GitHub for a new version on start and daily. */
   checkUpdates: boolean;
@@ -65,7 +67,7 @@ export type Settings = {
 export type UpdateInfo = { version: string; notes: string };
 
 /** A call app started using the mic: the "call" event (NGR-170). */
-export type CallSuggestion = { app: string; title: string | null; client: string | null };
+export type CallSuggestion = { app: string; title: string | null; tag: string | null };
 
 /** A person as `list_people` returns them: the speaker plus where they were last heard. */
 export type Person = Speaker & { meetings: number; lastSeen: MeetingSummary | null };
@@ -115,7 +117,10 @@ export const api = {
   /** 48 values in 0..1 drawn from the voiceprint (lossy, for the People page only). */
   voiceprintShape: (personId: string) => invoke<number[] | null>("voiceprint_shape", { personId }),
   correctAnswer: (correction: Correction) => invoke<number>("correct_answer", { correction }),
-  confirmClient: (meetingId: string, client: string) => invoke<Meeting>("confirm_client", { meetingId, client }),
+  /** Tags not in the list yet join it. */
+  setMeetingTags: (meetingId: string, tags: string[]) => invoke<Meeting>("set_meeting_tags", { meetingId, tags }),
+  /** Renames the tag in the list, its rules and every meeting; returns how many meetings changed. */
+  renameTag: (old: string, next: string) => invoke<number>("rename_tag", { old, new: next }),
   review: (meetingId: string) => invoke<Review[]>("review", { meetingId }),
   resolveReview: (meetingId: string, review: Review, accept: boolean) => invoke<void>("resolve_review", { meetingId, review, accept }),
   setOwner: (meetingId: string, segmentId: string, owner: string) => invoke<Segment>("set_owner", { meetingId, segmentId, owner }),
@@ -131,7 +136,7 @@ export const api = {
   addDemoMeetings: () => invoke<void>("add_demo_meetings"),
   deleteMeeting: (meetingId: string) => invoke<void>("delete_meeting", { meetingId }),
   clearMeetingParts: (meetingId: string, parts: MeetingPart[]) => invoke<void>("clear_meeting_parts", { meetingId, parts }),
-  deleteClient: (client: string) => invoke<number>("delete_client", { client }),
+  deleteTagged: (tag: string) => invoke<number>("delete_tagged", { tag }),
   runRetention: () => invoke<string[]>("run_retention"),
   setEncryption: (on: boolean) => invoke<Settings>("set_encryption", { on }),
   listTemplates: () => invoke<Template[]>("list_templates"),
@@ -142,7 +147,7 @@ export const api = {
   downloadModels: () => invoke<void>("download_models"),
   cancelDownload: () => invoke<void>("cancel_download"),
   startRecording: () => invoke<Meeting>("start_recording"),
-  startCallRecording: (title: string | null, client: string | null) => invoke<Meeting>("start_call_recording", { title, client }),
+  startCallRecording: (title: string | null, tag: string | null) => invoke<Meeting>("start_call_recording", { title, tag }),
   pendingCall: () => invoke<CallSuggestion | null>("pending_call"),
   dismissCall: () => invoke<void>("dismiss_call"),
   checkUpdate: () => invoke<UpdateInfo | null>("check_update"),
@@ -207,3 +212,6 @@ export const needsReview = (a: { source: string; answer: boolean; probability: n
   a.source === "model" && a.answer && a.probability < a.threshold;
 /** A choice the model is sure enough of (or the user confirmed). */
 export const sure = (c: { confirmed: boolean; probability: number; threshold: number }) => c.confirmed || c.probability >= c.threshold;
+/** Every tag: the list in Settings plus any a meeting still carries, sorted. */
+export const allTags = (st: Settings | null, meetings: { tags: string[] }[]) =>
+  [...new Set([...Object.keys(st?.tags ?? {}), ...meetings.flatMap((m) => m.tags)])].sort((a, b) => a.localeCompare(b));

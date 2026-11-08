@@ -114,6 +114,18 @@ pub struct Answer {
     pub threshold: f32,
 }
 
+impl TagAnswer {
+    /// The classifier says yes at/above the threshold: the meeting gets the tag.
+    pub fn assigned(&self) -> bool {
+        !self.proposed && self.probability >= self.threshold
+    }
+
+    /// Waiting for the user: a model "yes" below its threshold, or a proposed new tag.
+    pub fn needs_review(&self) -> bool {
+        !self.confirmed && (self.proposed || (self.probability >= 0.5 && !self.assigned()))
+    }
+}
+
 impl Answer {
     /// A model "yes" below its threshold: shown as "Needs review", never acted on.
     pub fn needs_review(&self) -> bool {
@@ -254,7 +266,7 @@ pub fn sensitive_words(text: &str) -> bool {
     long_number || WORDS.iter().any(|w| word(w))
 }
 
-/// A meeting-level choice question with a confidence threshold (type, client).
+/// A meeting-level choice question with a confidence threshold (meeting type).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -271,7 +283,9 @@ pub struct ChoiceAnswer {
 #[ts(export)]
 pub struct MeetingAnswers {
     pub meeting_type: ChoiceAnswer,
-    pub client: ChoiceAnswer,
+    /// One yes/no per tag in the user's list, plus at most one new tag the LLM proposes.
+    #[serde(default)]
+    pub tags: Vec<TagAnswer>,
     /// 0..=5
     pub priority: f32,
     pub follow_up: bool,
@@ -285,6 +299,27 @@ pub struct MeetingAnswers {
     pub follow_up_threshold: f32,
 }
 
+/// Does this meeting talk about a tag? Tags are `group:name` or a bare `name`
+/// (`project:setr`). A meeting can have many.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TagAnswer {
+    pub tag: String,
+    /// P(yes); 0 for a proposed tag.
+    pub probability: f32,
+    pub threshold: f32,
+    /// The user decided (kept or dropped it): never asked again or changed by a rerun.
+    pub confirmed: bool,
+    /// Not in the user's list yet: the LLM proposed it when no tag fit. Created only when
+    /// the user accepts it.
+    #[serde(default)]
+    pub proposed: bool,
+    /// The proposed tag's description.
+    #[serde(default)]
+    pub about: String,
+}
+
 /// One answer below its threshold, collected per meeting (NGR-158): acted on only once the
 /// user confirms it.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -294,9 +329,9 @@ pub struct Review {
     /// The segment it is about; `None` for meeting-level answers and action items.
     pub segment_id: Option<Id>,
     pub at_ms: Option<u32>,
-    /// Answer id (`action`, `meeting_type`, `client`, `follow_up`) or `action_item`.
+    /// Answer id (`action`, `meeting_type`, `tag`, `new_tag`, `follow_up`) or `action_item`.
     pub question: String,
-    /// What the model thinks: "yes", a choice, or the action item's text.
+    /// What the model thinks: "yes", a choice, a tag, or the action item's text.
     pub value: String,
     pub probability: f32,
     pub threshold: f32,
@@ -356,7 +391,9 @@ pub struct ActionItem {
     pub text: String,
     pub owner: String,
     pub due: Option<String>,
-    pub client: String,
+    /// The meeting's tags.
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub done: bool,
     pub needs_review: bool,
     /// The user set the owner: kept when the summary is rewritten or speakers change.
@@ -370,7 +407,8 @@ pub struct ActionItem {
 #[serde(rename_all = "camelCase", default)]
 #[ts(export)]
 pub struct SearchFilters {
-    pub client: Option<String>,
+    /// A meeting tag, or part of one (`project:` matches the whole group).
+    pub meeting_tag: Option<String>,
     /// First day, `YYYY-MM-DD` (inclusive).
     pub from: Option<String>,
     /// Last day, `YYYY-MM-DD` (inclusive).
@@ -386,7 +424,7 @@ pub struct SearchFilters {
 pub struct Moment {
     pub meeting_id: Id,
     pub title: String,
-    pub client: String,
+    pub tags: Vec<String>,
     /// "Thu 5 Nov 2026 · 09:30".
     pub date: String,
     pub segment_id: Id,
@@ -401,7 +439,7 @@ pub struct Moment {
     pub by_meaning: bool,
 }
 
-/// What a search returns: the best moments first, and the meetings they (or the title, client
+/// What a search returns: the best moments first, and the meetings they (or the title, tags
 /// or notes) come from.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -420,7 +458,7 @@ pub struct SearchResults {
 pub struct MeetingSummary {
     pub id: Id,
     pub title: String,
-    pub client: String,
+    pub tags: Vec<String>,
     pub when: String,
     /// RFC 3339 start time, for sorting and grouping by day.
     pub created: String,
@@ -457,7 +495,8 @@ pub enum MeetingPart {
 pub struct Meeting {
     pub id: Id,
     pub title: String,
-    pub client: String,
+    /// `group:name` or `name`, e.g. `project:setr`.
+    pub tags: Vec<String>,
     pub when: String,
     pub date_label: String,
     pub duration_min: u32,

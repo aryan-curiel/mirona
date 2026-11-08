@@ -10,10 +10,10 @@ export type Review = {
  */
 segmentId: string | null, atMs: number | null, 
 /**
- * Answer id (`action`, `meeting_type`, `client`, `follow_up`) or `action_item`.
+ * Answer id (`action`, `meeting_type`, `tag`, `new_tag`, `follow_up`) or `action_item`.
  */
 question: string, 
 /**
- * What the model thinks: "yes", a choice, or the action item's text.
+ * What the model thinks: "yes", a choice, a tag, or the action item's text.
  */
 value: string, probability: number, threshold: number, };

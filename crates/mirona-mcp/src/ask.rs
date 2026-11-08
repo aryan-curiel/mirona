@@ -204,9 +204,11 @@ fn meetings_for(
 }
 
 fn head(m: &Meeting) -> Value {
-    json!({ "meeting_id": m.id, "title": m.title, "client": m.client, "date": m.date_label })
+    json!({ "meeting_id": m.id, "title": m.title, "tags": m.tags, "date": m.date_label })
 }
 
+// ponytail: a search about one meeting narrows to its first tag (the filter takes one tag);
+// take all of them if agents ask across a meeting's projects.
 /// Answer `question`. `llm` is only built (and only called) for open questions.
 pub fn ask<L: LlmProvider + mirona_engine::Labelled>(
     store: &Store,
@@ -222,7 +224,7 @@ pub fn ask<L: LlmProvider + mirona_engine::Labelled>(
         "search" => {
             let mut filters = SearchFilters::default();
             if let Some(id) = meeting_id {
-                filters.client = Some(store.meeting(id)?.client);
+                filters.meeting_tag = store.meeting(id)?.tags.into_iter().next();
             }
             let r = search_question(store, emb, question, &filters);
             let moments: Vec<Value> = r
@@ -279,7 +281,8 @@ pub fn ask<L: LlmProvider + mirona_engine::Labelled>(
             let ms = meetings_for(store, emb, question, meeting_id, 3)?;
             let mut context = String::new();
             for m in &ms {
-                writeln!(context, "## {} · {} · {}", m.title, m.client, m.date_label).ok();
+                let tags = m.tags.join(", ");
+                writeln!(context, "## {} · {tags} · {}", m.title, m.date_label).ok();
                 if let Some(s) = &m.summary {
                     writeln!(context, "Summary: {}", s.overview).ok();
                 }

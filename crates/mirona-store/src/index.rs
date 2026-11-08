@@ -16,11 +16,11 @@ DROP TABLE IF EXISTS action_items;
 DROP TABLE IF EXISTS meetings_fts;
 DROP TABLE IF EXISTS segments;
 CREATE TABLE meetings(id TEXT PRIMARY KEY, dir TEXT NOT NULL, title TEXT NOT NULL,
-  client TEXT NOT NULL, created TEXT NOT NULL, duration_min INTEGER NOT NULL);
+  tags TEXT NOT NULL, created TEXT NOT NULL, duration_min INTEGER NOT NULL);
 CREATE TABLE speakers(meeting_id TEXT NOT NULL, speaker_id TEXT NOT NULL, name TEXT NOT NULL);
 CREATE TABLE action_items(id TEXT NOT NULL, meeting_id TEXT NOT NULL, text TEXT NOT NULL,
   owner TEXT NOT NULL, due TEXT, at_ms INTEGER, done INTEGER NOT NULL);
-CREATE VIRTUAL TABLE meetings_fts USING fts5(meeting_id UNINDEXED, title, client, notes,
+CREATE VIRTUAL TABLE meetings_fts USING fts5(meeting_id UNINDEXED, title, tags, notes,
   tokenize = 'unicode61 remove_diacritics 2');
 CREATE VIRTUAL TABLE segments USING fts5(meeting_id UNINDEXED, segment_id UNINDEXED,
   start_ms UNINDEXED, text, tokenize = 'unicode61 remove_diacritics 2');
@@ -102,7 +102,7 @@ fn insert(db: &Connection, en: &Entry) -> Result<()> {
             m.id,
             en.dir.to_string_lossy(),
             m.title,
-            m.client,
+            m.tags.join(" "),
             en.created,
             m.duration_min
         ],
@@ -110,7 +110,7 @@ fn insert(db: &Connection, en: &Entry) -> Result<()> {
     .map_err(e)?;
     db.execute(
         "INSERT INTO meetings_fts VALUES (?1, ?2, ?3, ?4)",
-        params![m.id, m.title, m.client, m.notes.raw.join("\n")],
+        params![m.id, m.title, m.tags.join(" "), m.notes.raw.join("\n")],
     )
     .map_err(e)?;
     for s in &m.speakers {

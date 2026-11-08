@@ -322,10 +322,10 @@ pub fn partial_overview(text: &str) -> String {
 }
 
 fn header(m: &Meeting, part: usize, parts: usize) -> String {
-    let client = if m.client.is_empty() {
+    let client = if m.tags.is_empty() {
         String::new()
     } else {
-        format!(" (client: {})", m.client)
+        format!(" (tags: {})", m.tags.join(", "))
     };
     let part = if parts > 1 {
         format!(
@@ -432,7 +432,7 @@ pub async fn summarize_streaming(
             text: it.text,
             owner: it.owner,
             due: it.due,
-            client: meeting.client.clone(),
+            tags: meeting.tags.clone(),
             done: false,
             owner_confirmed: false,
         })

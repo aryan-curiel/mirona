@@ -9,12 +9,12 @@
 //!   asked again among the real ones ([`refresh_owners`]). Action items take the owner and due
 //!   date of the line they cite, unless the user set the owner (`Store::set_action_owner`).
 //! - **After the call:** segments the worker missed (imports, failures) are classified, then the
-//!   meeting questions (type → template, client, priority, tone, follow-up), the summary, the
-//!   quality check ("does it cover every action item?" → one rewrite if not) and the follow-up
-//!   draft.
+//!   meeting questions (type → template, priority, tone, follow-up, and one yes/no per tag),
+//!   the summary, the quality check ("does it cover every action item?" → one rewrite if not),
+//!   the follow-up draft, and, when no tag fits, one proposed new tag ([`propose_tag`]).
 //! - **Thresholds (NGR-158):** a model "yes" at or above its question's threshold becomes a tag;
 //!   below it, a "Needs review" tag. Below-threshold meeting answers don't pick the template,
-//!   file the client or write a draft.
+//!   add a meeting tag or write a draft.
 //!
 //! Jev is the default; privacy mode (or `[providers] classification = "local-llm"`, or no Jev
 //! key) uses qwen3:4b through Ollama with the same questions.
@@ -22,13 +22,13 @@
 use crate::{Labelled, Paths, Shared, block_on, stage, summarize_hinted};
 use mirona_core::{
     ActionItem, Answer, AnswerSource, Choice, ChoiceAnswer, Locality, Meeting, MeetingAnswers,
-    PipelineEvent, ProviderOption, Segment, Tag, TagKind,
+    PipelineEvent, ProviderOption, Segment, Tag, TagAnswer, TagKind,
 };
 use mirona_providers::config::Config;
 use mirona_providers::jev::Jev;
 use mirona_providers::ollama::Ollama;
 use mirona_providers::questions::{
-    Kind, NO_CLIENT, NO_OWNER, Question, Reply, coverage_question, meeting_questions, options,
+    Kind, NO_OWNER, Question, Reply, TAG_PREFIX, coverage_question, meeting_questions, options,
     segment_questions, to_answers,
 };
 use mirona_providers::{
@@ -477,8 +477,8 @@ fn choice(q: Option<(&Question, &Reply)>, threshold: f32) -> ChoiceAnswer {
     }
 }
 
-/// Ask the meeting questions over the whole transcript and store the answers. A client the
-/// user already confirmed is kept.
+/// Ask the meeting questions over the whole transcript and store the answers. Tags the user
+/// already decided on are kept (`Store::set_answers`).
 pub fn classify_meeting(
     store: &Shared,
     id: &str,
@@ -490,7 +490,9 @@ pub fn classify_meeting(
     if text.trim().is_empty() {
         return Err("nothing to classify".into());
     }
-    let qs = meeting_questions(cfg.clients.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    // ponytail: one yes/no per tag in the same call; fine for dozens of tags (the list is kept
+    // short on purpose). Pre-filter by embeddings if lists grow to hundreds.
+    let qs = meeting_questions(&cfg.tags, &cfg.tag_groups);
     let replies = block_on(c.ask(&text, &qs)).map_err(|e| e.to_string())?;
     let local = is_local(c);
     let get = |id: &str| qs.iter().zip(&replies).find(|(q, _)| q.id == id);
@@ -499,9 +501,22 @@ pub fn classify_meeting(
         _ => 0.0,
     };
     let p_follow = get("follow_up").and_then(|(_, r)| r.p_yes()).unwrap_or(0.0);
-    let mut answers = MeetingAnswers {
+    let answers = MeetingAnswers {
         meeting_type: choice(get("meeting_type"), cfg.threshold("meeting_type", local)),
-        client: choice(get("client"), cfg.threshold("client", local)),
+        tags: qs
+            .iter()
+            .zip(&replies)
+            .filter_map(|(q, r)| {
+                Some(TagAnswer {
+                    tag: q.id.strip_prefix(TAG_PREFIX)?.into(),
+                    probability: r.p_yes()?,
+                    threshold: cfg.threshold("tag", local),
+                    confirmed: false,
+                    proposed: false,
+                    about: String::new(),
+                })
+            })
+            .collect(),
         priority: level("priority"),
         tone: level("tone"),
         follow_up: p_follow >= 0.5,
@@ -509,14 +524,11 @@ pub fn classify_meeting(
         follow_up_threshold: cfg.threshold("follow_up", local),
         follow_up_draft: String::new(),
     };
-    if answers.client.value == NO_CLIENT {
-        answers.client.value.clear();
-    }
-    if let Some(old) = m.answers.filter(|a| a.client.confirmed) {
-        answers.client = old.client;
-    }
-    store.lock().unwrap().set_answers(id, answers.clone())?;
-    Ok(answers)
+    let mut s = store.lock().unwrap();
+    s.set_answers(id, answers)?;
+    s.meeting(id)?
+        .answers
+        .ok_or_else(|| "answers not saved".into())
 }
 
 /// The summary template for a meeting type at/above its threshold; `default` otherwise.
@@ -694,6 +706,92 @@ pub fn follow_up_draft(store: &Shared, id: &str, llm: &impl LlmProvider) -> Resu
     Ok(Some(draft))
 }
 
+const PROPOSE_RULES: &str = "You keep a short list of tags for filing meetings. A tag is \
+`group:name` (like `project:setr`) or a bare `name`. The list must stay short: answer NONE \
+when an existing tag would do, or when the meeting is routine (standup, social chat, generic \
+admin). Otherwise propose ONE new tag for the main project, client or topic of the meeting, \
+in an existing group when one fits, on one line: `tag | what it covers, under 12 words`. \
+Nothing else.";
+
+/// No tag fits a meeting: ask the LLM for one new tag. It waits in Needs review (`new_tag`)
+/// and joins the tag list only when the user accepts it. Never asked when the meeting has a
+/// tag, or a known tag is waiting for review, so the list grows only when it has to.
+pub fn propose_tag(
+    store: &Shared,
+    cfg: &Config,
+    id: &str,
+    llm: &impl LlmProvider,
+) -> Result<Option<String>> {
+    let m = store.lock().unwrap().meeting(id)?;
+    let (Some(mut answers), Some(summary)) = (m.answers.clone(), &m.summary) else {
+        return Ok(None);
+    };
+    if !m.tags.is_empty() || answers.tags.iter().any(TagAnswer::needs_review) {
+        return Ok(None);
+    }
+    let lines = |map: &std::collections::BTreeMap<String, String>| -> String {
+        let l: Vec<String> = map.iter().map(|(k, v)| format!("- {k}: {v}")).collect();
+        if l.is_empty() {
+            "(none)".into()
+        } else {
+            l.join("\n")
+        }
+    };
+    let decisions: Vec<&str> = summary.decisions.iter().map(|d| d.text.as_str()).collect();
+    let user = format!(
+        "Groups:\n{}\n\nTags:\n{}\n\nMeeting: {}\n{}\nDecisions: {}",
+        lines(&cfg.tag_groups),
+        lines(&cfg.tags),
+        m.title,
+        summary.overview,
+        decisions.join("; "),
+    );
+    let prompt = Prompt {
+        system: PROPOSE_RULES,
+        user: &user,
+        json: false,
+    };
+    let text = block_on(llm.complete(&prompt, &mut |_| {}))
+        .map_err(|e| e.to_string())?
+        .text;
+    let Some((tag, about)) = parse_proposal(&text) else {
+        return Ok(None);
+    };
+    if cfg.tags.keys().any(|t| t.eq_ignore_ascii_case(&tag)) {
+        return Ok(None);
+    }
+    answers.tags.push(TagAnswer {
+        tag: tag.clone(),
+        probability: 0.0,
+        threshold: 0.0,
+        confirmed: false,
+        proposed: true,
+        about,
+    });
+    store.lock().unwrap().set_answers(id, answers)?;
+    Ok(Some(tag))
+}
+
+/// `tag | about` from the model's answer; `None` for NONE or anything that isn't one short tag.
+fn parse_proposal(text: &str) -> Option<(String, String)> {
+    let text = text.split_once("</think>").map_or(text, |(_, a)| a);
+    let line = text.lines().map(str::trim).find(|l| !l.is_empty())?;
+    let (tag, about) = line.split_once('|').unwrap_or((line, ""));
+    let clean = |s: &str| {
+        s.trim()
+            .trim_matches(['`', '"', '\'', '*', '-', ' '])
+            .to_string()
+    };
+    let tag = clean(tag);
+    let ok = !tag.is_empty()
+        && tag.len() <= 40
+        && !tag.eq_ignore_ascii_case("none")
+        && tag.matches(':').count() <= 1
+        && !tag.starts_with(':')
+        && !tag.ends_with(':');
+    ok.then(|| (tag, clean(about)))
+}
+
 /// Ask everything again for a finished meeting ("Re-run classification"): every segment the
 /// user hasn't corrected, then the meeting questions. Returns how many segments failed.
 /// The summary is left alone (rewrite it with the template the new type picks).
@@ -760,6 +858,11 @@ pub fn after_call(
     }
     if let Err(e) = follow_up_draft(store, id, llm) {
         notice(format!("Follow-up draft failed: {e}"), true);
+    }
+    if c.is_some()
+        && let Err(e) = propose_tag(store, cfg, id, llm)
+    {
+        notice(format!("Tag suggestion failed: {e}"), true);
     }
     events
         .send(PipelineEvent::Summarized {
@@ -888,7 +991,7 @@ mod tests {
                         let said = last.contains("Thursday") || last.contains("month");
                         Reply::YesNo(if said { 0.8 } else { 0.1 })
                     }
-                    "follow_up" => Reply::YesNo(0.9),
+                    "follow_up" | "tag:project:Northwind Bank" => Reply::YesNo(0.9),
                     "owner" => {
                         let who = last.split(':').next().unwrap_or_default().to_string();
                         let probabilities = options(q)
@@ -907,11 +1010,9 @@ mod tests {
                         value: "client_call".into(),
                         probabilities: vec![("client_call".into(), 0.9)],
                     },
-                    // Below the 0.6 threshold: not filed.
-                    "client" => Reply::Choice {
-                        value: "Northwind Bank".into(),
-                        probabilities: vec![("Northwind Bank".into(), 0.4)],
-                    },
+                    // Northwind (above) clears the 0.6 threshold, billing is a "maybe", the
+                    // rest are "no".
+                    "tag:topic:billing" => Reply::YesNo(0.55),
                     "priority" | "tone" => Reply::Score {
                         score: 3.0,
                         probabilities: vec![0.0, 0.0, 0.0, 1.0],
@@ -955,7 +1056,14 @@ mod tests {
             prompt: &Prompt<'_>,
             on_text: &mut (dyn FnMut(&str) + Send),
         ) -> impl Future<Output = PResult<mirona_providers::Completion>> + Send {
-            let text = if prompt.system.contains("follow-up email") {
+            let text = if prompt.system == PROPOSE_RULES {
+                assert!(
+                    prompt.user.contains("- project:Northwind Bank"),
+                    "{}",
+                    prompt.user
+                );
+                "<think>hmm</think>\n`project:Insurers` | claims insurers and payouts".to_string()
+            } else if prompt.system.contains("follow-up email") {
                 assert!(
                     prompt.user.contains("- me: Send the revised SOW"),
                     "{}",
@@ -1009,8 +1117,10 @@ mod tests {
 
     fn cfg() -> Config {
         let mut cfg = Config::default();
-        cfg.clients
-            .insert("Northwind Bank".into(), "contact: Karen".into());
+        cfg.tags
+            .insert("project:Northwind Bank".into(), "contact: Karen".into());
+        cfg.tags.insert("topic:billing".into(), String::new());
+        cfg.tags.insert("hiring".into(), String::new());
         cfg
     }
 
@@ -1135,14 +1245,20 @@ mod tests {
         assert!(m.segments.iter().all(|s| !s.answers.is_empty()));
         let a = m.answers.clone().unwrap();
         assert_eq!(a.meeting_type.value, "client_call");
-        // Client below threshold: suggested, not filed.
-        assert_eq!(a.client.value, "Northwind Bank");
-        assert_eq!(m.client, "Unsorted");
-        assert!(
-            s.review("m1")
-                .unwrap()
-                .iter()
-                .any(|r| r.question == "client")
+        // Several tags at once: above threshold added, a "maybe" waits, a "no" is dropped.
+        assert_eq!(a.tags.len(), 3);
+        assert_eq!(m.tags, ["project:Northwind Bank"]);
+        let tags: Vec<(String, String)> = s
+            .review("m1")
+            .unwrap()
+            .into_iter()
+            .filter(|r| r.question.ends_with("tag"))
+            .map(|r| (r.question, r.value))
+            .collect();
+        assert_eq!(
+            tags,
+            [("tag".into(), "topic:billing".into())],
+            "no new tag: one fits"
         );
         assert!((a.priority - 3.0).abs() < 1e-6 && (a.tone - 3.0).abs() < 1e-6);
         // Meeting type picked the template; the first summary missed the action item, so it
@@ -1159,6 +1275,74 @@ mod tests {
         assert!(!items[0].needs_review, "line 0 is a tagged action");
         // Follow-up said yes above threshold: drafted from the confirmed items.
         assert_eq!(a.follow_up_draft, "Hi all,\n\nThanks for today.\n\nBest,");
+    }
+
+    #[test]
+    fn a_new_tag_is_proposed_only_when_none_fits() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, _) = meeting(dir.path());
+        let paths = Paths {
+            meetings: dir.path().join("meetings"),
+            models: dir.path().join("models"),
+            templates: dir.path().join("templates"),
+        };
+        let mut cfg = cfg();
+        cfg.tags.remove("topic:billing");
+        cfg.thresholds.insert("tag".into(), 0.95);
+        let (events, _rx) = channel();
+        after_call(
+            &store,
+            &paths,
+            &cfg,
+            "m1",
+            Some(&Scripted::default()),
+            Ok(&Llm),
+            &events,
+        );
+        let s = store.lock().unwrap();
+        // Northwind is now a "maybe" (0.9 < 0.95): still no proposal, the known tag goes first.
+        assert_eq!(s.meeting("m1").unwrap().tags, Vec::<String>::new());
+        assert!(
+            s.review("m1")
+                .unwrap()
+                .iter()
+                .all(|r| r.question != "new_tag")
+        );
+        drop(s);
+        store
+            .lock()
+            .unwrap()
+            .answer_tag("m1", "project:Northwind Bank", false)
+            .unwrap();
+        let id = "m1";
+        assert_eq!(
+            propose_tag(&store, &cfg, id, &Llm).unwrap().as_deref(),
+            Some("project:Insurers")
+        );
+        let a = store.lock().unwrap().meeting(id).unwrap().answers.unwrap();
+        let t = a.tags.iter().find(|t| t.proposed).unwrap();
+        assert_eq!(t.about, "claims insurers and payouts");
+        assert!(
+            store
+                .lock()
+                .unwrap()
+                .review(id)
+                .unwrap()
+                .iter()
+                .any(|r| r.question == "new_tag")
+        );
+        // One waiting is enough; never two.
+        assert_eq!(propose_tag(&store, &cfg, id, &Llm).unwrap(), None);
+    }
+
+    #[test]
+    fn proposals_are_one_short_tag_or_nothing() {
+        let p = |t: &str| parse_proposal(t).map(|(t, _)| t);
+        assert_eq!(p("NONE"), None);
+        assert_eq!(p("none | nothing new"), None);
+        assert_eq!(p("\n**hiring** | open roles"), Some("hiring".into()));
+        assert_eq!(p("a:b:c | x"), None);
+        assert_eq!(p(&"x".repeat(41)), None);
     }
 
     #[test]
@@ -1196,7 +1380,7 @@ mod tests {
                 options: vec![],
                 confirmed: false,
             },
-            client: choice(None, 0.6),
+            tags: vec![],
             priority: 0.0,
             tone: 0.0,
             follow_up: false,
@@ -1272,7 +1456,7 @@ mod tests {
             text: "Draft the contract".into(),
             owner: owner.into(),
             due: None,
-            client: String::new(),
+            tags: vec![],
             done: false,
             needs_review: false,
             owner_confirmed: false,

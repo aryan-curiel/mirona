@@ -14,11 +14,11 @@ quote it back only to the user.
 
 | Tool | Use it for | Returns |
 |---|---|---|
-| `search_meetings(query, client?, from?, to?, speaker?, tag?)` | Finding meetings and moments by keywords and meaning (client, person, topic). Filter by client, dates (`YYYY-MM-DD`), speaker or tag (`action`, `decision`, `open_question`, `small_talk`). Empty query lists the meetings that pass the filters, newest first. | `moments` (`meeting_id`, title, date, `at`, speaker, snippet with keyword hits in `[brackets]`) and `meetings` (`meeting_id`, title, client, date) |
+| `search_meetings(query, meeting_tag?, from?, to?, speaker?, tag?)` | Finding meetings and moments by keywords and meaning (client, person, topic). Filter by meeting tag (`project:acme`; part of it matches, `project:` matches every project), dates (`YYYY-MM-DD`), speaker or line tag (`action`, `decision`, `open_question`, `small_talk`). Empty query lists the meetings that pass the filters, newest first. | `moments` (`meeting_id`, title, date, `at`, speaker, snippet with keyword hits in `[brackets]`) and `meetings` (`meeting_id`, title, tags, date) |
 | `ask_meeting(question, meeting_id?)` | A plain question when you don't know which tool fits. Lookups come straight from the meetings; only open questions ("why", "how", advice) go to the user's LLM. | `route` plus moments, decisions, action items, a meeting digest, or an `answer` citing `[m:ss]` |
 | `get_meeting(id)` | The digest of one meeting | overview, decisions, open questions, action items, notes, enhanced notes, speakers, each with an `at` timestamp; `unconfirmed` guesses |
 | `get_transcript(id, from?, to?)` | Exact wording. Pass a range (`"6:30"`, `"7:30"`) around a search hit | `[m:ss] Speaker: text` lines |
-| `list_action_items(client?, open_only?)` | Follow-ups across meetings | `id`, text, owner, due, done, client, meeting, `at`, `needs_review` |
+| `list_action_items(meeting_tag?, open_only?)` | Follow-ups across meetings | `id`, text, owner, due, done, tags, meeting, `at`, `needs_review` |
 
 Search matches keywords (every word prefix-matched) and, when the user's local embedding model
 runs, meaning; `search_by_meaning: false` means keywords only, so then try the client name, a
@@ -34,14 +34,14 @@ redacted unless the user allowed it in Settings › Agents (MCP) › Sensitive l
 
 1. `search_meetings` with the client or person's name; pick the most recent 2-3 meetings.
 2. `get_meeting` on each.
-3. `list_action_items(client=..., open_only=true)` for what is still owed, by whom.
+3. `list_action_items(meeting_tag=..., open_only=true)` for what is still owed, by whom.
 4. Brief the user: where things stand, decisions already made, open questions to raise, open
    action items (theirs first), with meeting dates. Keep it to one screen.
 
 ## Finding what a client agreed
 
 1. `search_meetings` with the client plus the topic ("Corvo pricing", "Acme deadline"), or
-   `tag="decision"` and `client=...`.
+   `tag="decision"` and `meeting_tag=...`.
 2. `get_meeting` on the matches and look at `decisions`.
 3. For anything the user may rely on (a price, a date, a commitment), confirm the exact words
    with `get_transcript(id, from, to)` around the timestamp and quote them with the meeting
@@ -49,7 +49,7 @@ redacted unless the user allowed it in Settings › Agents (MCP) › Sensitive l
 
 ## Turning action items into tasks
 
-1. `list_action_items(open_only=true)`, filtered by client if the user named one.
+1. `list_action_items(open_only=true)`, filtered with `meeting_tag` if the user named a client or project.
 2. Write one task per item: imperative title, owner, due date (as said; ask or leave blank if
    none), and a source line "From <meeting> (<date>) at <m:ss>".
 3. If the user has a task tool connected (Linear, Jira, Todoist...), offer to create them there;

@@ -45,12 +45,13 @@ enum Cmd {
     List,
     /// Summary, action items, notes and transcript of one meeting
     Show { id: String },
-    /// Keyword search over transcripts, titles, clients and notes
-    /// Search by keywords and meaning; filter by client, dates, speaker or tag
+    /// Search transcripts, titles, tags and notes by keywords and meaning; filter by meeting
+    /// tag, dates, speaker or line tag
     Search {
         query: Vec<String>,
+        /// Only meetings with this tag, e.g. project:setr (part of it is enough)
         #[arg(long)]
-        client: Option<String>,
+        meeting_tag: Option<String>,
         /// First day, YYYY-MM-DD
         #[arg(long)]
         from: Option<String>,
@@ -68,9 +69,9 @@ enum Cmd {
     },
     /// Action items across meetings
     Actions {
-        /// Only this client (case-insensitive, part of the name is enough)
+        /// Only items from meetings with this tag (case-insensitive, part of it is enough)
         #[arg(long)]
-        client: Option<String>,
+        tag: Option<String>,
         /// Only items not done yet
         #[arg(long)]
         open: bool,
@@ -79,15 +80,15 @@ enum Cmd {
     Import { audio: PathBuf },
     /// Rebuild the search index from the meeting files
     Reindex,
-    /// Apply the retention rules now (old recordings, old meetings of a client); also logged
+    /// Apply the retention rules now (old recordings, old meetings with a tag); also logged
     /// to `<meetings>/.mirona/retention.log`
     Retention,
     /// Delete a meeting everywhere (files, index, embeddings, voices, corrections), or every
-    /// meeting of a client
+    /// meeting with a tag
     Delete {
         id: Option<String>,
         #[arg(long, conflicts_with = "id")]
-        client: Option<String>,
+        tag: Option<String>,
     },
     /// Compress recordings still kept as WAV (older meetings, crashed sessions) to Opus
     Compress,
@@ -161,7 +162,7 @@ fn main() {
         Cmd::Show { id } => show(&app_dir, &id),
         Cmd::Search {
             query,
-            client,
+            meeting_tag,
             from,
             to,
             speaker,
@@ -171,7 +172,7 @@ fn main() {
             &app_dir,
             &mirona_mcp::SearchArgs {
                 query: query.join(" "),
-                client,
+                meeting_tag,
                 from,
                 to,
                 speaker,
@@ -179,11 +180,11 @@ fn main() {
                 include_sensitive: Some(sensitive),
             },
         ),
-        Cmd::Actions { client, open } => actions(&app_dir, client.as_deref(), open),
+        Cmd::Actions { tag, open } => actions(&app_dir, tag.as_deref(), open),
         Cmd::Import { audio } => import(&app_dir, &audio),
         Cmd::Reindex => reindex(&app_dir),
         Cmd::Retention => retention(&app_dir),
-        Cmd::Delete { id, client } => delete(&app_dir, id.as_deref(), client.as_deref()),
+        Cmd::Delete { id, tag } => delete(&app_dir, id.as_deref(), tag.as_deref()),
         Cmd::Compress => compress(&app_dir),
         Cmd::Mcp { http: false, .. } => mirona_mcp::serve(),
         Cmd::Mcp { http: true, port } => mcp_http(&app_dir, port),
@@ -213,7 +214,13 @@ fn snapshot(app_dir: &Path) -> Result<Store> {
 
 fn list(app_dir: &Path) -> Result {
     for m in snapshot(app_dir)?.list_meetings() {
-        println!("{:<22} {:<12} {:<34} {}", m.id, m.when, m.title, m.client);
+        println!(
+            "{:<22} {:<12} {:<34} {}",
+            m.id,
+            m.when,
+            m.title,
+            m.tags.join(", ")
+        );
     }
     Ok(())
 }
@@ -230,7 +237,11 @@ fn show(app_dir: &Path, id: &str) -> Result {
 fn print_digest(m: &Meeting, items: &[ActionItem]) {
     println!(
         "# {}\n{} · {} · {} min · {}",
-        m.title, m.client, m.date_label, m.duration_min, m.id
+        m.title,
+        m.tags.join(", "),
+        m.date_label,
+        m.duration_min,
+        m.id
     );
     if let Some(s) = &m.summary {
         println!("\n{}", s.overview);
@@ -293,7 +304,13 @@ fn search(app_dir: &Path, args: &mirona_mcp::SearchArgs) -> Result {
             println!(
                 "{} · {} · {} ({})",
                 s(&m["title"]),
-                s(&m["client"]),
+                m["tags"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(s)
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 s(&m["date"]),
                 s(&m["meeting_id"])
             );
@@ -307,10 +324,11 @@ fn search(app_dir: &Path, args: &mirona_mcp::SearchArgs) -> Result {
     Ok(())
 }
 
-fn actions(app_dir: &Path, client: Option<&str>, open: bool) -> Result {
-    let client = client.unwrap_or_default().to_lowercase();
+fn actions(app_dir: &Path, tag: Option<&str>, open: bool) -> Result {
+    let tag = tag.unwrap_or_default().to_lowercase();
     for a in snapshot(app_dir)?.action_items() {
-        if a.client.to_lowercase().contains(&client) && !(open && a.done) {
+        let tagged = tag.is_empty() || a.tags.iter().any(|t| t.to_lowercase().contains(&tag));
+        if tagged && !(open && a.done) {
             print_item(&a);
         }
     }
@@ -428,15 +446,15 @@ fn retention(app_dir: &Path) -> Result {
     Ok(())
 }
 
-fn delete(app_dir: &Path, id: Option<&str>, client: Option<&str>) -> Result {
+fn delete(app_dir: &Path, id: Option<&str>, tag: Option<&str>) -> Result {
     let engine = Engine::open(app_dir, &mirona_engine::documents_dir())?;
-    match (id, client) {
+    match (id, tag) {
         (Some(id), _) => {
             engine.store.lock().unwrap().delete_meeting(id)?;
             println!("Deleted {id}.");
         }
-        (None, Some(c)) => println!("Deleted {} meetings of {c}.", engine.delete_client(c)?),
-        (None, None) => return Err("say which: `mirona delete <id>` or `--client <name>`".into()),
+        (None, Some(t)) => println!("Deleted {} meetings tagged {t}.", engine.delete_tagged(t)?),
+        (None, None) => return Err("say which: `mirona delete <id>` or `--tag <tag>`".into()),
     }
     Ok(())
 }

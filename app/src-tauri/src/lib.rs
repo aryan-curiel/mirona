@@ -4,7 +4,7 @@
 //!
 //! Call detection (NGR-170): a worker polls which call app uses the mic and, when one starts,
 //! suggests recording on the "call" channel and in a system notification. It records on its
-//! own only for clients the user opted in (`auto_record`, matched by calendar title).
+//! own only for tags the user opted in (`auto_record`, the tag's name in the calendar title).
 //!
 //! Long work (stopping + summarizing, import, regenerate) runs on its own thread and reports
 //! on the "pipeline" event channel; "recording" carries the recorder state (`RecState`).
@@ -19,7 +19,6 @@ use mirona_core::{
 };
 use mirona_engine::{Engine, Llm, Paths, Session};
 use mirona_providers::config::{Config, default_threshold};
-use mirona_providers::questions::NO_CLIENT;
 use mirona_providers::{check_privacy, keychain};
 use mirona_store::Store;
 use serde::{Deserialize, Serialize};
@@ -268,13 +267,25 @@ fn correct_answer(st: St, correction: Correction) -> Res<usize> {
     Ok(s.corrections().len())
 }
 
+/// The user set a meeting's tags; ones not in the list yet join it.
 #[tauri::command]
-fn confirm_client(st: St, meeting_id: String, client: String) -> Res<Meeting> {
-    st.engine()
-        .store
-        .lock()
-        .unwrap()
-        .confirm_client(&meeting_id, &client)
+fn set_meeting_tags(app: AppHandle, st: St, meeting_id: String, tags: Vec<String>) -> Res<Meeting> {
+    let engine = st.engine();
+    let tags = tags
+        .iter()
+        .map(|t| mirona_engine::clean_tag(t))
+        .collect::<Res<Vec<_>>>()?;
+    for t in &tags {
+        engine.add_tag(&st.app_dir, t, "")?;
+    }
+    let m = engine.store.lock().unwrap().set_tags(&meeting_id, &tags)?;
+    changed(&app, Ok(m))
+}
+
+/// Rename a tag in the list, its rules and every meeting. Returns how many meetings changed.
+#[tauri::command]
+fn rename_tag(app: AppHandle, st: St, old: String, new: String) -> Res<usize> {
+    changed(&app, st.engine().rename_tag(&st.app_dir, &old, &new))
 }
 
 /// What in a meeting is below its threshold and not yet confirmed (NGR-158).
@@ -283,9 +294,10 @@ fn review(st: St, meeting_id: String) -> Res<Vec<Review>> {
     st.engine().store.lock().unwrap().review(&meeting_id)
 }
 
-/// Confirm (`accept`) or reject one review item in one click (NGR-158). For the meeting type
-/// and client, `review.value` is the option the user picked. A confirmed "needs a follow-up?"
-/// gets its draft written in the background (a `Notice` says when).
+/// Confirm (`accept`) or reject one review item in one click (NGR-158). For the meeting type,
+/// `review.value` is the option the user picked. An accepted new tag joins the tag list. A
+/// confirmed "needs a follow-up?" gets its draft written in the background (a `Notice` says
+/// when).
 #[tauri::command]
 fn resolve_review(
     app: AppHandle,
@@ -301,6 +313,18 @@ fn resolve_review(
         &review,
         accept,
     )?;
+    if accept && review.question == "new_tag" {
+        let about = engine
+            .store
+            .lock()
+            .unwrap()
+            .meeting(&meeting_id)?
+            .answers
+            .and_then(|a| a.tags.into_iter().find(|t| t.tag == review.value))
+            .map(|t| t.about)
+            .unwrap_or_default();
+        changed(&app, engine.add_tag(&st.app_dir, &review.value, &about))?;
+    }
     if draft {
         let tx = events(&app);
         std::thread::spawn(move || {
@@ -346,13 +370,8 @@ fn resolve(s: &mut Store, meeting_id: &str, r: &Review, accept: bool) -> Res<boo
                 s.resolve_action_item(&item.id, accept)?;
             }
         }
-        (None, "client") => {
-            let client = if accept && r.value != NO_CLIENT {
-                r.value.as_str()
-            } else {
-                ""
-            };
-            s.confirm_client(meeting_id, client)?;
+        (None, "tag" | "new_tag") => {
+            s.answer_tag(meeting_id, &r.value, accept)?;
         }
         (None, q @ ("meeting_type" | "follow_up")) => {
             let mut a = s.meeting(meeting_id)?.answers.ok_or("no meeting answers")?;
@@ -542,13 +561,13 @@ fn clear_meeting_parts(
         .clear_parts(&meeting_id, &parts)
 }
 
-/// Delete every meeting of a client. Returns how many went.
+/// Delete every meeting with a tag. Returns how many went.
 #[tauri::command]
-fn delete_client(app: AppHandle, st: St, client: String) -> Res<usize> {
+fn delete_tagged(app: AppHandle, st: St, tag: String) -> Res<usize> {
     if st.session.lock().unwrap().is_some() {
         return Err("Stop the recording first.".into());
     }
-    changed(&app, st.engine().delete_client(&client))
+    changed(&app, st.engine().delete_tagged(&tag))
 }
 
 /// Apply the retention rules now; what was removed, one line each.
@@ -709,8 +728,9 @@ fn stop(app: &AppHandle) -> Res<String> {
     Ok(id)
 }
 
-/// Start recording and name the meeting after the calendar event and its client (NGR-170).
-fn record_call(app: &AppHandle, title: Option<&str>, client: Option<&str>) -> Res<Meeting> {
+/// Start recording and name the meeting after the calendar event; tag it with the tag the
+/// title names (NGR-170).
+fn record_call(app: &AppHandle, title: Option<&str>, tag: Option<&str>) -> Res<Meeting> {
     let mut meeting = start(app)?;
     *PENDING_CALL.lock().unwrap() = None;
     let engine = app.state::<AppState>().engine();
@@ -718,8 +738,8 @@ fn record_call(app: &AppHandle, title: Option<&str>, client: Option<&str>) -> Re
     if let Some(t) = title.map(str::trim).filter(|t| !t.is_empty()) {
         meeting = s.set_title(&meeting.id, t)?;
     }
-    if let Some(c) = client {
-        meeting = s.confirm_client(&meeting.id, c)?;
+    if let Some(t) = tag {
+        meeting = s.set_tags(&meeting.id, &[t.to_string()])?;
     }
     Ok(meeting)
 }
@@ -728,10 +748,10 @@ fn record_call(app: &AppHandle, title: Option<&str>, client: Option<&str>) -> Re
 async fn start_call_recording(
     app: AppHandle,
     title: Option<String>,
-    client: Option<String>,
+    tag: Option<String>,
 ) -> Res<Meeting> {
     tauri::async_runtime::spawn_blocking(move || {
-        record_call(&app, title.as_deref(), client.as_deref())
+        record_call(&app, title.as_deref(), tag.as_deref())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -743,8 +763,8 @@ struct CallSuggestion {
     app: String,
     /// The calendar event happening now, when calendar titles are on.
     title: Option<String>,
-    /// The client named in that title.
-    client: Option<String>,
+    /// The tag whose name is in that title.
+    tag: Option<String>,
 }
 
 /// The suggestion still on offer: the window asks for it when it loads, so a call that started
@@ -763,7 +783,7 @@ fn dismiss_call() {
 }
 
 /// Every 3 s: when a call app newly opens the mic and nothing records, suggest recording, or
-/// record right away if the calendar names a client the user allowed to auto-record.
+/// record right away if the calendar names a tag the user allowed to auto-record.
 fn watch_calls(app: AppHandle) {
     std::thread::spawn(move || {
         let mut seen: Vec<String> = vec![];
@@ -797,15 +817,15 @@ fn watch_calls(app: AppHandle) {
             } else {
                 None
             };
-            let client = title
+            let tag = title
                 .as_deref()
-                .and_then(|t| mirona_capture::calls::client_in_title(t, cfg.clients.keys()));
+                .and_then(|t| mirona_capture::calls::tag_in_title(t, cfg.tags.keys()));
             let notify = |title: &str, body: &str| {
                 if let Err(e) = app.notification().builder().title(title).body(body).show() {
                     eprintln!("mirona: notification: {e}");
                 }
             };
-            if let Some(c) = client.as_ref().filter(|c| cfg.auto_record.contains(c)) {
+            if let Some(c) = tag.as_ref().filter(|c| cfg.auto_record.contains(c)) {
                 match record_call(&app, title.as_deref(), Some(c)) {
                     Ok(m) => notify("Recording", &format!("{} ({}): {}", m.title, c, call.name)),
                     Err(e) => {
@@ -824,7 +844,7 @@ fn watch_calls(app: AppHandle) {
             let suggestion = CallSuggestion {
                 app: call.name,
                 title,
-                client,
+                tag,
             };
             *PENDING_CALL.lock().unwrap() = Some(suggestion.clone());
             app.emit("call", Some(suggestion)).ok();
@@ -1093,16 +1113,19 @@ struct Settings {
     /// The defaults for the classifier in use (local or Jev); read-only.
     #[serde(default, skip_deserializing)]
     threshold_defaults: BTreeMap<String, f32>,
-    /// Client name → short description, for the client question (NGR-157).
+    /// Tag (`group:name` or `name`) → what it covers; one yes/no each per meeting.
     #[serde(default)]
-    clients: BTreeMap<String, String>,
+    tags: BTreeMap<String, String>,
+    /// Tag group → what its tags have in common.
+    #[serde(default)]
+    tag_groups: BTreeMap<String, String>,
     /// Suggest recording when a call app opens the mic (NGR-170).
     #[serde(default)]
     detect_calls: bool,
     /// Name meetings after the calendar event happening now.
     #[serde(default)]
     calendar_titles: bool,
-    /// Clients whose calls start recording without a click (needs calendar titles).
+    /// Tags whose calls start recording without a click (needs calendar titles).
     #[serde(default)]
     auto_record: Vec<String>,
     /// Consent reminder before recording (NGR-169).
@@ -1110,7 +1133,7 @@ struct Settings {
     consent_reminder: bool,
     #[serde(default)]
     consent_message: String,
-    /// Clients who already agreed to be recorded.
+    /// Tags whose people already agreed to be recorded.
     #[serde(default)]
     consent_given: Vec<String>,
     /// Encryption at rest; read-only here: `set_encryption` turns it on or off (NGR-165).
@@ -1119,9 +1142,9 @@ struct Settings {
     /// Delete recordings this many days old (text stays). `None`: keep them.
     #[serde(default)]
     retention_audio_days: Option<u32>,
-    /// Client → delete its meetings this many days old.
+    /// Tag → delete its meetings this many days old.
     #[serde(default)]
-    retention_clients: BTreeMap<String, u32>,
+    retention_tags: BTreeMap<String, u32>,
     /// Check GitHub for a new version on start and daily.
     #[serde(default)]
     check_updates: bool,
@@ -1137,7 +1160,7 @@ const QUESTIONS: [&str; 11] = [
     "due",
     "owner",
     "meeting_type",
-    "client",
+    "tag",
     "follow_up",
     "coverage",
 ];
@@ -1189,7 +1212,8 @@ impl Settings {
                     .map(|q| ((*q).to_string(), default_threshold(q, local)))
                     .collect()
             },
-            clients: cfg.clients.clone(),
+            tags: cfg.tags.clone(),
+            tag_groups: cfg.tag_groups.clone(),
             detect_calls: cfg.detect_calls,
             calendar_titles: cfg.calendar_titles,
             auto_record: cfg.auto_record.clone(),
@@ -1198,7 +1222,7 @@ impl Settings {
             consent_given: cfg.consent_given.clone(),
             encrypt: cfg.encrypt,
             retention_audio_days: cfg.retention.audio_days,
-            retention_clients: cfg.retention.clients.clone(),
+            retention_tags: cfg.retention.tags.clone(),
             check_updates: cfg.check_updates,
         }
     }
@@ -1253,13 +1277,17 @@ impl Settings {
                 return Err(format!("a threshold for {q} must be between 0 and 1"));
             }
         }
-        let mut clients = BTreeMap::new();
-        for (name, about) in &self.clients {
-            let name = name.trim();
-            if name.is_empty() || name == NO_CLIENT {
-                return Err("Every client needs a name (and not “none”).".into());
+        let mut tags = BTreeMap::new();
+        for (tag, about) in &self.tags {
+            tags.insert(mirona_engine::clean_tag(tag)?, about.trim().to_string());
+        }
+        let mut groups = BTreeMap::new();
+        for (group, about) in &self.tag_groups {
+            let g = group.trim();
+            if g.is_empty() || g.contains(':') {
+                return Err(format!("“{g}”: a group is one word, like project."));
             }
-            clients.insert(name.to_string(), about.trim().to_string());
+            groups.insert(g.to_string(), about.trim().to_string());
         }
         let dir = |p: &Path, default: &Path| (p != default).then(|| p.to_path_buf());
         cfg.privacy = self.privacy;
@@ -1281,19 +1309,19 @@ impl Settings {
         cfg.providers
             .insert("diarization".into(), self.diarization.clone());
         cfg.thresholds.clone_from(&self.thresholds);
-        // A removed client stops auto-recording with it.
+        // A removed tag stops auto-recording with it.
         cfg.auto_record = self
             .auto_record
             .iter()
             .map(|c| c.trim().to_string())
-            .filter(|c| clients.contains_key(c))
+            .filter(|c| tags.contains_key(c))
             .collect();
-        cfg.clients = clients;
+        cfg.tags = tags;
+        cfg.tag_groups = groups;
         cfg.detect_calls = self.detect_calls;
         cfg.calendar_titles = self.calendar_titles;
         cfg.check_updates = self.check_updates;
-        if self.retention_audio_days == Some(0) || self.retention_clients.values().any(|d| *d == 0)
-        {
+        if self.retention_audio_days == Some(0) || self.retention_tags.values().any(|d| *d == 0) {
             return Err("Retention needs at least 1 day.".into());
         }
         self.apply_consent_and_retention(&mut cfg);
@@ -1314,8 +1342,8 @@ impl Settings {
             .filter(|c| !c.is_empty())
             .collect();
         cfg.retention.audio_days = self.retention_audio_days;
-        cfg.retention.clients = self
-            .retention_clients
+        cfg.retention.tags = self
+            .retention_tags
             .iter()
             .map(|(c, d)| (c.trim().to_string(), *d))
             .filter(|(c, _)| !c.is_empty())
@@ -1424,7 +1452,7 @@ fn changed<T>(app: &AppHandle, res: Res<T>) -> Res<T> {
 }
 
 const SETTINGS_TABS: [&str; 7] = [
-    "general", "privacy", "models", "clients", "agents", "advanced", "about",
+    "general", "privacy", "models", "tags", "agents", "advanced", "about",
 ];
 
 /// Settings live in their own window. Opening it again focuses it on `tab`.
@@ -1752,7 +1780,8 @@ pub fn run() {
             merge_people,
             delete_voiceprint,
             correct_answer,
-            confirm_client,
+            set_meeting_tags,
+            rename_tag,
             review,
             resolve_review,
             set_owner,
@@ -1764,7 +1793,7 @@ pub fn run() {
             audio_path,
             delete_meeting,
             clear_meeting_parts,
-            delete_client,
+            delete_tagged,
             run_retention,
             set_encryption,
             pending_call,
@@ -1889,7 +1918,7 @@ mod tests {
     }
 
     #[test]
-    fn classifier_diarization_thresholds_and_clients_are_settings() {
+    fn classifier_diarization_thresholds_and_tags_are_settings() {
         let d = defaults();
         let mut s = Settings::of(&Config::default(), &d);
         assert_eq!(
@@ -1901,22 +1930,26 @@ mod tests {
         s.classification = "local-llm".into();
         s.diarization = "speakrs-cpu".into();
         s.thresholds.insert("action".into(), 0.8);
-        s.clients
-            .insert(" Northwind Bank ".into(), " contact: Karen ".into());
+        s.tags.insert(
+            " project : Northwind Bank ".into(),
+            " contact: Karen ".into(),
+        );
+        s.tag_groups.insert("project".into(), "clients".into());
         assert!(s.detect_calls && !s.calendar_titles);
         s.calendar_titles = true;
-        s.auto_record = vec!["Northwind Bank".into(), "Gone Client".into()];
+        s.auto_record = vec!["project:Northwind Bank".into(), "Gone Client".into()];
         let cfg = s.apply(Config::default(), &d).unwrap();
         assert!(cfg.calendar_titles);
         assert_eq!(
             cfg.auto_record,
-            ["Northwind Bank"],
-            "unknown clients are dropped"
+            ["project:Northwind Bank"],
+            "unknown tags are dropped"
         );
         assert_eq!(cfg.providers["classification"], "local-llm");
         assert_eq!(cfg.providers["diarization"], "speakrs-cpu");
         assert!((cfg.threshold("action", true) - 0.8).abs() < 1e-6);
-        assert_eq!(cfg.clients["Northwind Bank"], "contact: Karen");
+        assert_eq!(cfg.tags["project:Northwind Bank"], "contact: Karen");
+        assert_eq!(cfg.tag_groups["project"], "clients");
         let back = Settings::of(&cfg, &d);
         assert_eq!(back.thresholds, cfg.thresholds);
 
@@ -1938,7 +1971,15 @@ mod tests {
                 ..back.clone()
             },
             Settings {
-                clients: [(" ".into(), String::new())].into(),
+                tags: [(" ".into(), String::new())].into(),
+                ..back.clone()
+            },
+            Settings {
+                tags: [("a:b:c".into(), String::new())].into(),
+                ..back.clone()
+            },
+            Settings {
+                tag_groups: [("a:b".into(), String::new())].into(),
                 ..back.clone()
             },
         ] {
@@ -1965,10 +2006,14 @@ mod tests {
         assert_eq!(a.meeting_type.value, "standup");
         assert!(a.meeting_type.confirmed);
 
-        assert!(!resolve(&mut s, id, &r("client", "none"), true).unwrap());
-        assert_eq!(s.meeting(id).unwrap().client, "");
-        resolve(&mut s, id, &r("client", "Corvo"), true).unwrap();
-        assert_eq!(s.meeting(id).unwrap().client, "Corvo");
+        // The demo's billing "maybe": dropped, then kept.
+        assert!(!resolve(&mut s, id, &r("tag", "topic:billing"), false).unwrap());
+        assert_eq!(s.meeting(id).unwrap().tags, ["project:Alder Restoration"]);
+        resolve(&mut s, id, &r("tag", "topic:billing"), true).unwrap();
+        assert_eq!(
+            s.meeting(id).unwrap().tags,
+            ["project:Alder Restoration", "topic:billing"]
+        );
 
         // Follow-up: a confirmed yes asks for a draft only when there is none.
         assert!(

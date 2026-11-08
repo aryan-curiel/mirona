@@ -35,9 +35,13 @@ Start a recording from any of these:
 - the suggestion that appears when Zoom, Teams, Meet or another call app opens the microphone
   (Settings › General › Call detection)
 
-Before each recording, the **consent reminder** asks who the call is with and shows a message you
-can paste in the chat. Recording rules differ by country. Mark a client as "already agreed" and it
-won't ask again for them.
+Before each recording, the **consent reminder** asks what the call is about (a tag) and shows a
+message you can paste in the chat. Recording rules differ by country. Mark a tag as "already
+agreed" and it won't ask again for calls with that tag.
+
+With **Use calendar event titles** on (Settings › General › Call detection), you can tick tags
+to record without asking: a call is recorded when the event title names the tag
+(`project:setr` matches "Setr sync"). Nothing records on its own otherwise.
 
 While recording, the transcript appears live, split into "Me" and "Them", and lines are tagged
 as action items, decisions, open questions or small talk as they come in. Write notes in the
@@ -45,8 +49,10 @@ as action items, decisions, open questions or small talk as they come in. Write 
 
 1. compresses the audio, splits "Them" into each speaker and matches voices it knows
 2. joins lines split mid-sentence and tags any lines still untagged
-3. answers the meeting questions: type, client, priority, tone, whether it needs a follow-up
-4. writes the summary and enhanced notes, and drafts a follow-up email when one is needed
+3. answers the meeting questions: type, priority, tone, whether it needs a follow-up, and which
+   of your tags fit
+4. writes the summary and enhanced notes, and drafts a follow-up email when one is needed; if no
+   tag fits, it suggests one new tag for you to accept or reject
 5. indexes the lines for search by meaning
 
 Closing the window keeps Mirona in the menu bar, so recording and the shortcut still work.
@@ -67,6 +73,24 @@ mp4) the same way.
 Answers below their confidence threshold show as **Needs review** instead of being filed as
 fact. Thresholds are in Settings › Advanced.
 
+## Tags
+
+A meeting can have several tags, such as the client or project it is for. A tag is `group:name`
+(`project:setr`) or just a name. Case doesn't matter.
+
+- **Settings › Tags** has two lists: **Tags** (name and what it covers, so the classifier can tell
+  them apart) and **Groups** (optional, name and description). Renaming a tag renames it on
+  every meeting and in its rules. Removing a tag from the list leaves it on past meetings.
+- After each call the classifier asks about each tag. Sure answers add the tag; unsure ones
+  wait in the inspector's review list as "Tag this meeting?". It never removes a tag, and never
+  changes a tag you set, removed or answered.
+- When no tag fits, Mirona may suggest one new tag from the summary ("New tag?"). Accept it and
+  it's added to the meeting and to Settings › Tags; reject it and it's dropped.
+- In the inspector, **This meeting › Tags** shows the tags. × removes one; type in the box to add
+  one (known tags are suggested, a new one joins the list).
+
+Clients from Mirona 0.1.0 become `project:` tags automatically, with their rules.
+
 ## Speakers
 
 Mirona separates speakers after each call. In **People and voices**, name a speaker once and the
@@ -75,9 +99,9 @@ person. Voiceprints stay on your Mac.
 
 ## Action items and search
 
-- **Action items** lists them across all meetings, by client, with owners and due dates when
+- **Action items** lists them across all meetings, filtered by tag, with owners and due dates when
   someone said them.
-- **Search all meetings** (top of the sidebar) matches words and meaning. Filter by client, tag,
+- **Search all meetings** (top of the sidebar) matches words and meaning. Filter by meeting tag, line tag,
   dates or speaker. Meaning-based search uses Ollama with `nomic-embed-text`
   (`ollama pull nomic-embed-text`); without it, search matches keywords only.
 
@@ -131,7 +155,8 @@ Settings › Privacy and storage:
   progress is sealed when the recording stops.
 - **Delete old recordings:** removes audio after some days and keeps transcripts, notes and
   summaries.
-- **Per client:** deletes a client's meetings entirely after some days, or right now.
+- **Per tag:** deletes a tag's meetings entirely after some days, or right now. With several
+  tags, the shortest rule wins.
 
 ## AI agents (MCP)
 

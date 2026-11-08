@@ -74,7 +74,7 @@ fn meeting(lines: &[(&str, &str, &str)], notes: &[&str]) -> Meeting {
                 "voiceprint": null, "suggestion": null })
     };
     serde_json::from_value(json!({
-        "id": "m1", "title": "Claims Desk weekly sync", "client": "Alder Restoration",
+        "id": "m1", "title": "Claims Desk weekly sync", "tags": ["project:Alder Restoration"],
         "when": "today", "dateLabel": "", "durationMin": 9, "language": "English", "sample": false,
         "speakers": [speaker("nadia", "Nadia"), speaker("aryan", "Aryan"), speaker("ines", "Inés")],
         "segments": segments, "answers": null,
@@ -162,7 +162,7 @@ fn prompt_has_template_numbered_lines_and_hides_redacted_text() {
     let (system, user, json) = &llm.prompts()[0];
     assert!(json);
     assert!(system.contains("\"action_items\"") && system.contains("# Client call"));
-    assert!(user.starts_with("Meeting: Claims Desk weekly sync (client: Alder Restoration)"));
+    assert!(user.starts_with("Meeting: Claims Desk weekly sync (tags: project:Alder Restoration)"));
     assert!(
         user.contains("[3 03:02] Nadia: Yes, let's ship it Monday."),
         "{user}"
@@ -191,8 +191,8 @@ fn parses_a_chatty_fenced_reply_and_maps_citations() {
     );
     assert!(!a.needs_review && !a.done);
     assert_eq!(
-        (a.id.as_str(), a.meeting_id.as_str(), a.client.as_str()),
-        ("m1-ai-1", "m1", "Alder Restoration")
+        (a.id.as_str(), a.meeting_id.as_str(), a.tags.join(",")),
+        ("m1-ai-1", "m1", "project:Alder Restoration".into())
     );
     // A clock time maps to the line spoken then; "null"/"none" dues are dropped.
     assert_eq!(
