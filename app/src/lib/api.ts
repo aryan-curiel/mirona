@@ -141,6 +141,7 @@ export const api = {
   clearMeetingParts: (meetingId: string, parts: MeetingPart[]) => invoke<void>("clear_meeting_parts", { meetingId, parts }),
   deleteTagged: (tag: string) => invoke<number>("delete_tagged", { tag }),
   runRetention: () => invoke<string[]>("run_retention"),
+  storageUsage: () => invoke<[string, number][]>("storage_usage"),
   setEncryption: (on: boolean) => invoke<Settings>("set_encryption", { on }),
   listTemplates: () => invoke<Template[]>("list_templates"),
   regenerate: (meetingId: string, template: string) => invoke<void>("regenerate", { meetingId, template }),

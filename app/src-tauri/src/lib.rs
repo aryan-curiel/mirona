@@ -631,6 +631,62 @@ fn run_retention(app: AppHandle, st: St) -> Res<Vec<String>> {
     changed(&app, st.engine().retention())
 }
 
+/// Disk use in bytes, one `(label, bytes)` per bucket; empty buckets are left out.
+#[tauri::command]
+async fn storage_usage(st: St<'_>) -> Res<Vec<(String, u64)>> {
+    let paths = st.engine().paths.clone();
+    let (mut audio, mut text, mut index) = (0, 0, 0);
+    walk(&paths.meetings, &mut |p, n| {
+        if p.components().any(|c| c.as_os_str() == ".mirona") {
+            index += n;
+        } else if p
+            .file_name()
+            .is_some_and(|f| f.to_string_lossy().starts_with("audio"))
+        {
+            audio += n;
+        } else {
+            text += n;
+        }
+    });
+    let mut models = 0;
+    walk(&paths.models, &mut |_, n| {
+        models += n;
+    });
+    let mut ollama = 0;
+    if let Some(home) = std::env::var_os("HOME") {
+        walk(&PathBuf::from(home).join(".ollama/models"), &mut |_, n| {
+            ollama += n;
+        });
+    }
+    let rows = [
+        ("Meeting audio", audio),
+        ("Transcripts, notes and summaries", text),
+        ("Search index and logs", index),
+        ("Speech and speaker models", models),
+        ("Ollama models (shared with other apps)", ollama),
+    ];
+    Ok(rows
+        .into_iter()
+        .filter(|r| r.1 > 0)
+        .map(|(l, n)| (l.to_string(), n))
+        .collect())
+}
+
+/// Every file under `dir` (symlinks not followed); unreadable entries are skipped.
+fn walk(dir: &Path, f: &mut impl FnMut(&Path, u64)) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let Ok(meta) = e.metadata() else { continue };
+        if meta.is_dir() {
+            walk(&e.path(), f);
+        } else {
+            f(&e.path(), meta.len());
+        }
+    }
+}
+
 /// Encrypt (or decrypt) every meeting at rest. Rewrites files: never while recording.
 #[tauri::command]
 async fn set_encryption(app: AppHandle, st: St<'_>, on: bool) -> Res<Settings> {
@@ -1900,6 +1956,7 @@ pub fn run() {
             clear_meeting_parts,
             delete_tagged,
             run_retention,
+            storage_usage,
             set_encryption,
             pending_call,
             dismiss_call,

@@ -486,12 +486,19 @@ function ConsentSettings({ st, save }: { st: Settings; save: (patch: Partial<Set
 }
 
 /** Encryption at rest and retention (NGR-165). */
+const size = (bytes: number) =>
+  bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : bytes >= 1e6 ? `${Math.round(bytes / 1e6)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`;
+
 function Storage({ st, save, tags }: { st: Settings; save: (patch: Partial<Settings>) => Promise<boolean>; tags: string[] }) {
   const flash = useStore((s) => s.flash);
   const reload = useStore((s) => s.reload);
   const [busy, setBusy] = useState(false);
   const [sure, setSure] = useState<string | null>(null);
   const [log, setLog] = useState<string[] | null>(null);
+  const [usage, setUsage] = useState<[string, number][] | null>(null);
+  // Refetch after anything that may change sizes (retention, encryption, folder moves).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: st and log are refresh triggers
+  useEffect(() => void api.storageUsage().then(setUsage).catch(() => setUsage([])), [st, log]);
   const encrypt = async (on: boolean) => {
     setBusy(true);
     try {
@@ -534,6 +541,22 @@ function Storage({ st, save, tags }: { st: Settings; save: (patch: Partial<Setti
   };
   return (
     <section className="mi-card mt-5 overflow-hidden">
+      <Row title="Storage used" sub="On this Mac, by kind">
+        {!usage ? (
+          <p className="text-[13px] text-muted">Measuring…</p>
+        ) : (
+          <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 text-[14px]">
+            {usage.map(([label, n]) => (
+              <div key={label} className="contents">
+                <dt className="text-ink-3">{label}</dt>
+                <dd className="text-right tabular-nums">{size(n)}</dd>
+              </div>
+            ))}
+            <dt className="mt-1 border-t border-line-soft pt-1 font-semibold">Total</dt>
+            <dd className="mt-1 border-t border-line-soft pt-1 text-right font-semibold tabular-nums">{size(usage.reduce((a, [, n]) => a + n, 0))}</dd>
+          </dl>
+        )}
+      </Row>
       <Row title="Encryption" sub="Recordings, transcripts, search vectors and voiceprints are encrypted on disk; the key stays in your keychain">
         <div className="flex items-center gap-3">
           <Toggle on={st.encrypt} onChange={(on) => void encrypt(on)} label="Encrypt meetings on this Mac" />

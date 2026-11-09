@@ -153,6 +153,8 @@ an obvious password, salary or account number are tagged on your Mac and never s
 
 Settings › Privacy and storage:
 
+- **Storage used:** how much disk meeting audio, transcripts and notes, the search index, the
+  speech and speaker models, and Ollama's models (shared with other apps) take on this Mac.
 - **Encryption:** recordings, transcripts, search vectors, voiceprints and your corrections are
   encrypted on disk, and the search index is kept in memory only. The key stays in your
   keychain. Meeting notes and summaries (`meeting.md`) stay readable. The audio of a call in
