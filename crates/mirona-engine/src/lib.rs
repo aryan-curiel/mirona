@@ -35,10 +35,10 @@ use mirona_providers::LlmProvider;
 use mirona_providers::config::Config;
 use mirona_store::Store;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{Sender, channel};
+use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub type Result<T> = std::result::Result<T, String>;
 /// The meeting store, shared between the engine, its workers and the app.
@@ -676,7 +676,15 @@ impl Drop for RecordingLock {
     }
 }
 
-/// Capture events → store + pipeline events, in arrival order.
+/// How long a lane's open line waits for the rest of its sentence after its last piece came in.
+// ponytail: a fixed wait, not the lane's real silence. A piece that comes later starts a new
+// line, and the after-call `merge_lines` still joins it.
+const OPEN_WAIT: Duration = Duration::from_secs(4);
+
+/// Capture events → store + pipeline events. Each audio lane keeps its line open while the
+/// sentence goes on (the after-call join rule, `mirona_store::joins`), sent as `Drafting`; a
+/// line is saved, sent as `Transcribed` and classified only once its sentence ends, so pieces
+/// joined live aren't classified twice.
 fn forward(
     store: &Shared,
     id: &str,
@@ -686,13 +694,49 @@ fn forward(
     lock: &RecordingLock,
     to_classify: &Sender<Segment>,
 ) {
+    let confirm = |seg: Segment| {
+        let pushed = store.lock().unwrap().push_segment(id, seg.clone());
+        if pushed.is_ok() {
+            to_classify.send(seg.clone()).ok();
+        }
+        let out = match pushed {
+            Ok(speaker) => PipelineEvent::Transcribed {
+                meeting_id: id.into(),
+                segment: seg,
+                speaker,
+            },
+            Err(e) => notice(id, format!("Could not save a segment: {e}"), true),
+        };
+        events.send(out).ok();
+    };
+    let draft = |seg: &Segment| {
+        let speaker = store.lock().unwrap().speaker(&seg.speaker_id);
+        events
+            .send(PipelineEvent::Drafting {
+                meeting_id: id.into(),
+                segment: seg.clone(),
+                speaker,
+            })
+            .ok();
+    };
     let mut n = 0;
     let mut beat = Instant::now();
-    for ev in rx {
+    // Each lane's line still being spoken, and when its last piece came in.
+    let mut open: Vec<(Segment, Instant)> = vec![];
+    loop {
+        let ev = rx.recv_timeout(Duration::from_millis(500));
         if beat.elapsed() >= LOCK_BEAT {
             lock.beat();
             beat = Instant::now();
         }
+        while let Some(i) = open.iter().position(|(_, at)| at.elapsed() >= OPEN_WAIT) {
+            confirm(open.swap_remove(i).0);
+        }
+        let ev = match ev {
+            Ok(ev) => ev,
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => break,
+        };
         let out = match ev {
             Event::Levels { mic, system } => PipelineEvent::Captured {
                 meeting_id: id.into(),
@@ -701,19 +745,27 @@ fn forward(
             },
             Event::Segment(seg) => {
                 let seg = segment(id, n, &seg);
-                n += 1;
-                let pushed = store.lock().unwrap().push_segment(id, seg.clone());
-                if pushed.is_ok() {
-                    to_classify.send(seg.clone()).ok();
+                let lane = open
+                    .iter()
+                    .position(|(o, _)| o.speaker_id == seg.speaker_id);
+                match lane {
+                    Some(i) if mirona_store::joins(&open[i].0, &seg) => {
+                        let cur = &mut open[i];
+                        mirona_store::join_into(&mut cur.0, seg);
+                        classify::add_sensitive_net(&cur.0.text, &mut cur.0.tags);
+                        cur.1 = Instant::now();
+                        draft(&cur.0);
+                    }
+                    _ => {
+                        if let Some(i) = lane {
+                            confirm(open.swap_remove(i).0);
+                        }
+                        n += 1;
+                        draft(&seg);
+                        open.push((seg, Instant::now()));
+                    }
                 }
-                match pushed {
-                    Ok(speaker) => PipelineEvent::Transcribed {
-                        meeting_id: id.into(),
-                        segment: seg,
-                        speaker,
-                    },
-                    Err(e) => notice(id, format!("Could not save a segment: {e}"), true),
-                }
+                continue;
             }
             Event::Device { source, name } => {
                 notice(id, format!("{} → {name}", source_label(source)), false)
@@ -721,6 +773,11 @@ fn forward(
             Event::Error { message, .. } => notice(id, message, true),
         };
         events.send(out).ok();
+    }
+    // Recording stopped: whatever is still open is final.
+    open.sort_by_key(|(s, _)| s.start_ms);
+    for (seg, _) in open {
+        confirm(seg);
     }
 }
 

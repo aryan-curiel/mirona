@@ -357,20 +357,28 @@ impl Store {
         self.add_meeting(m, &now, vec![])
     }
 
-    /// Appends one line to `transcript.jsonl`. `meeting.md` is only rewritten the first time a
-    /// speaker shows up in this meeting. Unknown speaker ids become a new person.
+    /// The person with speaker id `id`, or a new one named after it.
+    pub fn speaker(&self, id: &str) -> Speaker {
+        self.people
+            .iter()
+            .find(|p| p.id == id)
+            .cloned()
+            .unwrap_or_else(|| new_speaker(id))
+    }
+
+    /// Appends one line to `transcript.jsonl` and keeps the meeting's lines in time order (each
+    /// audio lane holds its open line until the sentence ends, so lines can arrive out of
+    /// order). `meeting.md` is only rewritten the first time a speaker shows up in this
+    /// meeting. Unknown speaker ids become a new person.
     pub fn push_segment(&mut self, meeting_id: &str, seg: Segment) -> Result<Speaker> {
         let i = self.idx(meeting_id)?;
-        let speaker = self
-            .people
-            .iter()
-            .find(|p| p.id == seg.speaker_id)
-            .cloned()
-            .unwrap_or_else(|| new_speaker(&seg.speaker_id));
+        let speaker = self.speaker(&seg.speaker_id);
         files::append_segment(&self.entries[i].dir, &seg, self.key.as_ref())?;
         index::insert_segment(&self.db, meeting_id, &seg)?;
         self.touched();
-        self.entries[i].meeting.segments.push(seg);
+        let segs = &mut self.entries[i].meeting.segments;
+        let at = segs.partition_point(|s| s.start_ms <= seg.start_ms);
+        segs.insert(at, seg);
         if !self.entries[i]
             .meeting
             .speakers
@@ -882,30 +890,7 @@ pub fn merge_lines(segs: &mut Vec<Segment>) -> usize {
             .filter(|&i| i > 0)
             .find(|&i| joins(&out[i - 1], &s));
         match target.map(|i| &mut out[i - 1]) {
-            Some(prev) => {
-                let head = prev.text.trim_end();
-                let head = if starts_lower(&s) {
-                    head.strip_suffix('.').unwrap_or(head)
-                } else {
-                    head
-                };
-                prev.text = format!("{head} {}", s.text.trim_start());
-                prev.end_ms = s.end_ms;
-                for t in s.tags {
-                    if !prev
-                        .tags
-                        .iter()
-                        .any(|p| p.kind == t.kind && p.label == t.label)
-                    {
-                        prev.tags.push(t);
-                    }
-                }
-                prev.answers.clear();
-                if prev.owners.is_empty() {
-                    prev.owners = s.owners;
-                }
-                prev.due = prev.due.take().or(s.due);
-            }
+            Some(prev) => join_into(prev, s),
             None => out.push(s),
         }
     }
@@ -913,7 +898,36 @@ pub fn merge_lines(segs: &mut Vec<Segment>) -> usize {
     before - segs.len()
 }
 
-fn joins(prev: &Segment, next: &Segment) -> bool {
+/// Fold `s` into `prev`, the line it continues (see [`joins`]): text, end time, tags, owner
+/// and due date. `prev` loses its answers so it's classified again.
+pub fn join_into(prev: &mut Segment, s: Segment) {
+    let head = prev.text.trim_end();
+    let head = if starts_lower(&s) {
+        head.strip_suffix('.').unwrap_or(head)
+    } else {
+        head
+    };
+    prev.text = format!("{head} {}", s.text.trim_start());
+    prev.end_ms = s.end_ms;
+    for t in s.tags {
+        if !prev
+            .tags
+            .iter()
+            .any(|p| p.kind == t.kind && p.label == t.label)
+        {
+            prev.tags.push(t);
+        }
+    }
+    prev.answers.clear();
+    if prev.owners.is_empty() {
+        prev.owners = s.owners;
+    }
+    prev.due = prev.due.take().or(s.due);
+}
+
+/// Whether `next` continues `prev`'s sentence: same speaker, a short pause, not too long, and
+/// `prev` doesn't end a sentence (or `next` starts in lowercase).
+pub fn joins(prev: &Segment, next: &Segment) -> bool {
     let fixed = |s: &Segment| {
         s.redacted || s.end_ms == 0 || s.answers.iter().any(|a| a.source == AnswerSource::User)
     };

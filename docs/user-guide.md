@@ -43,8 +43,10 @@ With **Use calendar event titles** on (Settings › General › Call detection),
 to record without asking: a call is recorded when the event title names the tag
 (`project:setr` matches "Setr sync"). Nothing records on its own otherwise.
 
-While recording, the transcript appears live, split into "Me" and "Them", and lines are tagged
-as action items, decisions, open questions or small talk as they come in. Write notes in the
+While recording, the transcript appears live, split into "Me" and "Them". A line still being
+spoken shows in italics ("Still speaking…") and grows as the sentence goes on; once the sentence
+ends it becomes a normal line and is tagged as an action item, decision, open question or small
+talk. Write notes in the
 **Notes** tab as you go. Muted in the call and talking to someone in the room? Click **Mute me**
 in the recording bar, the menu bar icon › Mute my mic, or press <kbd>⌘⌥⇧M</kbd> (Settings ›
 General › Mute shortcut): until you unmute, your mic records silence, so none of it reaches the
@@ -53,7 +55,8 @@ a red dot while recording, and the dot becomes a crossed-out mic while you're mu
 the same button or shortcut. Mirona then:
 
 1. compresses the audio, splits "Them" into each speaker and matches voices it knows
-2. joins lines split mid-sentence and tags any lines still untagged
+2. joins lines still split mid-sentence (now that each line has its speaker) and tags any lines
+   still untagged
 3. answers the meeting questions: type, priority, tone, whether it needs a follow-up, and which
    of your tags fit
 4. writes the summary and enhanced notes, and drafts a follow-up email when one is needed; if no

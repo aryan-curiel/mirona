@@ -80,7 +80,9 @@ pub fn read(dir: &Path, key: Option<&Key>) -> Result<(Entry, Vec<String>)> {
     let text = std::fs::read_to_string(dir.join(MEETING)).map_err(|e| e.to_string())?;
     let (f, raw) = parse(&text)?;
     let raw_at_ms = match_times(&raw, f.note_times);
-    let (segments, errors) = read_transcript(&dir.join(TRANSCRIPT), key);
+    let (mut segments, errors) = read_transcript(&dir.join(TRANSCRIPT), key);
+    // Lines are appended as they're confirmed, which isn't always the order they were said.
+    segments.sort_by_key(|s| s.start_ms);
     let mut e = Entry {
         meeting: Meeting {
             id: f.id,

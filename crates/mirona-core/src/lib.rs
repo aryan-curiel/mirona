@@ -585,6 +585,14 @@ pub enum PipelineEvent {
         segment: Segment,
         speaker: Speaker,
     },
+    /// A line still being spoken while recording: it grows (same id) as its sentence goes on,
+    /// and becomes `Transcribed` once the sentence ends. Not saved or classified until then.
+    #[serde(rename_all = "camelCase")]
+    Drafting {
+        meeting_id: Id,
+        segment: Segment,
+        speaker: Speaker,
+    },
     #[serde(rename_all = "camelCase")]
     Diarized { meeting_id: Id, speakers: u32 },
     #[serde(rename_all = "camelCase")]

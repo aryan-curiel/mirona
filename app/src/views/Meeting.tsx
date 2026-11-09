@@ -313,10 +313,13 @@ function Transcript({ m }: { m: Meeting }) {
     useStore.setState({ scrollTo: null });
   }, [scrollTo, rows]);
 
-  // Follow new segments while recording.
+  // Follow new segments and the lines still being spoken while recording.
+  const drafted = s.recording?.drafts.map((d) => d.segment.text).join("\n");
   useEffect(() => {
-    if (live && rows.length && !q) list.current?.scrollToIndex({ index: rows.length - 1, align: "end", behavior: "smooth" });
-  }, [live, rows.length, q]);
+    if (!live || q) return;
+    if (drafted) scroller?.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+    else if (rows.length) list.current?.scrollToIndex({ index: rows.length - 1, align: "end", behavior: "smooth" });
+  }, [live, rows.length, q, drafted, scroller]);
 
   return (
     <div>
@@ -379,13 +382,37 @@ function Transcript({ m }: { m: Meeting }) {
         )}
       />}
       {live && s.recording ? (
-        <div className="mi-live flex gap-4 px-5 py-4 text-[14px] text-ink-3">
-          <Mono>{fmt(s.recording.elapsedMs)}</Mono>
-          <span className="mi-pulse">Listening… new segments appear here a few seconds after they are spoken.</span>
-        </div>
+        <>
+          {!q &&
+            s.recording.drafts.map(({ segment: d, speaker: sp }) => (
+              <DraftRow key={d.id} seg={d} speaker={m.speakers.find((p) => p.id === d.speakerId) ?? sp} showSensitive={s.filters.showSensitive} />
+            ))}
+          <div className="mi-live flex gap-4 px-5 py-4 text-[14px] text-ink-3">
+            <Mono>{fmt(s.recording.elapsedMs)}</Mono>
+            <span className="mi-pulse">Listening… lines appear as they are spoken and are tagged once each sentence ends.</span>
+          </div>
+        </>
       ) : (
         !rows.length && <p className="py-10 text-center text-muted">{m.segments.length ? "No segments match." : "No speech in this meeting."}</p>
       )}
+    </div>
+  );
+}
+
+/** A line still being spoken: in italics and without tags until its sentence ends and it's saved. */
+function DraftRow({ seg, speaker: sp, showSensitive }: { seg: Segment; speaker: Speaker; showSensitive: boolean }) {
+  const hidden = seg.tags.some((t) => t.kind === "sensitive") && !showSensitive;
+  return (
+    <div className="mb-3 flex gap-4 px-5 py-4">
+      <Avatar tint={sp.tint} initial={sp.initial} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="text-[15px] font-semibold">{sp.name}</span>
+          <Mono>{fmt(seg.startMs)}</Mono>
+          <span className="mi-pulse text-[12px] text-muted">Still speaking…</span>
+        </div>
+        <p className="mt-1 text-[15px] italic leading-relaxed text-ink-3">{hidden ? "[Sensitive: hidden]" : seg.text}</p>
+      </div>
     </div>
   );
 }

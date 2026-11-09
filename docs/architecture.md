@@ -54,8 +54,9 @@ sequenceDiagram
     E->>C: start mic + system audio
     loop every chunk (≤ 5 s, cut at pauses)
         C->>P: speech to text (Parakeet)
-        C-->>E: line ("Me" or "Them")
-        E->>S: append to transcript.jsonl
+        C-->>E: piece of a line ("Me" or "Them")
+        E-->>UI: Drafting event (the lane's open line, growing)
+        E->>S: sentence ended: append to transcript.jsonl
         E-->>UI: Transcribed event
         E->>P: tag the line (classifier worker)
     end
@@ -76,9 +77,12 @@ sequenceDiagram
 1. **Capture.** Two streams, the mic ("Me") and system audio ("Them"), resampled to 16 kHz and
    cut into chunks of up to about 5 s at pauses.
 2. **Live transcription.** Each chunk goes to the speech-to-text provider (Parakeet by default)
-   on a worker. Lines are appended to `transcript.jsonl` and sent to the UI as events.
-3. **Live tags.** A classifier worker tags lines as action, decision, open question, small talk
-   or sensitive.
+   on a worker. Each lane keeps one open line: a piece that continues its sentence (the same
+   join rule as after stop) is added to it and sent as `Drafting`. When the sentence ends (a
+   piece that doesn't continue it, 4 s with nothing new, or stop) the line is appended to
+   `transcript.jsonl` in time order and sent as `Transcribed`.
+3. **Live tags.** A classifier worker tags each finished line as action, decision, open
+   question, small talk or sensitive, so pieces joined live are never tagged twice.
 4. **After stop.** Tagging catches up, the audio is compressed to Opus, the recording is
    diarized (speakrs), speakers are matched against known voiceprints and split sentences are
    joined. Lines still untagged are tagged. Then the meeting-level questions are answered (type,

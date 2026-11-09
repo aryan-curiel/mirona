@@ -111,6 +111,67 @@ fn speakers_come_from_the_source() {
     assert_eq!(names, ["Me", "Them"]);
 }
 
+/// Pieces of one sentence are joined live per lane and only the finished line is saved and
+/// classified; the other lane's line said in between doesn't break it, and lines stay in time
+/// order although the open one is saved last.
+#[test]
+fn live_lines_are_joined_per_lane_before_they_are_classified() {
+    let dir = tempfile::tempdir().unwrap();
+    let e = engine(dir.path());
+    let id = mirona_store::new_id();
+    e.store.lock().unwrap().start_meeting(&id).unwrap();
+    let piece = |source, start_ms, end_ms, text: &str| {
+        Event::Segment(mirona_capture::Segment {
+            source,
+            start_ms,
+            end_ms,
+            text: text.into(),
+        })
+    };
+    let (tx, rx) = channel();
+    for ev in [
+        piece(Source::System, 0, 2_000, "So the plan is to"),
+        piece(Source::Mic, 2_100, 2_600, "Mm-hmm."),
+        piece(Source::Mic, 3_000, 3_400, "Right."),
+        piece(Source::System, 2_500, 5_000, "ship it on Friday."),
+        piece(Source::System, 9_000, 10_000, "Any questions?"),
+    ] {
+        tx.send(ev).unwrap();
+    }
+    drop(tx);
+    let (events, got) = channel();
+    let (to_classify, classified) = channel();
+    let lock = RecordingLock::take(dir.path()).unwrap();
+    forward(
+        &e.store,
+        &id,
+        Instant::now(),
+        &rx,
+        &events,
+        &lock,
+        &to_classify,
+    );
+    drop((events, to_classify));
+
+    let texts = |segs: Vec<Segment>| segs.into_iter().map(|s| s.text).collect::<Vec<_>>();
+    let want = [
+        "So the plan is to ship it on Friday.",
+        "Mm-hmm.",
+        "Right.",
+        "Any questions?",
+    ];
+    let mut sent: Vec<Segment> = classified.iter().collect();
+    sent.sort_by_key(|s| s.start_ms);
+    assert_eq!(texts(sent), want);
+    let m = e.store.lock().unwrap().meeting(&id).unwrap();
+    assert_eq!(texts(m.segments), want);
+    let drafts = got
+        .iter()
+        .filter(|ev| matches!(ev, PipelineEvent::Drafting { .. }))
+        .count();
+    assert_eq!(drafts, 5, "every piece shows up as a draft");
+}
+
 #[test]
 fn summary_and_enhanced_notes_are_saved_into_the_meeting() {
     let dir = tempfile::tempdir().unwrap();

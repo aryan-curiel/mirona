@@ -7,12 +7,15 @@ import type { MeetingSummary } from "./bindings/MeetingSummary";
 import type { MeetingPart } from "./bindings/MeetingPart";
 import type { PipelineEvent } from "./bindings/PipelineEvent";
 import type { Review } from "./bindings/Review";
+import type { Segment } from "./bindings/Segment";
+import type { Speaker } from "./bindings/Speaker";
 
 export type View = "meetings" | "all" | "actions" | "people" | "activity";
 export type SettingsTab = "general" | "privacy" | "models" | "tags" | "agents" | "advanced" | "about";
 export type Tab = "transcript" | "notes" | "summary";
 
-type Recording = { meetingId: string; elapsedMs: number; levels: number[] };
+/** `drafts`: each audio lane's line still being spoken (not saved or tagged yet). */
+type Recording = { meetingId: string; elapsedMs: number; levels: number[]; drafts: { segment: Segment; speaker: Speaker }[] };
 
 const DETAILS = "mirona.modelDetails";
 /** localStorage that never throws (private windows, blocked storage). */
@@ -198,7 +201,7 @@ export const useStore = create<State>((set, get) => {
     const was = get().recording;
     set({ processing: r.processing, micMuted: r.micMuted });
     if (r.recording && was?.meetingId !== r.recording) {
-      set({ recording: { meetingId: r.recording, elapsedMs: 0, levels: [] }, call: null });
+      set({ recording: { meetingId: r.recording, elapsedMs: 0, levels: [], drafts: [] }, call: null });
       await reloadLists();
       await get().openMeeting(r.recording);
       set({ tab: "transcript" });
@@ -216,10 +219,24 @@ export const useStore = create<State>((set, get) => {
       case "captured":
         if (recording?.meetingId === e.meetingId) set({ recording: { ...recording, elapsedMs: e.elapsedMs, levels: e.levels } });
         break;
+      case "drafting":
+        if (recording?.meetingId === e.meetingId) {
+          const drafts = [...recording.drafts.filter((d) => d.segment.id !== e.segment.id), { segment: e.segment, speaker: e.speaker }];
+          set({ recording: { ...recording, drafts: drafts.sort((a, b) => a.segment.startMs - b.segment.startMs) } });
+        }
+        break;
       case "transcribed":
+        if (recording?.meetingId === e.meetingId) {
+          set({ recording: { ...recording, drafts: recording.drafts.filter((d) => d.segment.id !== e.segment.id) } });
+        }
         if (here && meeting && !meeting.segments.some((s) => s.id === e.segment.id)) {
           const speakers = meeting.speakers.some((s) => s.id === e.speaker.id) ? meeting.speakers : [...meeting.speakers, e.speaker];
-          set({ meeting: { ...meeting, speakers, segments: [...meeting.segments, e.segment] } });
+          // A lane's line is confirmed when its sentence ends, so it can land before a later one.
+          const segments = [...meeting.segments];
+          let at = segments.length;
+          while (at > 0 && segments[at - 1].startMs > e.segment.startMs) at--;
+          segments.splice(at, 0, e.segment);
+          set({ meeting: { ...meeting, speakers, segments } });
         }
         break;
       case "classified":
