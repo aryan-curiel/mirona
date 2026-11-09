@@ -43,7 +43,8 @@ With **Use calendar event titles** on (Settings › General › Call detection),
 to record without asking: a call is recorded when the event title names the tag
 (`project:setr` matches "Setr sync"). Nothing records on its own otherwise.
 
-While recording, the transcript appears live, split into "Me" and "Them". A line still being
+While recording, the transcript appears live, split into "Me" and "Them" (a note at the top
+says so: the other side is told apart into speakers after the call). A line still being
 spoken shows in italics ("Still speaking…") and grows as the sentence goes on; once the sentence
 ends it becomes a normal line and is tagged as an action item, decision, open question or small
 talk. Write notes in the

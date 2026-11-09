@@ -329,6 +329,12 @@ function Transcript({ m }: { m: Meeting }) {
           <audio ref={audio.ref} src={audio.src} controls preload="metadata" className="w-full" aria-label="Meeting recording" />
         </div>
       )}
+      {live && (
+        <p role="note" className="mb-3 flex items-start gap-2 rounded-lg bg-accent-tint px-3 py-2 text-[13px] leading-snug text-accent-strong">
+          <Icon name="info" size={16} className="mt-px shrink-0" />
+          Everyone on the other side shows as “Them” for now. Speakers are told apart, and voices you've named are recognized, once the call ends.
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2 text-[14px]">
         <input
           type="search"
