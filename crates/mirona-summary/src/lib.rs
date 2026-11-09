@@ -243,7 +243,18 @@ struct Item {
 
 fn field(v: &Value, key: &str) -> Option<String> {
     let s = v[key].as_str()?.trim();
-    let blank = s.is_empty() || ["none", "null", "n/a", "unknown"].contains(&&*s.to_lowercase());
+    let blank = s.is_empty()
+        || [
+            "none",
+            "null",
+            "n/a",
+            "unknown",
+            "not specified",
+            "unspecified",
+            "not mentioned",
+            "tbd",
+        ]
+        .contains(&&*s.to_lowercase());
     (!blank).then(|| s.to_string())
 }
 

@@ -22,7 +22,7 @@ mod people;
 pub mod sample;
 mod search;
 
-pub use classify::review_tag;
+pub use classify::{is_line_item, review_tag};
 pub use index::Hit;
 pub use people::{Cluster, Person, Voices, replace_name};
 pub use search::{MIN_SIMILARITY, text_hash};
@@ -524,7 +524,8 @@ impl Store {
             }
         }
         e.meeting.summary = Some(summary);
-        e.items = items;
+        let old = std::mem::replace(&mut e.items, items);
+        classify::add_line_items(e, &old);
         classify::fill_items(e);
         self.save(i, false)
     }

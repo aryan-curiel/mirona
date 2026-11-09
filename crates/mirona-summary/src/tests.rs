@@ -148,7 +148,7 @@ const GOOD: &str = r#"Sure! Here is the summary:
  "action_items": [
    {"text": "Announce to the field team", "owner": "Inés", "due": "Friday", "segment": "4"},
    {"text": "Add the overdue filter", "owner": "Aryan", "due": null, "segment": "04:45"},
-   {"text": "Decide on paid claims", "owner": "", "due": "none", "segment": 99}],
+   {"text": "Decide on paid claims", "owner": "", "due": "Not specified", "segment": 99}],
  "open_questions": [{"text": "Paid claims before the migration?", "segment": "[7 07:30]"}]}
 ```
 Let me know if you need more."#;

@@ -563,14 +563,16 @@ pub fn coverage(
     id: &str,
     c: &impl Classifier,
 ) -> Result<Option<(f32, Vec<String>)>> {
+    // Only the summary's own items: the lines it missed have items of their own.
     let (m, items) = {
         let s = store.lock().unwrap();
+        let m = s.meeting(id)?;
         let items: Vec<ActionItem> = s
             .action_items()
             .into_iter()
-            .filter(|a| a.meeting_id == id)
+            .filter(|a| a.meeting_id == id && !mirona_store::is_line_item(&m, a))
             .collect();
-        (s.meeting(id)?, items)
+        (m, items)
     };
     let cloud = !is_local(c);
     let said: Vec<String> = m
@@ -838,6 +840,29 @@ pub fn word_action(store: &Shared, item_id: &str, llm: &impl LlmProvider) -> Res
     Ok(true)
 }
 
+/// Action items filed from their line (the summary missed them) still carry the raw words:
+/// each is reworded as a short task, as when the user confirms a line.
+fn word_line_items(store: &Shared, id: &str, llm: &impl LlmProvider) -> Result<()> {
+    let raw: Vec<String> = {
+        let s = store.lock().unwrap();
+        let m = s.meeting(id)?;
+        s.action_items()
+            .into_iter()
+            .filter(|a| a.meeting_id == id && mirona_store::is_line_item(&m, a))
+            .filter(|a| {
+                m.segments
+                    .iter()
+                    .any(|s| Some(s.start_ms) == a.at_ms && s.text == a.text)
+            })
+            .map(|a| a.id)
+            .collect()
+    };
+    for item in raw {
+        word_action(store, &item, llm)?;
+    }
+    Ok(())
+}
+
 /// The first line of the model's answer, without quotes or a bullet; `None` if empty or long.
 fn parse_task(text: &str) -> Option<String> {
     let text = text.split_once("</think>").map_or(text, |(_, a)| a);
@@ -929,6 +954,9 @@ pub fn after_call(
     }
     if let Some(c) = c {
         check_summary(store, cfg, id, c, &summarize, &notice);
+    }
+    if let Err(e) = word_line_items(store, id, llm) {
+        notice(format!("Wording action items failed: {e}"), true);
     }
     if let Err(e) = follow_up_draft(store, id, llm) {
         notice(format!("Follow-up draft failed: {e}"), true);

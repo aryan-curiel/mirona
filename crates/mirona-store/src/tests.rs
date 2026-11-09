@@ -816,3 +816,75 @@ fn lowercase_continuations_and_interjections_join() {
         ]
     );
 }
+
+#[test]
+fn actions_the_summary_missed_get_their_own_items() {
+    let dir = TempDir::new().unwrap();
+    let mut s = Store::open(dir.path()).unwrap();
+    s.start_meeting("m").unwrap();
+    let action = Tag {
+        kind: TagKind::Action,
+        label: "Action".into(),
+    };
+    for (n, (at, text, tagged)) in [
+        (0, "I'll send the deck.", true),
+        (4_000, "Thanks.", false),
+        (8_000, "Sure.", false),
+        (12_000, "I'll test them in staging.", true),
+        (16_000, "Thanks.", false),
+        (20_000, "Maybe I'll look.", true),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut seg = live_seg(&format!("m-{n}"), "me", at, text);
+        if tagged {
+            seg.tags.push(action.clone());
+        }
+        // Tagged under 0.1.0's 0.60 threshold: below the 0.85 a line item needs.
+        if text.starts_with("Maybe") {
+            let a = seg.answers.iter_mut().find(|a| a.id == "action").unwrap();
+            (a.probability, a.threshold) = (0.7, 0.6);
+        }
+        s.push_segment("m", seg).unwrap();
+    }
+    let summary = Summary {
+        template: "general".into(),
+        title: String::new(),
+        overview: String::new(),
+        decisions: vec![],
+        open_questions: vec![],
+        written_by: String::new(),
+        quality: String::new(),
+    };
+    // The summary cites the line after the first action (its neighbour): that one is covered.
+    let cited = ActionItem {
+        id: "m-ai-1".into(),
+        meeting_id: "m".into(),
+        meeting_title: String::new(),
+        at_ms: Some(4_000),
+        text: "Send the deck".into(),
+        owner: "Me".into(),
+        due: None,
+        tags: vec![],
+        done: false,
+        needs_review: false,
+        owner_confirmed: false,
+    };
+    s.set_summary("m", summary.clone(), vec![cited.clone()])
+        .unwrap();
+    let texts =
+        |s: &Store| -> Vec<String> { s.action_items().into_iter().map(|a| a.text).collect() };
+    assert_eq!(texts(&s), ["Send the deck", "I'll test them in staging."]);
+    let item = s.action_items()[1].clone();
+    assert!(is_line_item(&s.meeting("m").unwrap(), &item));
+    assert!(!item.needs_review);
+
+    // Reworded and done, it stays so when the summary is written again.
+    s.set_action_text(&item.id, "Test them in staging").unwrap();
+    s.toggle_action_item(&item.id).unwrap();
+    s.set_summary("m", summary, vec![cited]).unwrap();
+    let again = &s.action_items()[1];
+    assert_eq!(again.text, "Test them in staging");
+    assert!(again.done);
+}

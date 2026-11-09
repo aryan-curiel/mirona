@@ -8,6 +8,7 @@
 use crate::files::Entry;
 use crate::{Result, Store, has_tag};
 use mirona_core::{ActionItem, Answer, Choice, Meeting, Review, Segment, Tag, TagKind};
+use mirona_providers::config::default_threshold;
 use mirona_providers::questions::NO_OWNER;
 use std::io::Write;
 use std::path::PathBuf;
@@ -340,7 +341,52 @@ impl Store {
     }
 }
 
-/// An action item for a segment the user confirmed as an action and the summary missed.
+/// Lines tagged as an action (model at/above threshold, or the user) that no summary item
+/// cites, the line or a neighbour, get an item of their own: the summary model misses actions
+/// the classifier is sure of (5 items for a 541-line call, every 0.85+ line among the missed).
+/// An item filed earlier for the line is kept as it was (reworded text, done, owner).
+/// A model's yes counts at the 0.85 default or above, even when the line was tagged under a
+/// lower threshold (0.1.0 used 0.60: 33 items instead of 4 on a real call). Sensitive lines
+/// only when the user confirmed them; redacted ones never.
+pub(crate) fn add_line_items(e: &mut Entry, old: &[ActionItem]) {
+    let segs = &e.meeting.segments;
+    let cited: Vec<u32> = e.items.iter().filter_map(|a| a.at_ms).collect();
+    let mut added = vec![];
+    for (i, seg) in segs.iter().enumerate() {
+        let near = &segs[i.saturating_sub(1)..(i + 2).min(segs.len())];
+        let Some(a) = seg.answers.iter().find(|a| a.id == "action" && a.answer) else {
+            continue;
+        };
+        let by_user = a.source == mirona_core::AnswerSource::User;
+        let sure = a.probability >= a.threshold.max(default_threshold("action", false));
+        if !seg.tags.iter().any(|t| t.kind == TagKind::Action)
+            || !(by_user || sure)
+            || seg.redacted
+            || (seg.is_sensitive() && !by_user)
+            || near.iter().any(|s| cited.contains(&s.start_ms))
+        {
+            continue;
+        }
+        let item = item_from(&e.meeting, seg);
+        added.push(
+            old.iter()
+                .find(|o| o.id == item.id)
+                .cloned()
+                .unwrap_or(item),
+        );
+    }
+    e.items.extend(added);
+    e.items.sort_by_key(|a| a.at_ms);
+}
+
+/// Whether `item` was filed from its transcript line ([`item_from`]), not by the summary.
+pub fn is_line_item(m: &Meeting, item: &ActionItem) -> bool {
+    m.segments
+        .iter()
+        .any(|s| item.id == format!("{}-ai-{}", m.id, s.id))
+}
+
+/// An action item for a segment tagged as an action that the summary missed.
 pub(crate) fn item_from(m: &Meeting, seg: &Segment) -> ActionItem {
     let speaker = m.speakers.iter().find(|p| p.id == seg.speaker_id);
     let owner = seg

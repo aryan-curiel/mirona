@@ -118,6 +118,8 @@ person. Voiceprints stay on your Mac.
 - **Action items** lists them across all meetings, filtered by tag, with owners and due dates when
   someone said them. When you mark a transcript line as an action, the summary model rewrites it
   as a short task (a sensitive line is never sent to a cloud model for this; it keeps its words).
+  A line the classifier is sure is an action is listed even when the summary leaves it out,
+  reworded the same way; regenerating the summary keeps it.
 - **Search all meetings** (top of the sidebar) matches words and meaning. Filter by meeting tag, line tag,
   dates or speaker. Meaning-based search uses Ollama with `nomic-embed-text`
   (`ollama pull nomic-embed-text`); without it, search matches keywords only.
