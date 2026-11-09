@@ -606,6 +606,22 @@ impl Store {
         Ok(a)
     }
 
+    /// Replace an action item's text (a confirmed line reworded as a task).
+    pub fn set_action_text(&mut self, id: &str, text: &str) -> Result<()> {
+        let i = self
+            .entries
+            .iter()
+            .position(|e| e.items.iter().any(|a| a.id == id))
+            .ok_or("no action item")?;
+        let a = self.entries[i]
+            .items
+            .iter_mut()
+            .find(|a| a.id == id)
+            .unwrap();
+        a.text = text.trim().into();
+        self.save(i, false)
+    }
+
     /// Fix a model answer. The fix is kept as a labelled example (`labels_path`, NGR-160) and
     /// retags the segment.
     #[allow(clippy::needless_pass_by_value)] // takes the correction as the UI sends it
@@ -836,22 +852,44 @@ fn new_speaker(id: &str) -> Speaker {
 /// The longest pause a sentence is joined across, and the longest line joining may make.
 const JOIN_GAP_MS: u32 = 1_200;
 const JOIN_MAX_MS: u32 = 30_000;
+/// How many short interjections from others a join may reach across.
+const JOIN_SKIP: usize = 3;
 
 /// Speech is cut at 0.25 s pauses for the recognizer (ADR 0001), so one sentence can land on
 /// several lines. A line joins the one before it when it's the same speaker, the pause is
-/// short and the line before doesn't end a sentence. Redacted lines, lines the user corrected
-/// and lines without an end time are left alone. Joined lines lose their answers so the
-/// after-call classification asks again; their tags stay until then. Returns how many lines
-/// were folded into the one before.
-// ponytail: punctuation + pause heuristic; Parakeet sometimes ends a mid-sentence chunk with
-// a period, which keeps that split. Lean on the pause alone if real meetings show it a lot.
+/// short and the line before doesn't end a sentence, or it does but this line starts in
+/// lowercase (Parakeet ends most chunks with a period but capitalizes only real sentence
+/// starts). Up to [`JOIN_SKIP`] short interjections from others ("Mm-hmm.") in between don't
+/// stop a join; they stay as their own lines after it. Redacted lines, lines the user
+/// corrected and lines without an end time are left alone. Joined lines lose their answers so
+/// the after-call classification asks again; their tags stay until then. Returns how many
+/// lines were folded into an earlier one.
 pub fn merge_lines(segs: &mut Vec<Segment>) -> usize {
     let before = segs.len();
     let mut out: Vec<Segment> = Vec::with_capacity(before);
     for s in segs.drain(..) {
-        match out.last_mut() {
-            Some(prev) if joins(prev, &s) => {
-                prev.text = format!("{} {}", prev.text.trim_end(), s.text.trim_start());
+        let mut at = out.len();
+        while at > 0
+            && out.len() - at < JOIN_SKIP
+            && out[at - 1].speaker_id != s.speaker_id
+            && out[at - 1].text.split_whitespace().count() <= 2
+        {
+            at -= 1;
+        }
+        // The line right before, else the same speaker's line before the interjections.
+        let target = [out.len(), at]
+            .into_iter()
+            .filter(|&i| i > 0)
+            .find(|&i| joins(&out[i - 1], &s));
+        match target.map(|i| &mut out[i - 1]) {
+            Some(prev) => {
+                let head = prev.text.trim_end();
+                let head = if starts_lower(&s) {
+                    head.strip_suffix('.').unwrap_or(head)
+                } else {
+                    head
+                };
+                prev.text = format!("{head} {}", s.text.trim_start());
                 prev.end_ms = s.end_ms;
                 for t in s.tags {
                     if !prev
@@ -868,7 +906,7 @@ pub fn merge_lines(segs: &mut Vec<Segment>) -> usize {
                 }
                 prev.due = prev.due.take().or(s.due);
             }
-            _ => out.push(s),
+            None => out.push(s),
         }
     }
     *segs = out;
@@ -884,7 +922,15 @@ fn joins(prev: &Segment, next: &Segment) -> bool {
         && !fixed(next)
         && next.start_ms.saturating_sub(prev.end_ms) <= JOIN_GAP_MS
         && next.end_ms.saturating_sub(prev.start_ms) <= JOIN_MAX_MS
-        && !prev.text.trim_end().ends_with(['.', '?', '!'])
+        && (!prev.text.trim_end().ends_with(['.', '?', '!']) || starts_lower(next))
+}
+
+fn starts_lower(s: &Segment) -> bool {
+    s.text
+        .trim_start()
+        .chars()
+        .next()
+        .is_some_and(char::is_lowercase)
 }
 
 /// Owner distribution for a live segment: the speaker owns their own "I'll…".

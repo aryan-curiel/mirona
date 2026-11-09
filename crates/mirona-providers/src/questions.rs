@@ -97,7 +97,7 @@ pub const SEGMENT_QUESTIONS: [YesNo; 5] = [
         question: "Is this an action item?",
         instructions: "Someone in this transcript commits to, or is assigned, a concrete work task to do after the meeting.",
         yes: "A person takes on or is given a specific work task (explicitly or implicitly, e.g. 'I can ping them', 'Sure' to a request).",
-        no: "Only status updates, vague intentions with no owner ('we should talk about that'), or social plans.",
+        no: "Status updates, plans described in general ('next week we can involve QA'), open offers of help ('let us know if you need anything'), fallbacks ('if they don't have time, I'll take it'), questions or asking for an estimate, vague intentions with no owner ('we should talk about that'), or social plans.",
     },
     YesNo {
         id: "decision",

@@ -260,11 +260,50 @@ fn delete_voiceprint(st: St, person_id: String) -> Res<()> {
 }
 
 #[tauri::command]
-fn correct_answer(st: St, correction: Correction) -> Res<usize> {
+fn correct_answer(app: AppHandle, st: St, correction: Correction) -> Res<usize> {
     let engine = st.engine();
-    let mut s = engine.store.lock().unwrap();
-    s.correct(correction)?;
-    Ok(s.corrections().len())
+    let n = {
+        let mut s = engine.store.lock().unwrap();
+        s.correct(correction.clone())?;
+        s.corrections().len()
+    };
+    if correction.answer_id == "action" && correction.value {
+        word_confirmed_action(&app, engine, &correction.segment_id);
+    }
+    Ok(n)
+}
+
+/// A line the user confirmed as an action is filed with its raw text; the LLM rewords it as a
+/// short task in the background (a `Notice` makes the app reload it).
+fn word_confirmed_action(app: &AppHandle, engine: Arc<Engine>, segment_id: &str) {
+    let suffix = format!("-ai-{segment_id}");
+    let item = engine
+        .store
+        .lock()
+        .unwrap()
+        .action_items()
+        .into_iter()
+        .find(|a| a.id.ends_with(&suffix));
+    let Some(item) = item else { return };
+    let tx = events(app);
+    std::thread::spawn(move || {
+        let res = Llm::from_config(&engine.config())
+            .and_then(|llm| mirona_engine::classify::word_action(&engine.store, &item.id, &llm));
+        let ev = match res {
+            Ok(true) => notice(
+                &item.meeting_id,
+                "Action item worded as a task.".into(),
+                false,
+            ),
+            Ok(false) => return,
+            Err(e) => notice(
+                &item.meeting_id,
+                format!("Action item kept as said: {e}"),
+                true,
+            ),
+        };
+        tx.send(ev).ok();
+    });
 }
 
 /// The user set a meeting's tags; ones not in the list yet join it.
@@ -324,6 +363,18 @@ fn resolve_review(
             .map(|t| t.about)
             .unwrap_or_default();
         changed(&app, engine.add_tag(&st.app_dir, &review.value, &about))?;
+    }
+    if accept && matches!(review.question.as_str(), "action" | "action_item") {
+        let seg = review.segment_id.clone().or_else(|| {
+            let m = engine.store.lock().unwrap().meeting(&meeting_id).ok()?;
+            m.segments
+                .into_iter()
+                .find(|x| Some(x.start_ms) == review.at_ms)
+                .map(|x| x.id)
+        });
+        if let Some(seg) = seg {
+            word_confirmed_action(&app, engine.clone(), &seg);
+        }
     }
     if draft {
         let tx = events(&app);

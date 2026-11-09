@@ -780,3 +780,38 @@ fn split_sentences_are_joined() {
     assert_eq!((segs[0].id.as_str(), segs[0].end_ms), ("m-0", 4_000));
     assert!(segs[0].answers.is_empty());
 }
+
+#[test]
+fn lowercase_continuations_and_interjections_join() {
+    let line = |who: &str, at: u32, end: u32, text: &str| {
+        let mut s = live_seg(&format!("m-{at}"), who, at, text);
+        s.end_ms = end;
+        s
+    };
+    // Lines from a real meeting: Parakeet put a period mid-sentence, and a "Mm-hmm." from
+    // someone else sat between two halves.
+    let mut segs = vec![
+        line("me", 0, 2_000, "We'll have a conversation with Peter."),
+        line("me", 2_500, 4_000, "to see if he can help."),
+        line(
+            "them",
+            5_000,
+            7_000,
+            "I mean we need to recommend for example",
+        ),
+        line("me", 6_500, 6_900, "Mm-hmm."),
+        line("them", 7_300, 9_000, "a couple of games."),
+        line("them", 9_500, 10_000, "Okay."),
+    ];
+    assert_eq!(merge_lines(&mut segs), 2);
+    let texts: Vec<&str> = segs.iter().map(|s| s.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        [
+            "We'll have a conversation with Peter to see if he can help.",
+            "I mean we need to recommend for example a couple of games.",
+            "Mm-hmm.",
+            "Okay.", // capitalized after a period: a new sentence
+        ]
+    );
+}

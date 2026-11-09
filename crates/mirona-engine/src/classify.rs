@@ -772,6 +772,70 @@ pub fn propose_tag(
     Ok(Some(tag))
 }
 
+const WORD_ACTION_RULES: &str = "You turn a meeting line that was confirmed as an action \
+item into one short task. Start with a verb, keep it under 15 words, use only what the lines \
+say (no new details) and write it in the language of the lines. Leave out who does it, unless \
+it's someone other than the speaker. The earlier lines are context only. Reply with the task \
+only.";
+
+/// The user confirmed a line as an action (`Store::correct` filed it with the line's raw
+/// text): ask the LLM for a short task and put it on the item. A sensitive line is never sent
+/// to a cloud LLM; it keeps its text. Returns whether the text changed.
+pub fn word_action(store: &Shared, item_id: &str, llm: &impl LlmProvider) -> Result<bool> {
+    let (m, item) = {
+        let s = store.lock().unwrap();
+        let item = s
+            .action_items()
+            .into_iter()
+            .find(|a| a.id == item_id)
+            .ok_or("no action item")?;
+        (s.meeting(&item.meeting_id)?, item)
+    };
+    let Some(at) = m
+        .segments
+        .iter()
+        .position(|s| Some(s.start_ms) == item.at_ms)
+    else {
+        return Ok(false);
+    };
+    let seg = &m.segments[at];
+    if seg.is_sensitive() && llm.locality() != Locality::Local {
+        return Ok(false);
+    }
+    let line = |s: &Segment| format!("{}: {}", speaker_name(&m, s), s.text);
+    let context: Vec<String> = m.segments[at.saturating_sub(3)..at]
+        .iter()
+        .filter(|s| !s.is_sensitive())
+        .map(line)
+        .collect();
+    let user = format!(
+        "Earlier lines:\n{}\n\nAction item line:\n{}",
+        context.join("\n"),
+        line(seg)
+    );
+    let prompt = Prompt {
+        system: WORD_ACTION_RULES,
+        user: &user,
+        json: false,
+    };
+    let text = block_on(llm.complete(&prompt, &mut |_| {}))
+        .map_err(|e| e.to_string())?
+        .text;
+    let Some(task) = parse_task(&text) else {
+        return Ok(false);
+    };
+    store.lock().unwrap().set_action_text(item_id, &task)?;
+    Ok(true)
+}
+
+/// The first line of the model's answer, without quotes or a bullet; `None` if empty or long.
+fn parse_task(text: &str) -> Option<String> {
+    let text = text.split_once("</think>").map_or(text, |(_, a)| a);
+    let line = text.lines().map(str::trim).find(|l| !l.is_empty())?;
+    let task = line.trim_matches(['`', '"', '\'', '*', '-', ' ']);
+    (!task.is_empty() && task.len() <= 200).then(|| task.to_string())
+}
+
 /// `tag | about` from the model's answer; `None` for NONE or anything that isn't one short tag.
 fn parse_proposal(text: &str) -> Option<(String, String)> {
     let text = text.split_once("</think>").map_or(text, |(_, a)| a);
@@ -1056,7 +1120,16 @@ mod tests {
             prompt: &Prompt<'_>,
             on_text: &mut (dyn FnMut(&str) + Send),
         ) -> impl Future<Output = PResult<mirona_providers::Completion>> + Send {
-            let text = if prompt.system == PROPOSE_RULES {
+            let text = if prompt.system == WORD_ACTION_RULES {
+                assert!(
+                    prompt
+                        .user
+                        .ends_with("Them: Great, then we go with the fixed price."),
+                    "{}",
+                    prompt.user
+                );
+                "<think></think>\n\"Confirm the fixed price\"".to_string()
+            } else if prompt.system == PROPOSE_RULES {
                 assert!(
                     prompt.user.contains("- project:Northwind Bank"),
                     "{}",
@@ -1368,6 +1441,30 @@ mod tests {
         let m = store.lock().unwrap().meeting("m1").unwrap();
         assert!(!m.segments[0].tags.iter().any(|t| t.kind == TagKind::Action));
         assert!(m.answers.is_some());
+    }
+
+    #[test]
+    fn a_confirmed_line_is_worded_as_a_task() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, segs) = meeting(dir.path());
+        let (events, _rx) = channel();
+        reclassify(&store, &cfg(), "m1", &Scripted::default(), &events).unwrap();
+        let fix = mirona_core::Correction {
+            segment_id: segs[1].id.clone(),
+            answer_id: "action".into(),
+            value: true,
+        };
+        store.lock().unwrap().correct(fix).unwrap();
+        let id = format!("m1-ai-{}", segs[1].id);
+        assert!(word_action(&store, &id, &Llm).unwrap());
+        let items = store.lock().unwrap().action_items();
+        let item = items.iter().find(|a| a.id == id).unwrap();
+        assert_eq!(item.text, "Confirm the fixed price");
+        assert_eq!(
+            parse_task("<think>x</think>\n\n- \"Ship it\"\n"),
+            Some("Ship it".into())
+        );
+        assert_eq!(parse_task("  \n"), None);
     }
 
     #[test]
