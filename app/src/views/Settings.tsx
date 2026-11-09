@@ -4,7 +4,7 @@ import { type SettingsTab, useStore } from "../store";
 import { allTags, api, LLM_LOCAL, type Settings } from "../lib/api";
 import { applyPlatform, detected } from "../lib/platform";
 import { CopyLine, Folder, ModelDownload } from "./Setup";
-import { Icon, type IconName, Logo, Toggle } from "../components/ui";
+import { Icon, type IconName, Logo, QwenNote, Toggle } from "../components/ui";
 import { shortcutKeys, shortcutLabel, Toast } from "../components/Shell";
 
 function Row({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
@@ -800,6 +800,7 @@ function SettingsView() {
             </span>
           </div>
         </Row>
+        {privacy && st.classification === "jev" && <QwenNote />}
       </section>
           <Storage st={st} save={save} tags={tagNames} />
         </>

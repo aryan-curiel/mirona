@@ -114,3 +114,13 @@ export function Reveal({ open, children }: { open: boolean; children: ReactNode 
     </div>
   );
 }
+
+/** Shown next to the privacy toggle: privacy mode swaps Jev for the local qwen3:4b classifier. */
+export function QwenNote() {
+  return (
+    <p role="note" className="mx-5 mb-3 flex items-start gap-2 rounded-lg bg-accent-tint px-3 py-2 text-[13px] leading-snug text-accent-strong">
+      <Icon name="info" size={16} className="mt-px shrink-0" />
+      Because privacy mode is on, Mirona classifies lines and meetings with Qwen (qwen3:4b), which runs on this Mac but is less accurate than Jev.
+    </p>
+  );
+}

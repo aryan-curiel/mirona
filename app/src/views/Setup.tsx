@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { applyPlatform, detected } from "../lib/platform";
 import { needsSetup, useStore } from "../store";
 import { api, type ModelProgress, type Permission } from "../lib/api";
-import { Icon, type IconName, PageHeader, Toggle } from "../components/ui";
+import { Icon, type IconName, PageHeader, QwenNote, Toggle } from "../components/ui";
 import { shortcutLabel, Toast } from "../components/Shell";
 
 export function CopyLine({ text }: { text: string }) {
@@ -245,6 +245,7 @@ function Preferences() {
       <Pref title="Privacy mode" sub="No meeting data leaves this Mac. Off, cloud models can be picked in Settings.">
         <Toggle on={st.privacy} onChange={s.setPrivacy} label="Privacy mode" />
       </Pref>
+      {st.privacy && st.classification === "jev" && <QwenNote />}
       <Pref title="Consent reminder" sub="Before each recording, a nudge to tell people, with a message to paste.">
         <Toggle on={st.consentReminder} onChange={(consentReminder) => save({ consentReminder })} label="Consent reminder" />
       </Pref>
