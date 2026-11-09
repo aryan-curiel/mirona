@@ -33,6 +33,7 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 
+mod tray_icon;
 mod update;
 
 type Res<T> = Result<T, String>;
@@ -1018,7 +1019,62 @@ fn rec_changed(app: &AppHandle) {
         item.1.set_enabled(state.recording.is_some()).ok();
         item.1.set_checked(state.mic_muted).ok();
     }
+    if state.recording.is_some() {
+        animate_tray(app);
+    }
     app.emit("recording", state).ok();
+}
+
+const TRAY_PNG: &[u8] = include_bytes!("../icons/tray.png");
+static TRAY_ANIMATING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// While recording, the menu bar icon's bars move (~10 fps) next to a red dot, or a muted
+/// mic while the mic is muted; the plain icon comes back when recording stops. macOS only.
+fn animate_tray(app: &AppHandle) {
+    use std::sync::atomic::Ordering;
+    if !cfg!(target_os = "macos") || TRAY_ANIMATING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let start = std::time::Instant::now();
+        let mut dark = false;
+        for n in 0u32.. {
+            let Some(tray) = app.tray_by_id("mirona") else {
+                break;
+            };
+            let state = app.state::<AppState>().rec_state();
+            if state.recording.is_none() {
+                TRAY_ANIMATING.store(false, Ordering::SeqCst);
+                if let Ok(icon) = tauri::image::Image::from_bytes(TRAY_PNG) {
+                    tray.set_icon(Some(icon)).ok();
+                }
+                tray.set_icon_as_template(true).ok();
+                return;
+            }
+            if n == 0 {
+                tray.set_icon_as_template(false).ok();
+            }
+            if n % 10 == 0 {
+                // The bars aren't a template image, so follow light/dark by hand.
+                dark = app
+                    .get_webview_window("main")
+                    .and_then(|w| w.theme().ok())
+                    .is_some_and(|t| t == tauri::Theme::Dark);
+            }
+            let badge = if state.mic_muted {
+                tray_icon::Badge::Muted
+            } else {
+                tray_icon::Badge::Dot
+            };
+            let rgba = tray_icon::frame(start.elapsed().as_secs_f32(), badge, dark);
+            let size = tray_icon::SIZE;
+            tray.set_icon(Some(tauri::image::Image::new_owned(rgba, size, size)))
+                .ok();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        TRAY_ANIMATING.store(false, Ordering::SeqCst);
+    });
 }
 
 /// A sender whose events go out on the "pipeline" channel, until every clone is dropped.
@@ -1772,7 +1828,7 @@ fn tray(app: &tauri::App, shortcut: &str, mute_shortcut: &str) -> tauri::Result<
     let quit = PredefinedMenuItem::quit(app, Some("Quit Mirona"))?;
     let menu = Menu::with_items(app, &[&toggle_item, &mute_item, &show, &settings, &quit])?;
     let icon = if cfg!(target_os = "macos") {
-        tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?
+        tauri::image::Image::from_bytes(TRAY_PNG)?
     } else {
         tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))?
     };

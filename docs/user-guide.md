@@ -48,7 +48,9 @@ as action items, decisions, open questions or small talk as they come in. Write 
 **Notes** tab as you go. Muted in the call and talking to someone in the room? Click **Mute me**
 in the recording bar, the menu bar icon › Mute my mic, or press <kbd>⌘⌥⇧M</kbd> (Settings ›
 General › Mute shortcut): until you unmute, your mic records silence, so none of it reaches the
-transcript or the audio file. Stop with the same button or shortcut. Mirona then:
+transcript or the audio file. On macOS the menu bar icon shows it too: its bars move with
+a red dot while recording, and the dot becomes a crossed-out mic while you're muted. Stop with
+the same button or shortcut. Mirona then:
 
 1. compresses the audio, splits "Them" into each speaker and matches voices it knows
 2. joins lines split mid-sentence and tags any lines still untagged
