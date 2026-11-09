@@ -1,5 +1,5 @@
 import { getVersion } from "@tauri-apps/api/app";
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { type SettingsTab, useStore } from "../store";
 import { allTags, api, LLM_LOCAL, type Settings } from "../lib/api";
 import { applyPlatform, detected } from "../lib/platform";
@@ -182,52 +182,60 @@ const QUESTION_LABELS: [string, string][] = [
   ["coverage", "Summary covers every action item"],
 ];
 
-/** One number per question; empty means the classifier's default. */
-function Thresholds({ st, onSave }: { st: Settings; onSave: (t: Record<string, number>) => void }) {
-  const set = (q: string, raw: string) => {
-    const next = { ...st.thresholds };
+/** Two numbers per question: at/above "Approve at" an answer is filed as fact; between the two it
+ * needs review; below "Reject below" it is dropped without asking (only counted). Empty means the
+ * default. Questions that never go to review have no floor. */
+function Thresholds({ st, save }: { st: Settings; save: (s: Partial<Settings>) => void }) {
+  const set = (key: "thresholds" | "floors", q: string, raw: string) => {
+    const next = { ...st[key] };
     const v = Number.parseFloat(raw);
     if (raw.trim() === "" || Number.isNaN(v)) delete next[q];
     else next[q] = Math.min(1, Math.max(0, v));
-    onSave(next);
+    save({ [key]: next });
   };
   return (
     <div>
       <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-4 gap-y-1.5 text-[14px]">
-        {QUESTION_LABELS.map(([q, label]) => {
-          const own = st.thresholds[q];
-          const def = st.thresholdDefaults[q] ?? 0.6;
-          return (
-            <ThresholdRow key={q} label={label} value={own} def={def} onSave={(raw) => set(q, raw)} />
-          );
-        })}
+        <span />
+        <span className="text-[12px] text-muted">Approve at</span>
+        <span className="text-[12px] text-muted">Reject below</span>
+        {QUESTION_LABELS.map(([q, label]) => (
+          <Fragment key={q}>
+            <span>{label}</span>
+            <NumberField label={`Approve at: ${label}`} value={st.thresholds[q]} def={st.thresholdDefaults[q] ?? 0.85} onSave={(raw) => set("thresholds", q, raw)} />
+            {(st.floorDefaults[q] ?? 0) > 0 || st.floors[q] != null ? (
+              <NumberField label={`Reject below: ${label}`} value={st.floors[q]} def={st.floorDefaults[q] ?? 0} onSave={(raw) => set("floors", q, raw)} />
+            ) : (
+              <span className="w-24 text-center text-[12px] text-muted">never</span>
+            )}
+          </Fragment>
+        ))}
       </div>
-      <p className="mt-2 text-[12px] text-muted">Defaults come from the eval (ADR 0001) and are stricter for the local LLM. Leave a field empty to use the default.</p>
+      <p className="mt-2 text-[12px] text-muted">
+        Defaults come from the eval (ADR 0001) and are stricter for the local LLM. Leave a field empty to use the default (shown greyed). Sensitive lines are never rejected without asking.
+      </p>
     </div>
   );
 }
 
-function ThresholdRow({ label, value, def, onSave }: { label: string; value?: number; def: number; onSave: (raw: string) => void }) {
+function NumberField({ label, value, def, onSave }: { label: string; value?: number; def: number; onSave: (raw: string) => void }) {
   const [v, setV] = useState(value?.toString() ?? "");
   useEffect(() => setV(value?.toString() ?? ""), [value]);
   return (
-    <>
-      <span>{label}</span>
-      <input
-        type="number"
-        min={0}
-        max={1}
-        step={0.05}
-        aria-label={`Threshold: ${label}`}
-        placeholder={def.toFixed(2)}
-        className="mi-field w-24 font-mono text-[13px]"
-        value={v}
-        onChange={(e) => setV(e.target.value)}
-        onBlur={() => v !== (value?.toString() ?? "") && onSave(v)}
-        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-      />
-      <span className="w-28 text-[12px] text-muted">{value == null ? "default" : `default ${def.toFixed(2)}`}</span>
-    </>
+    <input
+      type="number"
+      min={0}
+      max={1}
+      step={0.05}
+      aria-label={label}
+      placeholder={def.toFixed(2)}
+      title={value == null ? "Default" : `Default ${def.toFixed(2)}`}
+      className="mi-field w-24 font-mono text-[13px]"
+      value={v}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={() => v !== (value?.toString() ?? "") && onSave(v)}
+      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+    />
   );
 }
 
@@ -951,8 +959,8 @@ function SettingsView() {
       {tab === "advanced" && (
         <>
       <section className="mi-card overflow-hidden">
-        <Row title="Thresholds" sub="Below its threshold, an answer is marked “Needs review” instead of filed as fact">
-          <Thresholds st={st} onSave={(thresholds) => save({ thresholds })} />
+        <Row title="Thresholds" sub="At or above “Approve at”, an answer is filed as fact. Between the two it is marked “Needs review”. Below “Reject below” it is dropped without asking, and shown only as a count under To check">
+          <Thresholds st={st} save={save} />
         </Row>
         <Row title="Your corrections" sub="Every answer you change is kept as a labelled example">
           <p className="text-[14px] text-ink-3">

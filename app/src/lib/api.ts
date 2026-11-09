@@ -40,6 +40,10 @@ export type Settings = {
   thresholds: Record<string, number>;
   /** Defaults for the classifier in use (read-only). */
   thresholdDefaults: Record<string, number>;
+  /** Question id → the user's floor: a model "yes" below it is rejected without asking. */
+  floors: Record<string, number>;
+  /** Floor defaults (read-only); 0 means nothing is auto-rejected. */
+  floorDefaults: Record<string, number>;
   /** Tag (`group:name` or `name`) → what it covers. The classifier asks one yes/no per tag. */
   tags: Record<string, string>;
   /** Tag group (`project`) → what its tags have in common. */
@@ -212,9 +216,12 @@ export const TONES = ["Very unhappy", "Concerned", "Neutral", "Positive", "Delig
 export const toneLabel = (t: number) => TONES[Math.min(4, Math.max(0, Math.round(t)))];
 export const PRIORITIES = ["Nothing to do", "Low", "Normal", "High", "Very high", "Critical"];
 export const priorityLabel = (p: number) => PRIORITIES[Math.min(5, Math.max(0, Math.round(p)))];
+type Judged = { source: string; answer: boolean; probability: number; threshold: number; floor: number };
+const unsure = (a: Judged) => a.source === "model" && a.answer && a.probability < a.threshold;
 /** Same rule as `Answer::needs_review` in mirona-core. */
-export const needsReview = (a: { source: string; answer: boolean; probability: number; threshold: number }) =>
-  a.source === "model" && a.answer && a.probability < a.threshold;
+export const needsReview = (a: Judged) => unsure(a) && a.probability >= a.floor;
+/** Same rule as `Answer::rejected`: below the floor, dropped without asking. */
+export const rejected = (a: Judged) => unsure(a) && a.probability < a.floor;
 /** A choice the model is sure enough of (or the user confirmed). */
 export const sure = (c: { confirmed: boolean; probability: number; threshold: number }) => c.confirmed || c.probability >= c.threshold;
 /** Every tag: the list in Settings plus any a meeting still carries, sorted. */

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../store";
-import { allTags, fmt, needsReview, priorityLabel, sure, toneLabel, typeLabel } from "../lib/api";
+import { allTags, fmt, needsReview, priorityLabel, rejected, sure, toneLabel, typeLabel } from "../lib/api";
 import { Label, Mono, Toggle } from "../components/ui";
 import type { Answer } from "../bindings/Answer";
 import type { ChoiceAnswer } from "../bindings/ChoiceAnswer";
@@ -23,6 +23,7 @@ function Bar({ p, threshold, color = "var(--mi-accent)" }: { p: number; threshol
 function verdict(a: Answer) {
   if (a.source === "user") return { text: a.answer ? "Yes (you)" : "No (you)", cls: "mi-chip--action" };
   if (needsReview({ ...a, threshold: thresholdOf(a) })) return { text: "Needs review", cls: "mi-chip--review" };
+  if (rejected({ ...a, threshold: thresholdOf(a) })) return { text: "No (low confidence)", cls: "mi-chip--neutral" };
   if (a.answer) return { text: "Yes", cls: "mi-chip--action" };
   return { text: "No", cls: "mi-chip--neutral" };
 }
@@ -35,7 +36,8 @@ function AnswerRow({ a, segmentId }: { a: Answer; segmentId: string }) {
   const t = thresholdOf(a);
   const v = verdict(a);
   const unsure = needsReview({ ...a, threshold: t });
-  const color = a.source === "user" || (a.answer && !unsure) ? "var(--mi-accent)" : unsure ? "var(--mi-review-edge)" : "#B9B9B2";
+  const no = rejected({ ...a, threshold: t });
+  const color = a.source === "user" || (a.answer && !unsure && !no) ? "var(--mi-accent)" : unsure ? "var(--mi-review-edge)" : "#B9B9B2";
   return (
     <div className="py-1.5">
       <div className="flex min-h-8 items-center gap-2 text-[14px]">
@@ -53,7 +55,7 @@ function AnswerRow({ a, segmentId }: { a: Answer; segmentId: string }) {
         ) : (
           <>
             <span className={`mi-chip ${v.cls}`}>{v.text}</span>
-            <button type="button" className={link} aria-label={`Change ${a.question} to ${a.answer ? "No" : "Yes"}`} onClick={() => correct(segmentId, a.id, !a.answer)}>
+            <button type="button" className={link} aria-label={`Change ${a.question} to ${a.answer && !no ? "No" : "Yes"}`} onClick={() => correct(segmentId, a.id, !a.answer || no)}>
               Change
             </button>
           </>
@@ -73,7 +75,7 @@ function AnswerRow({ a, segmentId }: { a: Answer; segmentId: string }) {
 function Answers({ seg }: { seg: Segment }) {
   const details = useStore((s) => s.modelDetails);
   const [all, setAll] = useState(false);
-  const isNo = (a: Answer) => !a.answer && !needsReview({ ...a, threshold: thresholdOf(a) });
+  const isNo = (a: Answer) => (!a.answer && !needsReview({ ...a, threshold: thresholdOf(a) })) || rejected({ ...a, threshold: thresholdOf(a) });
   const shown = details || all ? seg.answers : seg.answers.filter((a) => !isNo(a));
   const hidden = seg.answers.length - shown.length;
   return (
@@ -98,6 +100,7 @@ const review = (question: string, value: string, c?: ChoiceAnswer): Review => ({
   value,
   probability: c?.probability ?? 0,
   threshold: c?.threshold ?? 0,
+  rejected: false,
 });
 
 /** The meeting's tags: remove one with its ×, add a known one or type a new one (it joins the
@@ -209,7 +212,10 @@ function FollowUp() {
   const a = m?.answers;
   if (!a) return null;
   const t = a.followUpThreshold || 0.6;
-  const unsure = a.followUp && a.followUpProbability < t && a.followUpProbability !== 1;
+  const below = a.followUp && a.followUpProbability < t && a.followUpProbability !== 1;
+  const unsure = below && a.followUpProbability >= a.followUpFloor;
+  // Below the floor it counts as "not needed" (it shows under "Rejected" in To check).
+  const needed = a.followUp && !(below && !unsure);
   const r = review("follow_up", "yes");
   const copy = async () => {
     try {
@@ -231,8 +237,8 @@ function FollowUp() {
           </span>
         ) : (
           <>
-            <span className="font-semibold">{a.followUp ? "Needed" : "Not needed"}</span>
-            <button type="button" className={link} aria-label={`Change: follow-up email ${a.followUp ? "not needed" : "needed"}`} onClick={() => resolve(r, !a.followUp)}>
+            <span className="font-semibold">{needed ? "Needed" : "Not needed"}</span>
+            <button type="button" className={link} aria-label={`Change: follow-up email ${needed ? "not needed" : "needed"}`} onClick={() => resolve(r, !needed)}>
               Change
             </button>
           </>
@@ -244,7 +250,7 @@ function FollowUp() {
           <Mono className="text-ink-3!">{a.followUpProbability.toFixed(2)}</Mono>
         </div>
       )}
-      {a.followUp && !unsure &&
+      {needed && !unsure &&
         (a.followUpDraft ? (
           <>
             <div className="mt-3 flex gap-2">
@@ -283,15 +289,19 @@ const reviewLabel: Record<string, string> = {
   new_tag: "New tag? (only when none fits)",
 };
 
-/** Everything below its threshold, each settled in one click (NGR-158). */
+/** Everything below its threshold, each settled in one click (NGR-158). Answers below their
+ * floor were rejected without asking: only counted, listed on demand to undo. */
 function ReviewList() {
-  const items = useStore((s) => s.review);
+  const all = useStore((s) => s.review);
+  const [showLow, setShowLow] = useState(false);
   const m = useStore((s) => s.meeting);
   const resolve = useStore((s) => s.resolve);
   const jump = useStore((s) => s.jump);
   const showSensitive = useStore((s) => s.filters.showSensitive);
   const details = useStore((s) => s.modelDetails);
-  if (!m || !items.length) return null;
+  if (!m || !all.length) return null;
+  const items = all.filter((r) => !r.rejected);
+  const low = all.filter((r) => r.rejected);
   // The line a review is about; a sensitive one is quoted only with "Show sensitive text" on.
   const textAt = (r: Review) => {
     const seg = r.segmentId ? m.segments.find((x) => x.id === r.segmentId) : m.segments.find((x) => x.startMs === r.atMs);
@@ -302,15 +312,7 @@ function ReviewList() {
     }
     return r.segmentId ? seg?.text : r.question === "action_item" || r.question === "tag" ? r.value : null;
   };
-  return (
-    <section className="mb-6 rounded-lg border border-dashed border-[var(--mi-review-edge)] bg-[var(--mi-review-tint)] p-4">
-      <div className="flex items-center gap-2">
-        <Label>To check</Label>
-        <span className="mi-chip mi-chip--review">{items.length}</span>
-      </div>
-      <p className="mt-1.5 text-[13px] text-ink-3">Mirona wasn't sure about these. Agents see them as unconfirmed until you answer.</p>
-      <ul className="mt-2 flex flex-col">
-        {items.map((r) => {
+  const row = (r: Review) => {
           const text = textAt(r);
           const choice = r.question === "meeting_type" ? m.answers?.meetingType : undefined;
           return (
@@ -345,8 +347,32 @@ function ReviewList() {
               )}
             </li>
           );
-        })}
-      </ul>
+  };
+  return (
+    <section className="mb-6 rounded-lg border border-dashed border-[var(--mi-review-edge)] bg-[var(--mi-review-tint)] p-4">
+      {items.length > 0 && (
+        <>
+          <div className="flex items-center gap-2">
+            <Label>To check</Label>
+            <span className="mi-chip mi-chip--review">{items.length}</span>
+          </div>
+          <p className="mt-1.5 text-[13px] text-ink-3">Mirona wasn't sure about these. Agents see them as unconfirmed until you answer.</p>
+          <ul className="mt-2 flex flex-col">{items.map(row)}</ul>
+        </>
+      )}
+      {low.length > 0 && (
+        <div className={items.length ? "mt-3 border-t border-[var(--mi-review-edge)]/40 pt-3" : ""}>
+          <button type="button" className={`${link} -ml-1`} aria-expanded={showLow} onClick={() => setShowLow(!showLow)}>
+            {low.length} rejected for low confidence · {showLow ? "Hide" : "Show"}
+          </button>
+          {showLow && (
+            <>
+              <p className="mt-1.5 text-[13px] text-ink-3">Below their floor (Settings › Advanced › Thresholds), so treated as “no”. Say Yes to keep one.</p>
+              <ul className="mt-2 flex flex-col">{low.map(row)}</ul>
+            </>
+          )}
+        </div>
+      )}
     </section>
   );
 }

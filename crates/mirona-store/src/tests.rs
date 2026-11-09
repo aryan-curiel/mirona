@@ -566,6 +566,7 @@ fn tags_below_threshold_wait_for_review_and_user_choices_stick() {
         tag: tag.into(),
         probability: p,
         threshold: 0.6,
+        floor: 0.0,
         confirmed: false,
         proposed,
         about: String::new(),

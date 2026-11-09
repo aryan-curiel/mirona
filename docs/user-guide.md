@@ -79,8 +79,14 @@ mp4) the same way.
 - **Summary:** written from a template. Timestamps jump back to the transcript. Pick another
   template to rewrite it.
 
-Answers below their confidence threshold show as **Needs review** instead of being filed as
-fact. Thresholds are in Settings › Advanced.
+Each question has two confidence levels, in Settings › Advanced › Thresholds:
+
+- **Approve at** (0.85 by default; 0.95 for decisions): at or above it, an answer is filed as fact.
+- **Reject below** (0.60 by default): below it, the answer is treated as "no" without asking.
+
+Answers in between show as **Needs review**. Rejected ones aren't listed under **To check**; a
+line there says how many were rejected for low confidence, and **Show** lists them so you can
+still say Yes to one. Sensitive lines are never rejected without asking.
 
 ## Tags
 

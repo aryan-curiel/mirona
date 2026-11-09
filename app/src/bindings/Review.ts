@@ -16,4 +16,8 @@ question: string,
 /**
  * What the model thinks: "yes", a choice, a tag, or the action item's text.
  */
-value: string, probability: number, threshold: number, };
+value: string, probability: number, threshold: number, 
+/**
+ * Below its floor: dropped without asking. Listed so the user can still look and undo.
+ */
+rejected: boolean, };

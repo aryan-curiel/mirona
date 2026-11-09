@@ -55,6 +55,7 @@ fn answers(p: [f32; 5]) -> Vec<Answer> {
             probability: p,
             source: AnswerSource::Model,
             threshold: THRESHOLD,
+            floor: 0.0,
         })
         .collect()
 }
@@ -142,6 +143,7 @@ fn choice(value: &str, p: f32, threshold: f32, options: &[&str]) -> ChoiceAnswer
         value: value.into(),
         probability: p,
         threshold,
+        floor: 0.0,
         options: options.iter().map(|s| (*s).into()).collect(),
         confirmed: p >= threshold,
     }
@@ -167,6 +169,7 @@ fn meeting_answers(
                 tag: (*t).into(),
                 probability: *p,
                 threshold: 0.75,
+                floor: 0.0,
                 confirmed: false,
                 proposed: false,
                 about: String::new(),
@@ -178,6 +181,7 @@ fn meeting_answers(
         follow_up_draft: draft.into(),
         tone: 2.5,
         follow_up_threshold: THRESHOLD,
+        follow_up_floor: 0.0,
     }
 }
 

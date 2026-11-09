@@ -103,7 +103,8 @@ impl Store {
 
     /// Everything in a meeting that is below its threshold and not yet confirmed (NGR-158):
     /// segment answers, meeting type, tags (and a proposed new tag), follow-up, and action
-    /// items needing review.
+    /// items needing review. Answers below their floor come too, flagged `rejected`: they are
+    /// dropped without asking, listed only so the user can look and undo.
     pub fn review(&self, meeting_id: &str) -> Result<Vec<Review>> {
         let e = &self.entries[self.idx(meeting_id)?];
         let m = &e.meeting;
@@ -113,7 +114,7 @@ impl Store {
             .flat_map(|s| {
                 s.answers
                     .iter()
-                    .filter(|a| a.needs_review())
+                    .filter(|a| a.needs_review() || a.rejected())
                     .map(|a| Review {
                         segment_id: Some(s.id.clone()),
                         at_ms: Some(s.start_ms),
@@ -121,12 +122,13 @@ impl Store {
                         value: "yes".into(),
                         probability: a.probability,
                         threshold: a.threshold,
+                        rejected: a.rejected(),
                     })
             })
             .collect();
         if let Some(a) = &m.answers {
             let c = &a.meeting_type;
-            if !c.confirmed && c.probability < c.threshold && !c.value.is_empty() {
+            if c.needs_review() || c.rejected() {
                 out.push(Review {
                     segment_id: None,
                     at_ms: None,
@@ -134,12 +136,13 @@ impl Store {
                     value: c.value.clone(),
                     probability: c.probability,
                     threshold: c.threshold,
+                    rejected: c.rejected(),
                 });
             }
             for t in a
                 .tags
                 .iter()
-                .filter(|t| t.needs_review() && !has_tag(&m.tags, &t.tag))
+                .filter(|t| (t.needs_review() || t.rejected()) && !has_tag(&m.tags, &t.tag))
             {
                 out.push(Review {
                     segment_id: None,
@@ -148,6 +151,7 @@ impl Store {
                     value: t.tag.clone(),
                     probability: t.probability,
                     threshold: t.threshold,
+                    rejected: t.rejected(),
                 });
             }
             if a.follow_up_probability >= 0.5 && a.follow_up_probability < a.follow_up_threshold {
@@ -158,6 +162,7 @@ impl Store {
                     value: "yes".into(),
                     probability: a.follow_up_probability,
                     threshold: a.follow_up_threshold,
+                    rejected: a.follow_up_probability < a.follow_up_floor,
                 });
             }
         }
@@ -168,6 +173,7 @@ impl Store {
             value: a.text.clone(),
             probability: 0.0,
             threshold: 0.0,
+            rejected: false,
         }));
         Ok(out)
     }

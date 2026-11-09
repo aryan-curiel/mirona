@@ -365,6 +365,7 @@ pub fn to_answers(questions: &[Question], replies: &[Reply]) -> (Vec<Answer>, Ve
                 probability: *p,
                 source: AnswerSource::Model,
                 threshold: 0.0,
+                floor: 0.0,
             }),
             Reply::Choice { probabilities, .. } if q.id == "owner" => {
                 owners = probabilities

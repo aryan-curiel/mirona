@@ -45,6 +45,9 @@ pub struct Config {
     pub mute_shortcut: String,
     /// Question id → threshold, overriding the defaults in [`default_threshold`] (NGR-158).
     pub thresholds: BTreeMap<String, f32>,
+    /// Question id → floor, overriding [`default_floor`]: a model "yes" below it is rejected
+    /// outright instead of asked about (only counted, viewable on demand).
+    pub floors: BTreeMap<String, f32>,
     /// The user's tags: `group:name` (or `name`) → what it is about. The classifier asks one
     /// yes/no per tag over each meeting; a meeting can have many.
     pub tags: BTreeMap<String, String>,
@@ -134,6 +137,7 @@ impl Default for Config {
             shortcut: DEFAULT_SHORTCUT.into(),
             mute_shortcut: DEFAULT_MUTE_SHORTCUT.into(),
             thresholds: BTreeMap::new(),
+            floors: BTreeMap::new(),
             tags: BTreeMap::new(),
             tag_groups: BTreeMap::new(),
             clients: BTreeMap::new(),
@@ -150,16 +154,29 @@ impl Default for Config {
     }
 }
 
-/// Thresholds from the NGR-130 eval (ADR 0001): 0.60, but 0.95 for `decision` (Jev over-calls
+/// Thresholds from the NGR-130 eval (ADR 0001), raised to 0.85 for the questions that end up
+/// in "Needs review" (0.60 sent too much there as fact); 0.95 for `decision` (Jev over-calls
 /// it). The local fallback (`local`) is overconfident: 0.99 for `action`, 0.95 for `decision`
 /// and `unanswered`, and 0.50 for `sensitive` (no threshold fixes its misses, so any lean
-/// towards yes counts).
+/// towards yes counts). `sensitive`, `owner`, `due`, `speaker_name` and `coverage` stay 0.60.
 pub fn default_threshold(question: &str, local: bool) -> f32 {
     match (question, local) {
         ("decision", _) | ("unanswered", true) => 0.95,
         ("action", true) => 0.99,
         ("sensitive", true) => 0.5,
+        ("action" | "unanswered" | "smalltalk" | "meeting_type" | "tag" | "follow_up", _) => 0.85,
         _ => 0.6,
+    }
+}
+
+/// Below its floor a model "yes" is rejected without asking: 0.60 for the questions that end
+/// up in "Needs review". `sensitive` has none: a line the model leans sensitive on is always
+/// shown, never silently dropped.
+pub fn default_floor(question: &str) -> f32 {
+    match question {
+        "action" | "decision" | "unanswered" | "smalltalk" | "meeting_type" | "tag"
+        | "follow_up" => 0.6,
+        _ => 0.0,
     }
 }
 
@@ -170,6 +187,14 @@ impl Config {
             .get(question)
             .copied()
             .unwrap_or_else(|| default_threshold(question, local))
+    }
+
+    /// The floor for a question: the user's, or [`default_floor`].
+    pub fn floor(&self, question: &str) -> f32 {
+        self.floors
+            .get(question)
+            .copied()
+            .unwrap_or_else(|| default_floor(question))
     }
 
     /// A missing file means defaults; a broken one is an error, never silently reset.
@@ -284,6 +309,7 @@ Northwind = 90
 
         // Thresholds and tags round-trip; unset thresholds keep their defaults.
         cfg.thresholds.insert("action".into(), 0.8);
+        cfg.floors.insert("action".into(), 0.4);
         cfg.tags
             .insert("project:Northwind Bank".into(), "contact: Karen".into());
         cfg.tag_groups.insert("project".into(), "Clients".into());
@@ -292,7 +318,12 @@ Northwind = 90
         assert_eq!(back, cfg);
         assert!((back.threshold("action", true) - 0.8).abs() < 1e-6);
         assert!((back.threshold("decision", false) - 0.95).abs() < 1e-6);
-        assert!((back.threshold("smalltalk", true) - 0.6).abs() < 1e-6);
+        assert!((back.threshold("smalltalk", true) - 0.85).abs() < 1e-6);
+        assert!((back.threshold("owner", false) - 0.6).abs() < 1e-6);
+        // Floors: the user's, 0.60 for review questions, none for sensitive.
+        assert!((back.floor("action") - 0.4).abs() < 1e-6);
+        assert!((back.floor("tag") - 0.6).abs() < 1e-6);
+        assert!(back.floor("sensitive") < f32::EPSILON);
 
         // MCP over HTTP: off, read-only and on the default port unless set.
         assert_eq!(back.mcp_port, DEFAULT_MCP_PORT);

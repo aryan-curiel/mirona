@@ -10,6 +10,10 @@ export type TagAnswer = { tag: string,
  */
 probability: number, threshold: number, 
 /**
+ * Below it a model "yes" is rejected outright (not shown for review).
+ */
+floor: number, 
+/**
  * The user decided (kept or dropped it): never asked again or changed by a rerun.
  */
 confirmed: boolean, 

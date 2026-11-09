@@ -18,7 +18,7 @@ use mirona_core::{
     ProviderOption, Review, Segment, Speaker,
 };
 use mirona_engine::{Engine, Llm, Paths, Session};
-use mirona_providers::config::{Config, default_threshold};
+use mirona_providers::config::{Config, default_floor, default_threshold};
 use mirona_providers::{check_privacy, keychain};
 use mirona_store::Store;
 use serde::{Deserialize, Serialize};
@@ -1304,6 +1304,11 @@ struct Settings {
     /// The defaults for the classifier in use (local or Jev); read-only.
     #[serde(default, skip_deserializing)]
     threshold_defaults: BTreeMap<String, f32>,
+    /// Question id → the user's floor (below it: rejected without asking); see `floor_defaults`.
+    #[serde(default)]
+    floors: BTreeMap<String, f32>,
+    #[serde(default, skip_deserializing)]
+    floor_defaults: BTreeMap<String, f32>,
     /// Tag (`group:name` or `name`) → what it covers; one yes/no each per meeting.
     #[serde(default)]
     tags: BTreeMap<String, String>,
@@ -1404,6 +1409,11 @@ impl Settings {
                     .map(|q| ((*q).to_string(), default_threshold(q, local)))
                     .collect()
             },
+            floors: cfg.floors.clone(),
+            floor_defaults: QUESTIONS
+                .iter()
+                .map(|q| ((*q).to_string(), default_floor(q)))
+                .collect(),
             tags: cfg.tags.clone(),
             tag_groups: cfg.tag_groups.clone(),
             detect_calls: cfg.detect_calls,
@@ -1466,7 +1476,7 @@ impl Settings {
         if !["speakrs", "speakrs-cpu", "off"].contains(&self.diarization.as_str()) {
             return Err(format!("unknown speaker detection {}", self.diarization));
         }
-        for (q, t) in &self.thresholds {
+        for (q, t) in self.thresholds.iter().chain(&self.floors) {
             if !QUESTIONS.contains(&q.as_str()) || !(0.0..=1.0).contains(t) {
                 return Err(format!("a threshold for {q} must be between 0 and 1"));
             }
@@ -1504,6 +1514,7 @@ impl Settings {
         cfg.providers
             .insert("diarization".into(), self.diarization.clone());
         cfg.thresholds.clone_from(&self.thresholds);
+        cfg.floors.clone_from(&self.floors);
         // A removed tag stops auto-recording with it.
         cfg.auto_record = self
             .auto_record
@@ -2219,6 +2230,7 @@ mod tests {
             value: value.into(),
             probability: 0.5,
             threshold: 0.6,
+            rejected: false,
         };
         assert!(!resolve(&mut s, id, &r("meeting_type", "standup"), true).unwrap());
         let a = s.meeting(id).unwrap().answers.unwrap();

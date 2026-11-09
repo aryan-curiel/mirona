@@ -428,7 +428,7 @@ pub fn meeting(store: &Store, id: &str) -> Result<Value, String> {
         "meeting_type": m.answers.as_ref()
             .filter(|a| a.meeting_type.confirmed || a.meeting_type.probability >= a.meeting_type.threshold)
             .map(|a| &a.meeting_type.value),
-        "unconfirmed": store.review(id)?.iter().map(|r| json!({
+        "unconfirmed": store.review(id)?.iter().filter(|r| !r.rejected).map(|r| json!({
             "question": r.question, "value": r.value, "at": r.at_ms.map(at),
         })).collect::<Vec<_>>(),
     }))

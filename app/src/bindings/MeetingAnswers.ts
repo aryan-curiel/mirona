@@ -18,4 +18,8 @@ tone: number,
 /**
  * Below it, `follow_up` needs review and no draft is written.
  */
-followUpThreshold: number, };
+followUpThreshold: number, 
+/**
+ * Below it a follow-up "yes" is rejected outright (not shown for review).
+ */
+followUpFloor: number, };

@@ -3,4 +3,8 @@
 /**
  * A meeting-level choice question with a confidence threshold (meeting type).
  */
-export type ChoiceAnswer = { value: string, probability: number, threshold: number, options: Array<string>, confirmed: boolean, };
+export type ChoiceAnswer = { value: string, probability: number, threshold: number, 
+/**
+ * Below it the choice is rejected outright (not shown for review).
+ */
+floor: number, options: Array<string>, confirmed: boolean, };

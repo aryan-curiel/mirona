@@ -10,4 +10,8 @@ export type Answer = { id: string, question: string, kind: QuestionKind, answer:
  * The question's threshold when it was answered (NGR-158): a model "yes" with
  * `probability` below it needs review instead of being acted on.
  */
-threshold: number, };
+threshold: number, 
+/**
+ * Below it a model "yes" is rejected outright: never shown for review, only counted.
+ */
+floor: number, };

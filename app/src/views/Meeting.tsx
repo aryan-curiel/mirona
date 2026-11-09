@@ -99,7 +99,7 @@ function MeetingHeader({ m }: { m: Meeting }) {
   const rename = useStore((s) => s.rename);
   const busy = useStore((s) => s.processing.includes(m.id) || m.id in s.summarizing);
   const live = useStore((s) => s.recording?.meetingId === m.id);
-  const reviews = useStore((s) => s.review.length);
+  const reviews = useStore((s) => s.review.filter((r) => !r.rejected).length);
   const [title, setTitle] = useState(m.title);
   useEffect(() => setTitle(m.title), [m.title]);
   const rerunning = useStore((s) => s.rerunning[m.id]);

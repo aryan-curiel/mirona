@@ -112,6 +112,9 @@ pub struct Answer {
     /// `probability` below it needs review instead of being acted on.
     #[serde(default)]
     pub threshold: f32,
+    /// Below it a model "yes" is rejected outright: never shown for review, only counted.
+    #[serde(default)]
+    pub floor: f32,
 }
 
 impl TagAnswer {
@@ -120,15 +123,33 @@ impl TagAnswer {
         !self.proposed && self.probability >= self.threshold
     }
 
-    /// Waiting for the user: a model "yes" below its threshold, or a proposed new tag.
+    /// Waiting for the user: a model "yes" between floor and threshold, or a proposed new tag.
     pub fn needs_review(&self) -> bool {
-        !self.confirmed && (self.proposed || (self.probability >= 0.5 && !self.assigned()))
+        (self.proposed && !self.confirmed) || (self.unsure() && self.probability >= self.floor)
+    }
+
+    /// A model "yes" below its floor: dropped without asking, only counted.
+    pub fn rejected(&self) -> bool {
+        self.unsure() && self.probability < self.floor
+    }
+
+    fn unsure(&self) -> bool {
+        !self.confirmed && !self.proposed && self.probability >= 0.5 && !self.assigned()
     }
 }
 
 impl Answer {
-    /// A model "yes" below its threshold: shown as "Needs review", never acted on.
+    /// A model "yes" between floor and threshold: shown as "Needs review", never acted on.
     pub fn needs_review(&self) -> bool {
+        self.unsure() && self.probability >= self.floor
+    }
+
+    /// A model "yes" below its floor: dropped without asking, only counted.
+    pub fn rejected(&self) -> bool {
+        self.unsure() && self.probability < self.floor
+    }
+
+    fn unsure(&self) -> bool {
         self.source == AnswerSource::Model && self.answer && self.probability < self.threshold
     }
 }
@@ -274,8 +295,26 @@ pub struct ChoiceAnswer {
     pub value: String,
     pub probability: f32,
     pub threshold: f32,
+    /// Below it the choice is rejected outright (not shown for review).
+    #[serde(default)]
+    pub floor: f32,
     pub options: Vec<String>,
     pub confirmed: bool,
+}
+
+impl ChoiceAnswer {
+    /// Below threshold and not decided by the user.
+    fn unsure(&self) -> bool {
+        !self.confirmed && self.probability < self.threshold && !self.value.is_empty()
+    }
+
+    pub fn needs_review(&self) -> bool {
+        self.unsure() && self.probability >= self.floor
+    }
+
+    pub fn rejected(&self) -> bool {
+        self.unsure() && self.probability < self.floor
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -297,6 +336,9 @@ pub struct MeetingAnswers {
     /// Below it, `follow_up` needs review and no draft is written.
     #[serde(default)]
     pub follow_up_threshold: f32,
+    /// Below it a follow-up "yes" is rejected outright (not shown for review).
+    #[serde(default)]
+    pub follow_up_floor: f32,
 }
 
 /// Does this meeting talk about a tag? Tags are `group:name` or a bare `name`
@@ -309,6 +351,9 @@ pub struct TagAnswer {
     /// P(yes); 0 for a proposed tag.
     pub probability: f32,
     pub threshold: f32,
+    /// Below it a model "yes" is rejected outright (not shown for review).
+    #[serde(default)]
+    pub floor: f32,
     /// The user decided (kept or dropped it): never asked again or changed by a rerun.
     pub confirmed: bool,
     /// Not in the user's list yet: the LLM proposed it when no tag fit. Created only when
@@ -335,6 +380,9 @@ pub struct Review {
     pub value: String,
     pub probability: f32,
     pub threshold: f32,
+    /// Below its floor: dropped without asking. Listed so the user can still look and undo.
+    #[serde(default)]
+    pub rejected: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

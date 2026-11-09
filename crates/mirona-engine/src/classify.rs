@@ -127,12 +127,13 @@ pub fn segment_state(context: &[String], line: &str) -> String {
     )
 }
 
-/// Tags from thresholded answers: a "yes" at/above threshold tags the segment; a "yes" below
-/// it is "Needs review". An action names its owner when the owner choice clears its threshold.
+/// Tags from thresholded answers: a "yes" at/above threshold tags the segment; a "yes" between
+/// floor and threshold is "Needs review"; below the floor, nothing. An action names its owner
+/// when the owner choice clears its threshold.
 pub fn tags(answers: &[Answer], owners: &[Choice], owner_threshold: f32) -> Vec<Tag> {
     answers
         .iter()
-        .filter(|a| a.answer)
+        .filter(|a| a.answer && !a.rejected())
         .filter_map(|a| {
             let kind = TagKind::for_answer(&a.id)?;
             if a.needs_review() {
@@ -183,6 +184,7 @@ pub fn classify_segment(
     let local = is_local(c);
     for a in &mut answers {
         a.threshold = cfg.threshold(&a.id, local);
+        a.floor = cfg.floor(&a.id);
     }
     if !answers.iter().any(|a| a.id == "action" && a.answer) {
         owners.clear();
@@ -461,7 +463,7 @@ pub fn meeting_text(m: &Meeting, cloud: bool) -> String {
     out
 }
 
-fn choice(q: Option<(&Question, &Reply)>, threshold: f32) -> ChoiceAnswer {
+fn choice(q: Option<(&Question, &Reply)>, threshold: f32, floor: f32) -> ChoiceAnswer {
     let (value, probability) = q
         .and_then(|(_, r)| match r {
             Reply::Choice { value, .. } => Some((value.clone(), r.confidence())),
@@ -472,6 +474,7 @@ fn choice(q: Option<(&Question, &Reply)>, threshold: f32) -> ChoiceAnswer {
         value,
         probability,
         threshold,
+        floor,
         options: q.map(|(q, _)| options(q)).unwrap_or_default(),
         confirmed: false,
     }
@@ -502,7 +505,11 @@ pub fn classify_meeting(
     };
     let p_follow = get("follow_up").and_then(|(_, r)| r.p_yes()).unwrap_or(0.0);
     let answers = MeetingAnswers {
-        meeting_type: choice(get("meeting_type"), cfg.threshold("meeting_type", local)),
+        meeting_type: choice(
+            get("meeting_type"),
+            cfg.threshold("meeting_type", local),
+            cfg.floor("meeting_type"),
+        ),
         tags: qs
             .iter()
             .zip(&replies)
@@ -511,6 +518,7 @@ pub fn classify_meeting(
                     tag: q.id.strip_prefix(TAG_PREFIX)?.into(),
                     probability: r.p_yes()?,
                     threshold: cfg.threshold("tag", local),
+                    floor: cfg.floor("tag"),
                     confirmed: false,
                     proposed: false,
                     about: String::new(),
@@ -522,6 +530,7 @@ pub fn classify_meeting(
         follow_up: p_follow >= 0.5,
         follow_up_probability: p_follow,
         follow_up_threshold: cfg.threshold("follow_up", local),
+        follow_up_floor: cfg.floor("follow_up"),
         follow_up_draft: String::new(),
     };
     let mut s = store.lock().unwrap();
@@ -764,6 +773,7 @@ pub fn propose_tag(
         tag: tag.clone(),
         probability: 0.0,
         threshold: 0.0,
+        floor: 0.0,
         confirmed: false,
         proposed: true,
         about,
@@ -1290,6 +1300,42 @@ mod tests {
     }
 
     #[test]
+    fn below_the_floor_is_rejected_between_is_reviewed_above_is_tagged() {
+        let cfg = Config::default();
+        let a = |id: &str, p: f32| Answer {
+            id: id.into(),
+            question: String::new(),
+            kind: mirona_core::QuestionKind::YesNo,
+            answer: p >= 0.5,
+            probability: p,
+            source: AnswerSource::Model,
+            threshold: cfg.threshold(id, false),
+            floor: cfg.floor(id),
+        };
+        let answers = [
+            a("action", 0.55),
+            a("decision", 0.7),
+            a("smalltalk", 0.9),
+            a("sensitive", 0.55),
+        ];
+        assert!(answers[0].rejected() && !answers[0].needs_review());
+        assert!(answers[1].needs_review() && !answers[1].rejected());
+        let labels: Vec<String> = tags(&answers, &[], 0.6)
+            .into_iter()
+            .map(|t| t.label)
+            .collect();
+        // Sensitive has no floor: a lean towards yes is always shown.
+        assert_eq!(
+            labels,
+            [
+                "Needs review · decision? 0.70",
+                "Small talk",
+                "Needs review · sensitive? 0.55"
+            ]
+        );
+    }
+
+    #[test]
     fn after_the_call_answers_pick_the_template_check_the_summary_and_draft() {
         let dir = tempfile::tempdir().unwrap();
         let (store, _) = meeting(dir.path());
@@ -1474,6 +1520,7 @@ mod tests {
                 value: "standup".into(),
                 probability: 0.5,
                 threshold: 0.6,
+                floor: 0.0,
                 options: vec![],
                 confirmed: false,
             },
@@ -1483,6 +1530,7 @@ mod tests {
             follow_up: false,
             follow_up_probability: 0.0,
             follow_up_threshold: 0.6,
+            follow_up_floor: 0.0,
             follow_up_draft: String::new(),
         };
         assert_eq!(template_for(&a, "client-call"), "client-call");

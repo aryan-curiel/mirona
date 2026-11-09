@@ -221,7 +221,9 @@ impl Store {
                         .map(|a| a.meeting_type.value.clone())
                         .unwrap_or_default(),
                     open_actions: count(e.items.iter().filter(|a| !a.done)),
-                    needs_review: self.review(&m.id).map_or(0, |r| count(r.iter())),
+                    needs_review: self
+                        .review(&m.id)
+                        .map_or(0, |r| count(r.iter().filter(|r| !r.rejected))),
                     has_audio: e.audio.is_some(),
                     has_summary: m.summary.is_some(),
                     sample: m.sample,
