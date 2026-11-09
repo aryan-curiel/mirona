@@ -8,6 +8,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -50,6 +51,7 @@ pub struct Recorder {
     tx: Sender<Msg>,
     /// The audio thread and the STT worker.
     threads: Option<Threads>,
+    mic_muted: Arc<AtomicBool>,
 }
 
 impl Recorder {
@@ -73,6 +75,7 @@ impl Recorder {
             crate::macos::check_permissions(&cfg)?;
             let (chunk_tx, chunk_rx) = std::sync::mpsc::channel();
             let pipeline = Pipeline::new(&cfg, chunk_tx)?;
+            let mic_muted = pipeline.mic_muted.clone();
             let (tx, rx) = std::sync::mpsc::channel();
             let stt_events = events.clone();
             let worker = std::thread::Builder::new()
@@ -87,8 +90,19 @@ impl Recorder {
             Ok(Self {
                 tx,
                 threads: Some((audio, worker)),
+                mic_muted,
             })
         }
+    }
+
+    /// While muted the mic is recorded as silence: nothing said reaches the transcript or the
+    /// audio file, and timestamps stay aligned.
+    pub fn set_mic_muted(&self, muted: bool) {
+        self.mic_muted.store(muted, Ordering::Relaxed);
+    }
+
+    pub fn mic_muted(&self) -> bool {
+        self.mic_muted.load(Ordering::Relaxed)
     }
 
     /// Stop capture, transcribe the last chunk and finalise the recording. Every segment has
@@ -173,6 +187,7 @@ pub(crate) struct Pipeline {
     lanes: Vec<Lane>,
     wav: hound::WavWriter<BufWriter<File>>,
     chunks: Sender<(Source, Chunk)>,
+    pub(crate) mic_muted: Arc<AtomicBool>,
 }
 
 impl Pipeline {
@@ -202,6 +217,7 @@ impl Pipeline {
             lanes,
             wav: create_wav(&cfg.recording)?,
             chunks,
+            mic_muted: Arc::default(),
         })
     }
 
@@ -209,7 +225,10 @@ impl Pipeline {
         let Some(lane) = self.lanes.iter_mut().find(|l| l.source == source) else {
             return;
         };
-        let pcm = lane.resampler.to_16k(rate, mono);
+        let mut pcm = lane.resampler.to_16k(rate, mono);
+        if source == Source::Mic && self.mic_muted.load(Ordering::Relaxed) {
+            pcm.fill(0.0);
+        }
         lane.feed(&pcm, &self.chunks);
         self.mix(false);
     }
@@ -338,6 +357,34 @@ mod tests {
         let wav = hound::WavReader::open(&path).unwrap();
         let ms = wav.duration() as usize / 16;
         assert!((9_400..9_600).contains(&ms), "{ms} ms");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn a_muted_mic_records_silence() {
+        let path = temp("muted.wav");
+        let cfg = RecorderConfig {
+            models_dir: fixture(""),
+            vad: VadConfig::default(),
+            recording: path.clone(),
+            mic: true,
+            system: false,
+        };
+        let (chunk_tx, chunk_rx) = channel();
+        let mut p = Pipeline::new(&cfg, chunk_tx).unwrap();
+        p.mic_muted.store(true, Ordering::Relaxed);
+        for block in fixture_pcm().chunks(160) {
+            p.push(Source::Mic, 16_000, block);
+        }
+        assert!(p.levels().0 < 1e-6);
+        p.finish().unwrap();
+        assert!(
+            chunk_rx.try_iter().next().is_none(),
+            "muted speech was chunked"
+        );
+        let wav = hound::WavReader::open(&path).unwrap();
+        assert!(wav.duration() > 100_000, "timing kept");
+        assert!(wav.into_samples::<i16>().all(|s| s.unwrap() == 0));
         std::fs::remove_file(path).unwrap();
     }
 

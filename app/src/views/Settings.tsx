@@ -74,8 +74,8 @@ function combo(e: KeyboardEvent): string | null {
   return [...mods, e.code.replace(/^(Key|Digit)(?=.)/, "")].join("+");
 }
 
-/** The record shortcut as key caps: click, then press the new combination (saved at once; Esc cancels). */
-function ShortcutField({ value, onSave }: { value: string; onSave: (v: string) => Promise<boolean> }) {
+/** A global shortcut as key caps: click, then press the new combination (saved at once; Esc cancels). */
+function ShortcutField({ label, value, onSave }: { label: string; value: string; onSave: (v: string) => Promise<boolean> }) {
   const [listening, setListening] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -93,7 +93,7 @@ function ShortcutField({ value, onSave }: { value: string; onSave: (v: string) =
       <button
         type="button"
         className="mi-field flex min-h-11 w-72 items-center gap-1.5 text-left"
-        aria-label={`Record shortcut: ${shortcutLabel(value)}. Click and press a new combination.`}
+        aria-label={`${label}: ${shortcutLabel(value)}. Click and press a new combination.`}
         onClick={() => setListening(true)}
         onBlur={() => setListening(false)}
         onKeyDown={(e) => {
@@ -774,7 +774,10 @@ function SettingsView() {
           </select>
         </Row>
         <Row title="Record shortcut" sub="Starts and stops a recording from any app">
-          <ShortcutField value={st.shortcut} onSave={(shortcut) => save({ shortcut })} />
+          <ShortcutField label="Record shortcut" value={st.shortcut} onSave={(shortcut) => save({ shortcut })} />
+        </Row>
+        <Row title="Mute shortcut" sub="Mutes and unmutes your mic during a recording, from any app">
+          <ShortcutField label="Mute shortcut" value={st.muteShortcut} onSave={(muteShortcut) => save({ muteShortcut })} />
         </Row>
         <Row title="Call detection" sub="When Zoom, Teams, Meet or another call app opens the microphone">
           <CallSettings st={st} onSave={save} />

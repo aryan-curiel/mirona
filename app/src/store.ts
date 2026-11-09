@@ -60,6 +60,8 @@ type State = {
   recording: Recording | null;
   /** Meetings being summarized after their recording stopped. */
   processing: string[];
+  /** The mic records silence in the current recording. */
+  micMuted: boolean;
   /** Meeting whose summary is being rewritten. */
   regenerating: string | null;
   /** Summaries streaming in, by meeting: the overview so far and the reply's length. */
@@ -117,6 +119,7 @@ type State = {
   importAudio: () => Promise<void>;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
+  setMicMuted: (muted: boolean) => Promise<void>;
   recordCall: () => Promise<void>;
   /** From the consent reminder: start, optionally tagging the call with `tag`. */
   confirmConsent: (tag: string | null, agreed: boolean, stopReminding: boolean) => Promise<void>;
@@ -193,7 +196,7 @@ export const useStore = create<State>((set, get) => {
 
   const onRecording = async (r: RecState) => {
     const was = get().recording;
-    set({ processing: r.processing });
+    set({ processing: r.processing, micMuted: r.micMuted });
     if (r.recording && was?.meetingId !== r.recording) {
       set({ recording: { meetingId: r.recording, elapsedMs: 0, levels: [] }, call: null });
       await reloadLists();
@@ -278,6 +281,7 @@ export const useStore = create<State>((set, get) => {
     corrections: 0,
     recording: null,
     processing: [],
+    micMuted: false,
     regenerating: null,
     summarizing: {},
     importing: null,
@@ -567,6 +571,8 @@ export const useStore = create<State>((set, get) => {
     cancelConsent: () => set({ consent: null }),
 
     stopRecording: () => run(() => api.stopRecording()),
+
+    setMicMuted: (muted) => run(() => api.setMicMuted(muted)),
 
     recordCall: () =>
       run(async () => {

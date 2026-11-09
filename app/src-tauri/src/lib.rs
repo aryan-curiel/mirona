@@ -26,7 +26,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex, RwLock};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -62,8 +62,10 @@ impl AppState {
     }
 
     fn rec_state(&self) -> RecState {
+        let session = self.session.lock().unwrap();
         RecState {
-            recording: self.session.lock().unwrap().as_ref().map(|s| s.id.clone()),
+            recording: session.as_ref().map(|s| s.id.clone()),
+            mic_muted: session.as_ref().is_some_and(Session::mic_muted),
             processing: self.processing.lock().unwrap().clone(),
         }
     }
@@ -76,6 +78,8 @@ type St<'a> = State<'a, AppState>;
 #[serde(rename_all = "camelCase")]
 struct RecState {
     recording: Option<String>,
+    /// The mic records silence (only while recording).
+    mic_muted: bool,
     processing: Vec<String>,
 }
 
@@ -731,6 +735,24 @@ fn stop_recording(app: AppHandle) -> Res<String> {
     stop(&app)
 }
 
+/// Mute or unmute the mic in the current recording.
+#[tauri::command]
+fn set_mic_muted(app: AppHandle, muted: bool) -> Res<()> {
+    mute(&app, Some(muted))
+}
+
+/// `None` toggles (tray).
+fn mute(app: &AppHandle, muted: Option<bool>) -> Res<()> {
+    {
+        let st = app.state::<AppState>();
+        let slot = st.session.lock().unwrap();
+        let s = slot.as_ref().ok_or("Not recording.")?;
+        s.set_mic_muted(muted.unwrap_or(!s.mic_muted()));
+    }
+    rec_changed(app);
+    Ok(())
+}
+
 #[tauri::command]
 fn recording_state(st: St) -> RecState {
     st.rec_state()
@@ -926,7 +948,7 @@ fn toggle(app: &AppHandle) {
     });
 }
 
-struct TrayItem(MenuItem<tauri::Wry>);
+struct TrayItem(MenuItem<tauri::Wry>, CheckMenuItem<tauri::Wry>);
 
 fn rec_changed(app: &AppHandle) {
     let state = app.state::<AppState>().rec_state();
@@ -937,6 +959,8 @@ fn rec_changed(app: &AppHandle) {
             "Start recording"
         };
         item.0.set_text(text).ok();
+        item.1.set_enabled(state.recording.is_some()).ok();
+        item.1.set_checked(state.mic_muted).ok();
     }
     app.emit("recording", state).ok();
 }
@@ -1001,6 +1025,7 @@ struct Status {
     cli: String,
     /// The record shortcut, as in config.toml.
     shortcut: String,
+    mute_shortcut: String,
     /// This build includes Whisper (the `whisper` feature).
     whisper: bool,
     errors: Vec<String>,
@@ -1036,6 +1061,7 @@ fn status(st: St, keys: bool) -> Status {
         config_path: mirona_engine::config_path(&st.app_dir),
         cli: cli_path(),
         shortcut: engine.config().shortcut,
+        mute_shortcut: engine.config().mute_shortcut,
         whisper: mirona_capture::WHISPER_BUILT,
         errors,
     }
@@ -1150,6 +1176,8 @@ struct Settings {
     mcp_clients: Vec<String>,
     /// Global start/stop shortcut, e.g. "CmdOrCtrl+Alt+Shift+R".
     shortcut: String,
+    /// Global mute/unmute-my-mic shortcut.
+    mute_shortcut: String,
     meetings_dir: PathBuf,
     models_dir: PathBuf,
     /// jev | local-llm | off
@@ -1250,6 +1278,7 @@ impl Settings {
             mcp_sensitive: cfg.mcp_sensitive,
             mcp_clients: cfg.mcp_tokens.keys().cloned().collect(),
             shortcut: cfg.shortcut.clone(),
+            mute_shortcut: cfg.mute_shortcut.clone(),
             meetings_dir: paths.meetings.clone(),
             models_dir: paths.models.clone(),
             classification: mirona_engine::stage(cfg, "classification", "jev"),
@@ -1313,7 +1342,9 @@ impl Settings {
         if self.template.trim().is_empty() {
             return Err("pick a summary template".into());
         }
-        parse_shortcut(&self.shortcut)?;
+        if parse_shortcut(&self.shortcut)?.id() == parse_shortcut(&self.mute_shortcut)?.id() {
+            return Err("The record and mute shortcuts must differ.".into());
+        }
         if self.mcp_port < 1024 {
             return Err("Pick an MCP port from 1024 to 65535.".into());
         }
@@ -1353,6 +1384,7 @@ impl Settings {
         cfg.mcp_write = self.mcp_write;
         cfg.mcp_sensitive = self.mcp_sensitive;
         cfg.shortcut = self.shortcut.trim().into();
+        cfg.mute_shortcut = self.mute_shortcut.trim().into();
         cfg.meetings_dir = dir(&self.meetings_dir, &defaults.meetings);
         cfg.models_dir = dir(&self.models_dir, &defaults.models);
         cfg.providers
@@ -1418,7 +1450,9 @@ fn save_settings_now(app: &AppHandle, st: &AppState, settings: Settings) -> Res<
     let defaults = Paths::resolve(&Config::default(), &st.app_dir, &st.documents);
     let cfg = settings.apply(engine.config(), &defaults)?;
     let paths = Paths::resolve(&cfg, &st.app_dir, &st.documents);
-    swap_shortcut(app, &engine.config().shortcut, &cfg.shortcut)?;
+    let old = engine.config();
+    swap_shortcut(app, &old.shortcut, &cfg.shortcut, false)?;
+    swap_shortcut(app, &old.mute_shortcut, &cfg.mute_shortcut, true)?;
     sync_mcp_http(st, &cfg)?;
     if paths.meetings == engine.paths.meetings && paths.models == engine.paths.models {
         engine.save_config(&st.app_dir, cfg.clone())?;
@@ -1616,9 +1650,9 @@ fn show_settings(app: &AppHandle, tab: Option<&str>) -> Res<()> {
     b.build().map(|_| ()).map_err(|e| e.to_string())
 }
 
-/// Move the record shortcut from `old` to `new` right away. If `new` can't be registered
-/// (another app owns it), `old` stays and the error says so.
-fn swap_shortcut(app: &AppHandle, old: &str, new: &str) -> Res<()> {
+/// Move the record (or `mute`) shortcut from `old` to `new` right away. If `new` can't be
+/// registered (another app owns it), `old` stays and the error says so.
+fn swap_shortcut(app: &AppHandle, old: &str, new: &str, mute: bool) -> Res<()> {
     let next = parse_shortcut(new)?;
     let prev = parse_shortcut(old).ok();
     if prev.is_some_and(|p| p.id() == next.id()) {
@@ -1633,12 +1667,17 @@ fn swap_shortcut(app: &AppHandle, old: &str, new: &str) -> Res<()> {
             gs.register(p).ok();
         }
         return Err(format!(
-            "Couldn't use {new} as the record shortcut: another app or the system may already \
-             use it ({e}). Still using {old}."
+            "Couldn't use {new} as the {} shortcut: another app or the system may already \
+             use it ({e}). Still using {old}.",
+            if mute { "mute" } else { "record" }
         ));
     }
     if let Some(item) = app.try_state::<TrayItem>() {
-        item.0.set_accelerator(Some(new)).ok();
+        if mute {
+            item.1.set_accelerator(Some(new)).ok();
+        } else {
+            item.0.set_accelerator(Some(new)).ok();
+        }
     }
     Ok(())
 }
@@ -1664,14 +1703,18 @@ fn open_engine(app_dir: &Path, documents: &Path) -> Res<(Engine, Vec<String>)> {
     }
 }
 
-fn tray(app: &tauri::App, shortcut: &str) -> tauri::Result<()> {
+fn tray(app: &tauri::App, shortcut: &str, mute_shortcut: &str) -> tauri::Result<()> {
     // An accelerator the menu can't show must not cost the tray icon.
     let accel = parse_shortcut(shortcut).is_ok().then_some(shortcut);
+    let mute_accel = parse_shortcut(mute_shortcut)
+        .is_ok()
+        .then_some(mute_shortcut);
     let toggle_item = MenuItem::with_id(app, "toggle", "Start recording", true, accel)?;
+    let mute_item = CheckMenuItem::with_id(app, "mute", "Mute my mic", false, false, mute_accel)?;
     let show = MenuItem::with_id(app, "show", "Open Mirona", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let quit = PredefinedMenuItem::quit(app, Some("Quit Mirona"))?;
-    let menu = Menu::with_items(app, &[&toggle_item, &show, &settings, &quit])?;
+    let menu = Menu::with_items(app, &[&toggle_item, &mute_item, &show, &settings, &quit])?;
     let icon = if cfg!(target_os = "macos") {
         tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?
     } else {
@@ -1684,6 +1727,12 @@ fn tray(app: &tauri::App, shortcut: &str) -> tauri::Result<()> {
         .menu(&menu)
         .on_menu_event(|app, ev| match ev.id.as_ref() {
             "toggle" => toggle(app),
+            "mute" => {
+                // The menu flips the check itself; resync it if nothing is recording.
+                if mute(app, None).is_err() {
+                    rec_changed(app);
+                }
+            }
             "show" => {
                 if let Some(w) = app.get_webview_window("main") {
                     w.show().ok();
@@ -1698,7 +1747,7 @@ fn tray(app: &tauri::App, shortcut: &str) -> tauri::Result<()> {
             _ => {}
         })
         .build(app)?;
-    app.manage(TrayItem(toggle_item));
+    app.manage(TrayItem(toggle_item, mute_item));
     Ok(())
 }
 
@@ -1732,8 +1781,14 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _, ev| {
-                    if ev.state == ShortcutState::Pressed {
+                .with_handler(|app, sc, ev| {
+                    if ev.state != ShortcutState::Pressed {
+                        return;
+                    }
+                    let mute_sc = app.state::<AppState>().engine().config().mute_shortcut;
+                    if parse_shortcut(&mute_sc).is_ok_and(|m| m.id() == sc.id()) {
+                        mute(app, None).ok(); // not recording: nothing to mute
+                    } else {
                         toggle(app);
                     }
                 })
@@ -1744,18 +1799,17 @@ pub fn run() {
             let documents = mirona_engine::documents_dir();
             let (engine, mut errors) = open_engine(&app_dir, &documents)?;
             allow_audio(app.handle(), &engine.paths.meetings);
-            let shortcut = engine.config().shortcut;
-            let registered = parse_shortcut(&shortcut).and_then(|sc| {
-                app.global_shortcut()
-                    .register(sc)
-                    .map_err(|e| e.to_string())
-            });
-            if let Err(e) = registered {
-                errors.push(format!(
-                    "Record shortcut {shortcut} is unavailable ({e}). Pick another in Settings."
-                ));
+            let cfg = engine.config();
+            for (what, sc) in [("Record", &cfg.shortcut), ("Mute", &cfg.mute_shortcut)] {
+                let registered = parse_shortcut(sc)
+                    .and_then(|s| app.global_shortcut().register(s).map_err(|e| e.to_string()));
+                if let Err(e) = registered {
+                    errors.push(format!(
+                        "{what} shortcut {sc} is unavailable ({e}). Pick another in Settings."
+                    ));
+                }
             }
-            if let Err(e) = tray(app, &shortcut) {
+            if let Err(e) = tray(app, &cfg.shortcut, &cfg.mute_shortcut) {
                 errors.push(format!("No menu bar icon: {e}"));
             }
             #[cfg(target_os = "macos")]
@@ -1858,6 +1912,7 @@ pub fn run() {
             start_recording,
             start_call_recording,
             stop_recording,
+            set_mic_muted,
             recording_state,
             request_permission,
             status,
@@ -2108,6 +2163,8 @@ mod tests {
         s.shortcut = " CmdOrCtrl+Shift+F9 ".into();
         let cfg = s.apply(Config::default(), &d).unwrap();
         assert_eq!(cfg.shortcut, "CmdOrCtrl+Shift+F9");
+        s.mute_shortcut = "CmdOrCtrl+Shift+F9".into();
+        assert!(s.apply(Config::default(), &d).is_err(), "same as record");
     }
 
     #[test]

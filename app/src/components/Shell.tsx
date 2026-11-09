@@ -459,6 +459,9 @@ export function RecordingBar() {
   const live = useStore((s) => s.recording);
   const rec = useLast(live);
   const stop = useStore((s) => s.stopRecording);
+  const muted = useStore((s) => s.micMuted);
+  const setMuted = useStore((s) => s.setMicMuted);
+  const muteHint = shortcutLabel(useStore((s) => s.status?.muteShortcut ?? ""));
   const hint = shortcutLabel(useStore((s) => s.status?.shortcut ?? ""));
   const { stt, llm } = useModelNames();
   if (!rec) return null;
@@ -470,6 +473,9 @@ export function RecordingBar() {
       <span className="font-semibold text-record-text">Recording</span>
       <span className="font-mono text-record-text" role="timer">{fmt(rec.elapsedMs)}</span>
       <Meter label="You" level={mic} />
+      <button type="button" className="mi-ghost min-h-11! px-3" aria-pressed={muted} onClick={() => void setMuted(!muted)} title={`While muted, nothing you say is recorded or transcribed ${muteHint}`.trim()}>
+        {muted ? "Unmute me" : "Mute me"} {muteHint && <span className="ml-1 text-[12px] font-medium opacity-80">{muteHint}</span>}
+      </button>
       <Meter label="Call" level={system} />
       <span className="flex-1 truncate text-ink-3">
         {stt} transcribes on this device · {llm} writes the summary

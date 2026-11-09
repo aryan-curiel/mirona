@@ -41,6 +41,8 @@ pub struct Config {
     pub mcp_sensitive: bool,
     /// Global start/stop-recording shortcut, as a Tauri accelerator ("CmdOrCtrl+Alt+Shift+R").
     pub shortcut: String,
+    /// Global mute/unmute-my-mic shortcut while recording.
+    pub mute_shortcut: String,
     /// Question id → threshold, overriding the defaults in [`default_threshold`] (NGR-158).
     pub thresholds: BTreeMap<String, f32>,
     /// The user's tags: `group:name` (or `name`) → what it is about. The classifier asks one
@@ -101,6 +103,7 @@ pub const PRIVACY_ENV: &str = "MIRONA_PRIVACY";
 pub const DEFAULT_MCP_PORT: u16 = 7337;
 
 pub const DEFAULT_SHORTCUT: &str = "CmdOrCtrl+Alt+Shift+R";
+pub const DEFAULT_MUTE_SHORTCUT: &str = "CmdOrCtrl+Alt+Shift+M";
 
 /// Which model the summary stage uses. API keys live in the OS keychain, never here.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,6 +132,7 @@ impl Default for Config {
             mcp_write: false,
             mcp_sensitive: false,
             shortcut: DEFAULT_SHORTCUT.into(),
+            mute_shortcut: DEFAULT_MUTE_SHORTCUT.into(),
             thresholds: BTreeMap::new(),
             tags: BTreeMap::new(),
             tag_groups: BTreeMap::new(),
@@ -270,6 +274,10 @@ Northwind = 90
         // Files written before the shortcut setting existed get the default.
         std::fs::write(&path, "privacy = false").unwrap();
         assert_eq!(Config::load(&path).unwrap().shortcut, DEFAULT_SHORTCUT);
+        assert_eq!(
+            Config::load(&path).unwrap().mute_shortcut,
+            DEFAULT_MUTE_SHORTCUT
+        );
         cfg.shortcut = "CmdOrCtrl+Shift+F9".into();
         cfg.save(&path).unwrap();
         assert_eq!(Config::load(&path).unwrap(), cfg);

@@ -30,6 +30,8 @@ export type Settings = {
   mcpClients: string[];
   /** Global record shortcut, a Tauri accelerator like "CmdOrCtrl+Alt+Shift+R". */
   shortcut: string;
+  /** Global mute/unmute-my-mic shortcut while recording. */
+  muteShortcut: string;
   meetingsDir: string;
   modelsDir: string;
   classification: "jev" | "local-llm" | "off";
@@ -88,6 +90,7 @@ export type Status = {
   configPath: string;
   cli: string;
   shortcut: string;
+  muteShortcut: string;
   /** This build includes Whisper; otherwise Settings doesn't offer it. */
   whisper: boolean;
   errors: string[];
@@ -97,7 +100,7 @@ export type Status = {
 export type McpActivity = { time: string; client: string; tool: string; ok: boolean };
 
 /** Sent on the "recording" channel whenever the recorder changes. */
-export type RecState = { recording: string | null; processing: string[] };
+export type RecState = { recording: string | null; micMuted: boolean; processing: string[] };
 export type Template = { id: string; name: string };
 
 /** Typed wrappers over the Tauri commands in src-tauri/src/lib.rs. */
@@ -155,6 +158,7 @@ export const api = {
   /** Downloads, installs and restarts the app; only returns on failure. */
   installUpdate: () => invoke<void>("install_update"),
   stopRecording: () => invoke<string>("stop_recording"),
+  setMicMuted: (muted: boolean) => invoke<void>("set_mic_muted", { muted }),
   recordingState: () => invoke<RecState>("recording_state"),
   requestPermission: (kind: "mic" | "system" | "calendar") => invoke<boolean>("request_permission", { kind }),
   status: (keys = false) => invoke<Status>("status", { keys }),

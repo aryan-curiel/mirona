@@ -45,7 +45,10 @@ to record without asking: a call is recorded when the event title names the tag
 
 While recording, the transcript appears live, split into "Me" and "Them", and lines are tagged
 as action items, decisions, open questions or small talk as they come in. Write notes in the
-**Notes** tab as you go. Stop with the same button or shortcut. Mirona then:
+**Notes** tab as you go. Muted in the call and talking to someone in the room? Click **Mute me**
+in the recording bar, the menu bar icon › Mute my mic, or press <kbd>⌘⌥⇧M</kbd> (Settings ›
+General › Mute shortcut): until you unmute, your mic records silence, so none of it reaches the
+transcript or the audio file. Stop with the same button or shortcut. Mirona then:
 
 1. compresses the audio, splits "Them" into each speaker and matches voices it knows
 2. joins lines split mid-sentence and tags any lines still untagged

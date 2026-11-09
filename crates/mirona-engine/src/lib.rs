@@ -554,6 +554,15 @@ pub struct Session {
 }
 
 impl Session {
+    /// Mute "me": the mic records silence until unmuted (side talk stays out of the meeting).
+    pub fn set_mic_muted(&self, muted: bool) {
+        self.recorder.set_mic_muted(muted);
+    }
+
+    pub fn mic_muted(&self) -> bool {
+        self.recorder.mic_muted()
+    }
+
     pub fn elapsed_ms(&self) -> u32 {
         u32::try_from(self.started.elapsed().as_millis()).unwrap_or(u32::MAX)
     }
