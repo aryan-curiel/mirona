@@ -30,7 +30,7 @@ impl LlmProvider for Scripted {
         let text = if prompt.system.contains("\"notes\"") {
             r#"{"notes": [{"kind": "action", "text": "Keiko sends the SOW Thursday", "segment": 0}]}"#
         } else {
-            r#"{"overview": "Agreed the SOW and fixed price.",
+            r#"{"title": "SOW and pricing", "overview": "Agreed the SOW and fixed price.",
                 "decisions": [{"text": "Go with fixed price", "segment": 1}],
                 "action_items": [{"text": "Send the revised SOW", "owner": "Keiko", "due": "Thursday", "segment": 0}],
                 "open_questions": []}"#
@@ -222,6 +222,29 @@ fn summary_and_enhanced_notes_are_saved_into_the_meeting() {
 
     let md = std::fs::read_to_string(store.meeting_dir(&id).unwrap().join("meeting.md")).unwrap();
     assert!(md.contains("Agreed the SOW and fixed price."), "{md}");
+
+    // The unnamed meeting took the summary's title; a name someone gave is never replaced.
+    assert_eq!(m.title, "SOW and pricing");
+    e.store
+        .lock()
+        .unwrap()
+        .set_title(&id, "Keiko sync")
+        .unwrap();
+    let again = |e: &Engine| {
+        summarize_with(
+            &e.store,
+            &e.paths,
+            &id,
+            "client-call",
+            &Scripted,
+            &mut |_| {},
+        )
+    };
+    again(&e).unwrap();
+    assert_eq!(
+        e.store.lock().unwrap().meeting(&id).unwrap().title,
+        "Keiko sync"
+    );
 }
 
 #[test]

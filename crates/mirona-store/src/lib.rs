@@ -27,6 +27,9 @@ pub use index::Hit;
 pub use people::{Cluster, Person, Voices, replace_name};
 pub use search::{MIN_SIMILARITY, text_hash};
 
+/// What a meeting is called until someone (or its summary) names it.
+pub const DEFAULT_TITLE: &str = "New meeting";
+
 use files::Entry;
 use mirona_core::{
     ActionItem, AnswerSource, Choice, Correction, EnhancedNote, Id, Meeting, MeetingAnswers,
@@ -335,7 +338,7 @@ impl Store {
     pub fn start_meeting(&mut self, id: &str) -> Result<Meeting> {
         let m = Meeting {
             id: id.into(),
-            title: "New meeting".into(),
+            title: DEFAULT_TITLE.into(),
             tags: vec![],
             when: String::new(),
             date_label: String::new(),

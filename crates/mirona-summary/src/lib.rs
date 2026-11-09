@@ -343,7 +343,8 @@ fn header(m: &Meeting, part: usize, parts: usize) -> String {
 const SUMMARY_RULES: &str = r#"You summarize a meeting transcript for the people who were in it.
 Each transcript line starts with [line number, time]. Only use what was actually said.
 Reply with one JSON object and nothing else, in this shape:
-{"overview": "...",
+{"title": "3 to 6 words naming what the meeting was about",
+ "overview": "...",
  "decisions": [{"text": "...", "segment": 12}],
  "action_items": [{"text": "...", "owner": "Name or empty", "due": "as said, or null", "segment": 12}],
  "open_questions": [{"text": "...", "segment": 12}]}
@@ -379,6 +380,7 @@ pub async fn summarize_streaming(
     let parts = chunks(&transcript_lines(meeting), CHUNK_CHARS);
     let (mut overviews, mut decisions, mut questions, mut actions) =
         (vec![], vec![], vec![], vec![]);
+    let mut title = String::new();
     let mut dropped = 0;
     let mut usage = Usage::default();
     let mut add = |u: Usage| {
@@ -393,6 +395,10 @@ pub async fn summarize_streaming(
         let overview = field(&v, "overview")
             .ok_or_else(|| format!("the model's JSON has no overview: {v}"))?;
         overviews.push(overview);
+        // ponytail: a long meeting's title comes from its first part; merge them if it misleads.
+        if title.is_empty() {
+            title = field(&v, "title").unwrap_or_default();
+        }
         for (keys, out) in [
             (&["decisions"][..], &mut decisions),
             (&["open_questions", "openQuestions"][..], &mut questions),
@@ -452,6 +458,7 @@ pub async fn summarize_streaming(
     let quality = quality.join(" · ");
     let summary = Summary {
         template: template.name.clone(),
+        title,
         overview,
         decisions,
         open_questions: questions,

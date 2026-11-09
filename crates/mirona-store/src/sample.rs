@@ -252,6 +252,7 @@ pub fn meetings() -> Vec<Meeting> {
         },
         summary: Some(Summary {
             template: "Client call".into(),
+            title: String::new(),
             overview: "Weekly check-in on the Claims Desk collections workspace. Insurer grouping is ready and ships to the field team on Monday. One migration question is still open.".into(),
             decisions: vec![dec("Ship insurer grouping to the field team on Monday", "03:02")],
             open_questions: vec![dec("What happens to claims already paid before the migration?", "07:30")],
@@ -285,6 +286,7 @@ pub fn meetings() -> Vec<Meeting> {
         ], enhanced_by: "Ollama (local)".into() },
         summary: Some(Summary {
             template: "Planning".into(),
+            title: String::new(),
             overview: "Sprint goal set to product tagging for the spring catalogue. Estimate follows on Monday.".into(),
             decisions: vec![dec("Sprint goal: product tagging for the spring catalogue", "00:40")],
             open_questions: vec![dec("Do we still need the size guide in this sprint?", "11:30")],
@@ -312,6 +314,7 @@ pub fn meetings() -> Vec<Meeting> {
         notes: Note { raw_at_ms: vec![], raw: vec!["onboarding copy".into()], enhanced: vec![note(Action, "Aryan reviews the mobile onboarding copy by Wednesday.", "07:02")], enhanced_by: "Ollama (local)".into() },
         summary: Some(Summary {
             template: "Review".into(),
+            title: String::new(),
             overview: "Product review of Corvo Live. Scoring view is faster; mobile onboarding copy needs a pass.".into(),
             decisions: vec![],
             open_questions: vec![],
@@ -365,6 +368,7 @@ pub fn meetings() -> Vec<Meeting> {
         },
         summary: Some(Summary {
             template: "Planning".into(),
+            title: String::new(),
             overview:
                 "Roadmap check-in. Agent console moves to Q1; evaluation dashboard goes first."
                     .into(),
@@ -664,6 +668,7 @@ pub fn demo_finish(store: &mut Store, id: &str, elapsed_ms: u32, llm: &str) -> R
     let actions: Vec<&Segment> = tagged(TagKind::Action).collect();
     let summary = Summary {
         template: "Client call".into(),
+        title: String::new(),
         overview: "Follow-up on the Lumenix evaluation dashboard. The board demo is set; one ownership question is open.".into(),
         decisions: tagged(TagKind::Decision).map(at).collect(),
         open_questions: tagged(TagKind::OpenQuestion).map(at).collect(),

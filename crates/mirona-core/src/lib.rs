@@ -421,6 +421,9 @@ pub struct Decision {
 #[ts(export)]
 pub struct Summary {
     pub template: String,
+    /// A short title the model suggests (3–6 words); names meetings nobody named.
+    #[serde(default)]
+    pub title: String,
     pub overview: String,
     pub decisions: Vec<Decision>,
     pub open_questions: Vec<Decision>,

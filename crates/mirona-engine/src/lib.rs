@@ -526,7 +526,14 @@ pub fn summarize_hinted(
         &meeting, &template, llm, on_text,
     ))?;
     summary.written_by = llm.label();
-    store.lock().unwrap().set_summary(id, summary, items)?;
+    let title = summary.title.clone();
+    let mut s = store.lock().unwrap();
+    s.set_summary(id, summary, items)?;
+    // A meeting nobody named takes the summary's title.
+    if !title.is_empty() && s.meeting(id)?.title == mirona_store::DEFAULT_TITLE {
+        s.set_title(id, &title)?;
+    }
+    drop(s);
     if !meeting.notes.raw.is_empty() {
         let notes = block_on(mirona_summary::enhance_notes(&meeting, llm))?;
         store

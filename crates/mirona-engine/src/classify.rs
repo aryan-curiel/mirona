@@ -1628,6 +1628,7 @@ mod tests {
         let summary = |s: &Shared, owner: &str| {
             let sum = mirona_core::Summary {
                 template: "general".into(),
+                title: String::new(),
                 overview: String::new(),
                 decisions: vec![],
                 open_questions: vec![],

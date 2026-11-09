@@ -77,7 +77,8 @@ mp4) the same way.
   labelled examples (Settings › Advanced › Your corrections).
 - **Notes:** your notes, and the version enhanced with the transcript.
 - **Summary:** written from a template. Timestamps jump back to the transcript. Pick another
-  template to rewrite it.
+  template to rewrite it. A meeting still called "New meeting" takes a short title from its
+  summary; a name you or the calendar gave is never replaced.
 
 Each question has two confidence levels, in Settings › Advanced › Thresholds:
 

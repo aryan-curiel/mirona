@@ -671,6 +671,7 @@ mod tests {
         };
         let summary = Summary {
             template: "general".into(),
+            title: String::new(),
             overview: "Speaker 1 agreed; Speaker 12 objected.".into(),
             decisions: vec![Decision {
                 text: "Speaker 1 owns pricing".into(),
