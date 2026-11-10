@@ -28,8 +28,8 @@ use mirona_providers::config::Config;
 use mirona_providers::jev::Jev;
 use mirona_providers::ollama::Ollama;
 use mirona_providers::questions::{
-    Kind, NO_OWNER, Question, Reply, TAG_PREFIX, coverage_question, meeting_questions, options,
-    segment_questions, to_answers,
+    Kind, NO_OWNER, Question, Reply, STILL_OPEN, TAG_PREFIX, coverage_question, meeting_questions,
+    options, segment_questions, to_answers,
 };
 use mirona_providers::{
     Classifier, LlmProvider, Prompt, Provider, Result as PResult, check_privacy, keychain,
@@ -436,6 +436,96 @@ pub fn refresh_owners(
             seg.answers.clone(),
             tags,
             owners,
+            seg.due.clone(),
+        )?;
+        asked += 1;
+        events
+            .send(PipelineEvent::Classified {
+                meeting_id: id.into(),
+                segment_id: s.id,
+                tags: s.tags,
+                answers: s.answers,
+                owners: s.owners,
+            })
+            .ok();
+    }
+    Ok(asked)
+}
+
+/// How far after an open question its answer is looked for: lines starting within this long
+/// of its end, at most [`ANSWER_LINES`] of them.
+// ponytail: a fixed window; an answer given after a long detour still counts as open.
+const ANSWER_WINDOW_MS: u32 = 90_000;
+const ANSWER_LINES: usize = 20;
+
+/// After the call: each line the segment questions call an open question (tagged, or in
+/// Needs review) is asked again with the lines after it ([`STILL_OPEN`]), since one line
+/// alone can't show that a later one answers it. The new answer replaces the old and the tags
+/// follow. A line the user answered, a redacted line, or (on a cloud classifier) a sensitive
+/// one is left alone; sensitive and redacted lines aren't sent as later lines either. Returns
+/// how many lines were asked.
+pub fn settle_questions(
+    store: &Shared,
+    cfg: &Config,
+    id: &str,
+    c: &impl Classifier,
+    events: &Sender<PipelineEvent>,
+) -> Result<usize> {
+    let m = store.lock().unwrap().meeting(id)?;
+    let local = is_local(c);
+    let qs = [STILL_OPEN.to_question()];
+    let open = |s: &Segment| {
+        !s.redacted
+            && (local || !s.is_sensitive())
+            && s.answers.iter().any(|a| {
+                a.id == "unanswered" && a.source == AnswerSource::Model && a.answer && !a.rejected()
+            })
+    };
+    let mut asked = 0;
+    for (i, seg) in m.segments.iter().enumerate().filter(|(_, s)| open(s)) {
+        let until = seg.end_ms.saturating_add(ANSWER_WINDOW_MS);
+        let later: Vec<String> = m.segments[i + 1..]
+            .iter()
+            .take_while(|s| s.start_ms <= until)
+            .filter(|s| !s.redacted && (local || !s.is_sensitive()))
+            .take(ANSWER_LINES)
+            .map(|s| format!("{}: {}", speaker_name(&m, s), s.text))
+            .collect();
+        if later.is_empty() {
+            continue; // nothing after it: it stays open
+        }
+        let text = format!(
+            "[Question]\n{}: {}\n[Later]\n{}",
+            speaker_name(&m, seg),
+            seg.text,
+            later.join("\n")
+        );
+        let replies = block_on(c.ask(&text, &qs)).map_err(|e| e.to_string())?;
+        let (mut new, _) = to_answers(&qs, &replies);
+        let Some(mut new) = new.pop() else {
+            continue;
+        };
+        new.threshold = cfg.threshold(&new.id, local);
+        new.floor = cfg.floor(&new.id);
+        let answers: Vec<Answer> = seg
+            .answers
+            .iter()
+            .map(|a| {
+                if a.id == new.id {
+                    new.clone()
+                } else {
+                    a.clone()
+                }
+            })
+            .collect();
+        let mut tags = tags(&answers, &seg.owners, cfg.threshold("owner", local));
+        add_sensitive_net(&seg.text, &mut tags);
+        let s = store.lock().unwrap().set_classification(
+            id,
+            &seg.id,
+            answers,
+            tags,
+            seg.owners.clone(),
             seg.due.clone(),
         )?;
         asked += 1;
@@ -1013,6 +1103,15 @@ fn classify_all(
             .collect()
     });
     run(store, id, c, cfg, events, pending);
+    if let Err(e) = settle_questions(store, cfg, id, c, events) {
+        events
+            .send(crate::notice(
+                id,
+                format!("Open questions not checked: {e}"),
+                true,
+            ))
+            .ok();
+    }
     match classify_meeting(store, templates, id, c, cfg) {
         Ok(a) => template_for(&a, &cfg.template),
         Err(e) => {
@@ -1113,12 +1212,19 @@ mod tests {
                 .map(|q| match q.id.as_str() {
                     "action" => Reply::YesNo(if last.contains("I'll") { 0.9 } else { 0.05 }),
                     // Below decision's 0.95: needs review.
-                    "decision" => Reply::YesNo(if last.contains("go with") { 0.7 } else { 0.05 }),
+                    "decision" => Reply::YesNo(if last.contains("go with") { 0.8 } else { 0.05 }),
                     "due" => {
                         let said = last.contains("Thursday") || last.contains("month");
                         Reply::YesNo(if said { 0.8 } else { 0.1 })
                     }
                     "follow_up" | "tag:project:Northwind Bank" => Reply::YesNo(0.9),
+                    // Asked alone, a question looks open; with the lines after it, it's
+                    // answered when a later line names a day.
+                    "unanswered" if text.starts_with("[Question]") => {
+                        let later = text.split("[Later]").nth(1).unwrap_or_default();
+                        Reply::YesNo(if later.contains("Friday") { 0.1 } else { 0.9 })
+                    }
+                    "unanswered" => Reply::YesNo(if last.contains('?') { 0.9 } else { 0.05 }),
                     "owner" => {
                         let who = last.split(':').next().unwrap_or_default().to_string();
                         let probabilities = options(q)
@@ -1306,6 +1412,62 @@ mod tests {
     }
 
     #[test]
+    fn open_questions_answered_later_are_not_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path().join("meetings")).unwrap();
+        s.start_meeting("m1").unwrap();
+        let segs: Vec<Segment> = [
+            ("me", "When do we ship?"),
+            ("them", "We ship Friday."),
+            ("me", "Who owns the budget?"),
+            ("them", "Let me check."),
+            ("me", "Any questions?"), // last line: nothing after it to ask about
+        ]
+        .iter()
+        .enumerate()
+        .map(|(n, (who, text))| Segment {
+            id: format!("m1-{n}"),
+            speaker_id: (*who).into(),
+            start_ms: u32::try_from(n).unwrap() * 4000,
+            end_ms: u32::try_from(n).unwrap() * 4000 + 3000,
+            text: (*text).into(),
+            redacted: false,
+            tags: vec![],
+            answers: vec![],
+            owners: vec![],
+            due: None,
+            by_hand: false,
+        })
+        .collect();
+        for seg in &segs {
+            s.push_segment("m1", seg.clone()).unwrap();
+        }
+        let store = Arc::new(Mutex::new(s));
+        let c = Scripted::default();
+        let (events, _rx) = channel();
+        run(&store, "m1", &c, &cfg(), &events, segs);
+        let open = |store: &Shared| -> Vec<String> {
+            let m = store.lock().unwrap().meeting("m1").unwrap();
+            m.segments
+                .into_iter()
+                .filter(|s| s.tags.iter().any(|t| t.kind == TagKind::OpenQuestion))
+                .map(|s| s.text)
+                .collect()
+        };
+        assert_eq!(
+            open(&store),
+            ["When do we ship?", "Who owns the budget?", "Any questions?"]
+        );
+
+        assert_eq!(settle_questions(&store, &cfg(), "m1", &c, &events), Ok(2));
+        assert_eq!(open(&store), ["Who owns the budget?", "Any questions?"]);
+        let asked = c.states.lock().unwrap();
+        let first = asked.iter().find(|t| t.starts_with("[Question]")).unwrap();
+        assert!(first.contains("When do we ship?\n[Later]\n"), "{first}");
+        assert!(first.contains(": We ship Friday."), "{first}");
+    }
+
+    #[test]
     fn live_segments_are_tagged_with_context_and_thresholds() {
         let dir = tempfile::tempdir().unwrap();
         let (store, segs) = meeting(dir.path());
@@ -1330,7 +1492,7 @@ mod tests {
         assert_eq!(tagged.len(), 2);
         assert_eq!(tagged[0].1[0].label, "Action · Me");
         assert_eq!(tagged[1].1[0].kind, TagKind::Review, "{tagged:?}");
-        assert_eq!(tagged[1].1[0].label, "Needs review · decision? 0.70");
+        assert_eq!(tagged[1].1[0].label, "Needs review · decision? 0.80");
 
         // Each segment is asked about alone, with its speaker's name (CONTEXT_LINES = 0).
         let states = c.states.lock().unwrap().clone();
@@ -1368,12 +1530,16 @@ mod tests {
         };
         let answers = [
             a("action", 0.55),
-            a("decision", 0.7),
+            a("decision", 0.8),
             a("smalltalk", 0.9),
             a("sensitive", 0.55),
         ];
         assert!(answers[0].rejected() && !answers[0].needs_review());
         assert!(answers[1].needs_review() && !answers[1].rejected());
+        assert!(
+            a("decision", 0.7).rejected(),
+            "action/decision floor is 0.75"
+        );
         let labels: Vec<String> = tags(&answers, &[], 0.6)
             .into_iter()
             .map(|t| t.label)
@@ -1382,7 +1548,7 @@ mod tests {
         assert_eq!(
             labels,
             [
-                "Needs review · decision? 0.70",
+                "Needs review · decision? 0.80",
                 "Small talk",
                 "Needs review · sensitive? 0.55"
             ]

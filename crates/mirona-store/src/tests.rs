@@ -766,7 +766,7 @@ fn split_sentences_are_joined() {
         line("them", 9_000, 10_000, "and also"),
         line("them", 10_100, 41_000, "a very long monologue"),
     ];
-    assert_eq!(merge_lines(&mut segs), 1);
+    assert_eq!(merge_lines(&mut segs, false), 1);
     let texts: Vec<&str> = segs.iter().map(|s| s.text.as_str()).collect();
     assert_eq!(
         texts,
@@ -780,6 +780,37 @@ fn split_sentences_are_joined() {
     );
     assert_eq!((segs[0].id.as_str(), segs[0].end_ms), ("m-0", 4_000));
     assert!(segs[0].answers.is_empty());
+}
+
+#[test]
+fn turns_join_across_sentences_once_speakers_are_known() {
+    let line = |who: &str, at: u32, end: u32, text: &str| {
+        let mut s = live_seg(&format!("m-{at}"), who, at, text);
+        s.end_ms = end;
+        s
+    };
+    let segs = vec![
+        line("ana", 0, 2_000, "We should move the launch."),
+        line("ana", 3_500, 5_000, "QA needs another week."), // 1.5 s pause, new sentence
+        line("ben", 5_200, 5_600, "Okay."),                  // interjection
+        line("ana", 6_000, 7_000, "So the 14th."),
+        line("ana", 10_000, 11_000, "Next topic."), // 3 s pause: a new line
+        line("ben", 11_500, 12_000, "Sure."),
+    ];
+    // Without turns, only split sentences join: none here.
+    assert_eq!(merge_lines(&mut segs.clone(), false), 0);
+    let mut segs = segs;
+    assert_eq!(merge_lines(&mut segs, true), 2);
+    let texts: Vec<&str> = segs.iter().map(|s| s.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        [
+            "We should move the launch. QA needs another week. So the 14th.",
+            "Okay.",
+            "Next topic.",
+            "Sure.",
+        ]
+    );
 }
 
 #[test]
@@ -804,7 +835,7 @@ fn lowercase_continuations_and_interjections_join() {
         line("them", 7_300, 9_000, "a couple of games."),
         line("them", 9_500, 10_000, "Okay."),
     ];
-    assert_eq!(merge_lines(&mut segs), 2);
+    assert_eq!(merge_lines(&mut segs, false), 2);
     let texts: Vec<&str> = segs.iter().map(|s| s.text.as_str()).collect();
     assert_eq!(
         texts,

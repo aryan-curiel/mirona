@@ -79,7 +79,7 @@ Until you answer, AI agents see these as unconfirmed. Each question has two leve
 Advanced › Thresholds:
 
 - **Approve at** (0.85 by default; 0.95 for decisions): at or above it, an answer is filed as fact.
-- **Reject below** (0.60 by default): below it, the answer counts as "no" without asking.
+- **Reject below** (0.75 by default for action items, decisions and open questions, 0.60 for the rest): below it, the answer counts as "no" without asking.
 
 Answers in between go to **To check**. Rejected ones are only counted ("*N rejected for low
 confidence*"), and **Show** lists them so you can still say Yes to one. Sensitive lines are never

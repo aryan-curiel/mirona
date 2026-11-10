@@ -84,8 +84,10 @@ sequenceDiagram
 3. **Live tags.** A classifier worker tags each finished line as action, decision, open
    question, small talk or sensitive, so pieces joined live are never tagged twice.
 4. **After stop.** Tagging catches up, the audio is compressed to Opus, the recording is
-   diarized (speakrs), speakers are matched against known voiceprints and split sentences are
-   joined. Lines still untagged are tagged. Then the meeting-level questions are answered (type,
+   diarized (speakrs), speakers are matched against known voiceprints and each speaker's turn is
+   joined into one line (pauses up to 2 s; only split sentences when no voices were separated).
+   Lines still untagged are tagged, and each open question is asked again with the lines after
+   it, so one answered later stops being open. Then the meeting-level questions are answered (type,
    priority, tone, follow-up, and a yes/no per tag), the LLM writes the summary and enhanced notes
    (and, when no tag fits, proposes one new tag for the user to accept), a check
    makes sure every action item is covered, and a follow-up email is drafted if one is needed.

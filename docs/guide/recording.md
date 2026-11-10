@@ -107,8 +107,9 @@ steps, showing progress as it goes:
 
 1. Compresses the audio (Opus, about 11 MB an hour), splits "Them" into each speaker, and
    matches voices it already knows.
-2. Joins lines still split mid-sentence (now that each line has its speaker) and tags any lines
-   still untagged.
+2. Joins each speaker's turn into one line, across short pauses (now that each line has its
+   speaker), and tags any lines still untagged. Open questions are checked again against what
+   was said after them, so a question answered later in the meeting isn't left open.
 3. Answers the **meeting questions**: what type of meeting it was, its priority, the other side's
    tone, whether it needs a follow-up email, and which of your tags fit.
 4. Writes the **summary** and **enhanced notes** from the template that matches the meeting type,

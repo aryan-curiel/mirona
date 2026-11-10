@@ -171,13 +171,16 @@ pub fn default_threshold(question: &str, local: bool) -> f32 {
     }
 }
 
-/// Below its floor a model "yes" is rejected without asking: 0.60 for the questions that end
-/// up in "Needs review". `sensitive` has none: a line the model leans sensitive on is always
-/// shown, never silently dropped.
+/// Below its floor a model "yes" is rejected without asking: 0.75 for action, decision and
+/// open question (at 0.60 Jev's maybes filled "Needs review" with false positives), 0.60 for
+/// the other questions that end up there. `sensitive` has none: a line the model leans
+/// sensitive on is always shown, never silently dropped.
+// ponytail: 0.75 picked from use, not measured; rerun `mirona eval` on labelled real meetings
+// (NGR-163) to set it.
 pub fn default_floor(question: &str) -> f32 {
     match question {
-        "action" | "decision" | "unanswered" | "smalltalk" | "meeting_type" | "tag"
-        | "follow_up" => 0.6,
+        "action" | "decision" | "unanswered" => 0.75,
+        "smalltalk" | "meeting_type" | "tag" | "follow_up" => 0.6,
         _ => 0.0,
     }
 }

@@ -410,11 +410,11 @@ impl Store {
         self.save(i, true)
     }
 
-    /// Join a finished meeting's lines split mid-sentence (see [`merge_lines`]). Returns how
-    /// many lines were folded into the one before.
-    pub fn merge_lines(&mut self, meeting_id: &str) -> Result<usize> {
+    /// Join a finished meeting's lines split mid-sentence, or mid-turn with `turns` (see
+    /// [`merge_lines`]). Returns how many lines were folded into the one before.
+    pub fn merge_lines(&mut self, meeting_id: &str, turns: bool) -> Result<usize> {
         let i = self.idx(meeting_id)?;
-        let n = merge_lines(&mut self.entries[i].meeting.segments);
+        let n = merge_lines(&mut self.entries[i].meeting.segments, turns);
         if n > 0 {
             classify::fill_items(&mut self.entries[i]);
             self.save(i, true)?;
@@ -865,6 +865,9 @@ fn new_speaker(id: &str) -> Speaker {
 
 /// The longest pause a sentence is joined across, and the longest line joining may make.
 const JOIN_GAP_MS: u32 = 1_200;
+/// The longest pause a speaker's turn is joined across, once speakers are separated.
+// ponytail: fixed pause, tune from real meetings if turns still split or topics run together.
+const TURN_GAP_MS: u32 = 2_000;
 const JOIN_MAX_MS: u32 = 30_000;
 /// How many short interjections from others a join may reach across.
 const JOIN_SKIP: usize = 3;
@@ -873,12 +876,14 @@ const JOIN_SKIP: usize = 3;
 /// several lines. A line joins the one before it when it's the same speaker, the pause is
 /// short and the line before doesn't end a sentence, or it does but this line starts in
 /// lowercase (Parakeet ends most chunks with a period but capitalizes only real sentence
-/// starts). Up to [`JOIN_SKIP`] short interjections from others ("Mm-hmm.") in between don't
+/// starts). With `turns` (after diarization, when each line has its real speaker) the
+/// sentence check is dropped and the pause may reach [`TURN_GAP_MS`]: a speaker who pauses
+/// between sentences of one idea stays on one line, so it's classified as a whole. Up to [`JOIN_SKIP`] short interjections from others ("Mm-hmm.") in between don't
 /// stop a join; they stay as their own lines after it. Redacted lines, lines the user
 /// corrected and lines without an end time are left alone. Joined lines lose their answers so
 /// the after-call classification asks again; their tags stay until then. Returns how many
 /// lines were folded into an earlier one.
-pub fn merge_lines(segs: &mut Vec<Segment>) -> usize {
+pub fn merge_lines(segs: &mut Vec<Segment>, turns: bool) -> usize {
     let before = segs.len();
     let mut out: Vec<Segment> = Vec::with_capacity(before);
     for s in segs.drain(..) {
@@ -891,10 +896,13 @@ pub fn merge_lines(segs: &mut Vec<Segment>) -> usize {
             at -= 1;
         }
         // The line right before, else the same speaker's line before the interjections.
-        let target = [out.len(), at]
-            .into_iter()
-            .filter(|&i| i > 0)
-            .find(|&i| joins(&out[i - 1], &s));
+        let target = [out.len(), at].into_iter().filter(|&i| i > 0).find(|&i| {
+            if turns {
+                same_turn(&out[i - 1], &s, TURN_GAP_MS)
+            } else {
+                joins(&out[i - 1], &s)
+            }
+        });
         match target.map(|i| &mut out[i - 1]) {
             Some(prev) => join_into(prev, s),
             None => out.push(s),
@@ -934,15 +942,21 @@ pub fn join_into(prev: &mut Segment, s: Segment) {
 /// Whether `next` continues `prev`'s sentence: same speaker, a short pause, not too long, and
 /// `prev` doesn't end a sentence (or `next` starts in lowercase).
 pub fn joins(prev: &Segment, next: &Segment) -> bool {
+    same_turn(prev, next, JOIN_GAP_MS)
+        && (!prev.text.trim_end().ends_with(['.', '?', '!']) || starts_lower(next))
+}
+
+/// Same speaker, a pause of at most `gap_ms`, at most [`JOIN_MAX_MS`] together, and neither
+/// line redacted, corrected by the user or missing its end time.
+fn same_turn(prev: &Segment, next: &Segment, gap_ms: u32) -> bool {
     let fixed = |s: &Segment| {
         s.redacted || s.end_ms == 0 || s.answers.iter().any(|a| a.source == AnswerSource::User)
     };
     prev.speaker_id == next.speaker_id
         && !fixed(prev)
         && !fixed(next)
-        && next.start_ms.saturating_sub(prev.end_ms) <= JOIN_GAP_MS
+        && next.start_ms.saturating_sub(prev.end_ms) <= gap_ms
         && next.end_ms.saturating_sub(prev.start_ms) <= JOIN_MAX_MS
-        && (!prev.text.trim_end().ends_with(['.', '?', '!']) || starts_lower(next))
 }
 
 fn starts_lower(s: &Segment) -> bool {

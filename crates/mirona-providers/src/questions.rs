@@ -129,6 +129,17 @@ pub const SEGMENT_QUESTIONS: [YesNo; 5] = [
     },
 ];
 
+/// "Is this a question nobody answered?" asked again after the call, about a line the segment
+/// question said yes to, with the lines after it: one line alone can't show its answer, which
+/// comes later. Same id, so it replaces the segment answer. Not part of the NGR-130 eval.
+pub const STILL_OPEN: YesNo = YesNo {
+    id: "unanswered",
+    question: "Is this a question nobody answered?",
+    instructions: "The line marked [Question] raises a question or open point. Judge whether the lines marked [Later] answer or resolve it.",
+    yes: "No later line answers it, or the answer is deferred ('I don't know', 'let me check', 'let's take it offline').",
+    no: "A later line answers or resolves it, or the marked line asks no real question (rhetorical, 'right?', 'makes sense?', a greeting).",
+};
+
 /// Asked with the segment questions; not part of the NGR-130 eval (no labels yet).
 pub const DUE: YesNo = YesNo {
     id: "due",

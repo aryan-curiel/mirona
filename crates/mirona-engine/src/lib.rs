@@ -374,9 +374,11 @@ impl Engine {
             notice(why, false);
         }
         let diarized = self.diarize(id, events);
-        // Join sentences split by short pauses, now that each line has its real speaker and
-        // before tags, summary and search see the lines. `Diarized` makes the app reload them.
-        match self.store.lock().unwrap().merge_lines(id) {
+        // Join lines split by short pauses before tags, summary and search see them: whole
+        // turns once remote voices are separated, else only split sentences (two remote people
+        // still share "Them"). `Diarized` makes the app reload them.
+        let turns = diarized.as_ref().is_ok_and(|n| *n > 0);
+        match self.store.lock().unwrap().merge_lines(id, turns) {
             Ok(0) => {}
             Ok(_) => {
                 let speakers = *diarized.as_ref().unwrap_or(&0);
