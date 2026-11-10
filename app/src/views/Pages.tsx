@@ -108,7 +108,8 @@ export function AllMeetingsView() {
           </button>
         )}
       </div>
-      <div className="mi-card overflow-x-auto">
+      {/* Narrow: Type goes first, then Length (container queries: the sidebar and inspector take width too). */}
+      <div className="@container mi-card overflow-x-auto">
         <table className="w-full text-[14px]">
           <thead className="border-b border-line text-[13px] text-muted">
             <tr>
@@ -117,9 +118,9 @@ export function AllMeetingsView() {
               </th>
               {head("title", "Title")}
               {head("tags", "Tags")}
-              <th className="px-3 py-2.5 text-left font-medium">Type</th>
+              <th className="hidden px-3 py-2.5 text-left font-medium @3xl:table-cell">Type</th>
               {head("date", "Date")}
-              {head("length", "Length", "text-right")}
+              {head("length", "Length", "hidden text-right @2xl:table-cell")}
               <th className="px-3 py-2.5 text-left font-medium">Status</th>
             </tr>
           </thead>
@@ -159,9 +160,9 @@ export function AllMeetingsView() {
                       "—"
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-ink-3">{m.meetingType ? typeLabel(m.meetingType) : "—"}</td>
+                  <td className="hidden px-3 py-2.5 text-ink-3 @3xl:table-cell">{m.meetingType ? typeLabel(m.meetingType) : "—"}</td>
                   <td className="px-3 py-2.5 whitespace-nowrap text-ink-3">{m.when}</td>
-                  <td className="px-3 py-2.5 text-right whitespace-nowrap text-ink-3">{m.durationMin} min</td>
+                  <td className="hidden px-3 py-2.5 text-right whitespace-nowrap text-ink-3 @2xl:table-cell">{m.durationMin} min</td>
                   <td className="px-3 py-2.5">
                     <span className="flex flex-wrap gap-1">
                       {m.openActions > 0 && <span className="mi-chip mi-chip--action">{m.openActions} open</span>}
