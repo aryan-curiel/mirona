@@ -3,6 +3,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { useStore, type Tab } from "../store";
 import { api, fmt, sure, typeLabel } from "../lib/api";
 import { retime } from "../lib/notes";
+import { isHidden } from "../lib/match";
 import { Avatar, Chip, Icon, Label, Logo, Mono } from "../components/ui";
 import { ImportProgress, RecordButton, useModelNames } from "../components/Shell";
 import type { Meeting } from "../bindings/Meeting";
@@ -489,7 +490,7 @@ const SegmentRow = memo(function SegmentRow({ seg, speaker: sp, suggest, selecte
     setDraft(null);
   };
   // Redacted lines and lines tagged sensitive stay hidden until "Show sensitive text".
-  const hidden = (seg.redacted || seg.tags.some((t) => t.kind === "sensitive")) && !showSensitive;
+  const hidden = isHidden(seg, showSensitive);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: mouse shortcut; the Inspect button is the keyboard path
     // biome-ignore lint/a11y/useKeyWithClickEvents: same as above
