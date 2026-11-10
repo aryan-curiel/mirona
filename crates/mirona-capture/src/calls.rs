@@ -101,13 +101,27 @@ pub fn calls_using_mic() -> Vec<CallApp> {
     out
 }
 
-/// The title of the (non all-day) calendar event happening now; the latest to start if several.
-/// `None` without calendar access or off macOS.
+/// How far ahead an event still counts: people join a few minutes early.
+pub const EARLY_JOIN_SECS: f64 = 5.0 * 60.0;
+
+/// The title of the (non all-day) calendar event a call starting now belongs to: one running
+/// now or starting within [`EARLY_JOIN_SECS`]. `None` without calendar access or off macOS.
 pub fn current_event_title() -> Option<String> {
     #[cfg(target_os = "macos")]
     return mac::current_event_title();
     #[cfg(not(target_os = "macos"))]
     None
+}
+
+/// Of `(start, title)` events (Unix seconds) overlapping now..now + [`EARLY_JOIN_SECS`], the one
+/// whose start is closest to `now`: joining at 9:58 picks the 10:00 call over the 9:00 one still
+/// running. Blank titles don't count.
+pub fn pick_event(events: impl IntoIterator<Item = (f64, String)>, now: f64) -> Option<String> {
+    events
+        .into_iter()
+        .filter(|(_, t)| !t.trim().is_empty())
+        .min_by(|a, b| (a.0 - now).abs().total_cmp(&(b.0 - now).abs()))
+        .map(|(_, t)| t)
 }
 
 /// Ask for calendar access (blocks until answered). `true` once granted.
@@ -236,21 +250,17 @@ mod mac {
             return None;
         }
         let store = unsafe { EKEventStore::new() };
-        let (start, end) = (NSDate::now(), NSDate::dateWithTimeIntervalSinceNow(1.0));
+        let start = NSDate::now();
+        let end = NSDate::dateWithTimeIntervalSinceNow(super::EARLY_JOIN_SECS);
         let events = unsafe {
             let p = store.predicateForEventsWithStartDate_endDate_calendars(&start, &end, None);
             store.eventsMatchingPredicate(&p)
         };
-        events
+        let events = events
             .iter()
             .filter(|e| unsafe { !e.isAllDay() })
-            .max_by(|a, b| unsafe {
-                let (a, b) = (a.startDate(), b.startDate());
-                a.timeIntervalSince1970()
-                    .total_cmp(&b.timeIntervalSince1970())
-            })
-            .map(|e| unsafe { e.title() }.to_string())
-            .filter(|t| !t.trim().is_empty())
+            .map(|e| unsafe { (e.startDate().timeIntervalSince1970(), e.title().to_string()) });
+        super::pick_event(events, start.timeIntervalSince1970())
     }
 }
 
@@ -299,6 +309,30 @@ mod tests {
             Some("Northwind".into())
         );
         assert_eq!(tag_in_title("1:1 with Sam", &tags), None);
+    }
+
+    #[test]
+    fn early_joins_pick_the_nearest_event() {
+        let ev = |start: f64, t: &str| (start, t.to_string());
+        let now = 10_000.0;
+        // 9:58: the 10:00 call beats the 9:00 block still running.
+        assert_eq!(
+            pick_event(
+                [ev(now - 3480.0, "Focus"), ev(now + 120.0, "Setr sync")],
+                now
+            ),
+            Some("Setr sync".into())
+        );
+        // 10:03, running late: the 10:00 call beats the 10:30 one.
+        assert_eq!(
+            pick_event(
+                [ev(now - 180.0, "Setr sync"), ev(now + 1620.0, "Later")],
+                now
+            ),
+            Some("Setr sync".into())
+        );
+        assert_eq!(pick_event([ev(now, " ")], now), None);
+        assert_eq!(pick_event([], now), None);
     }
 
     /// Prints what's using the mic and the calendar event now. Run with a call open:

@@ -65,8 +65,10 @@ the mic counts as a call, since Mirona can't tell a Meet tab from any other tab.
 ### Calendar titles and recording without a click
 
 Turn on **Use calendar event titles** (it asks for calendar access once) and a detected call is
-named after the calendar event happening now, so the banner reads *It will be named "Claims Desk
-weekly sync"*. If the event title names one of your tags, the meeting gets that tag too.
+named after its calendar event, so the banner reads *It will be named "Claims Desk weekly sync"*.
+That's the event running now or starting within 5 minutes (you joined early); if there are
+several, the one starting closest to now. If the event title names one of your tags, the meeting
+gets that tag too.
 
 Below that, you can tick tags to **record without asking**: when a call starts and the event title
 names a ticked tag, Mirona starts recording on its own. `project:setr` matches an event called
