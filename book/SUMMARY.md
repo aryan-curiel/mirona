@@ -5,6 +5,19 @@
 # Using Mirona
 
 - [User guide](docs/user-guide.md)
+  - [Getting started](docs/guide/getting-started.md)
+  - [Recording](docs/guide/recording.md)
+  - [A meeting, explained](docs/guide/meetings.md)
+  - [Speakers and voices](docs/guide/speakers.md)
+  - [Tags](docs/guide/tags.md)
+  - [Action items and search](docs/guide/actions-and-search.md)
+  - [Summaries, templates and models](docs/guide/summaries.md)
+  - [Privacy, encryption and retention](docs/guide/privacy.md)
+  - [AI agents (MCP)](docs/guide/agents.md)
+  - [Common workflows](docs/guide/workflows.md)
+  - [Settings reference](docs/guide/settings.md)
+  - [Files and folders](docs/guide/files.md)
+  - [FAQ and troubleshooting](docs/guide/faq.md)
 - [CLI and MCP](docs/cli-and-mcp.md)
 - [Privacy](PRIVACY.md)
 

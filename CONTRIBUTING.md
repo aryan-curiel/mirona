@@ -71,6 +71,11 @@ Start with [docs/architecture.md](docs/architecture.md). A few rules that keep t
   `design-kit/tokens/tokens.css`, and text contrast must be at least 4.5:1
   (`python3 design-kit/tokens/check-contrast.py`).
 - **New providers:** [docs/providers.md](docs/providers.md).
+- **User docs** live in `docs/user-guide.md` and `docs/guide/`; update the page a change
+  affects. Their screenshots, the README shot and the tour GIF come from the real UI over the demo
+  meetings, with a mocked backend: `cd app && pnpm shots` retakes them all (`pnpm shots meeting
+  tour` only those). It needs Playwright's Chromium once (`npx playwright-core install chromium`)
+  and ffmpeg for the GIF.
 
 ## Style
 

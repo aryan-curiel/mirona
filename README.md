@@ -45,7 +45,7 @@ instead, with your own key.
 
 | | |
 | --- | --- |
-| [User guide](docs/user-guide.md) | Recording, speakers, summaries, search, privacy mode, encryption, retention |
+| [User guide](docs/user-guide.md) | Getting started, recording, speakers, tags, summaries and templates, search, privacy, settings, workflows, FAQ |
 | [CLI and MCP](docs/cli-and-mcp.md) | The `mirona` CLI, MCP tools, setup for Claude Code, Claude Desktop, Cursor |
 | [Architecture](docs/architecture.md) | Crates, the pipeline, where files live |
 | [Adding a provider](docs/providers.md) | A new speech, speaker, classifier, LLM or embedding provider |

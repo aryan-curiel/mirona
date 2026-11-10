@@ -65,7 +65,7 @@ Workspace crates (`crates/*`) plus the Tauri crate `app/src-tauri` (`mirona-app`
 
 ## Docs
 
-- Users: `README.md`, `docs/user-guide.md`, `PRIVACY.md`. Contributors: `CONTRIBUTING.md`, `docs/architecture.md`, `docs/providers.md`, `docs/cli-and-mcp.md`, `docs/releasing.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md`. Update the matching doc when behaviour changes. `docs/m1-plan.md`, `docs/m2-plan.md` and `docs/spikes/` are historical.
+- Users: `README.md`, `docs/user-guide.md` (index) + `docs/guide/*.md` (chapters), `PRIVACY.md`. Screenshots: `cd app && pnpm shots` (real UI over demo data via `app/scripts/shots/`). Contributors: `CONTRIBUTING.md`, `docs/architecture.md`, `docs/providers.md`, `docs/cli-and-mcp.md`, `docs/releasing.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md`. Update the matching doc when behaviour changes. `docs/m1-plan.md`, `docs/m2-plan.md` and `docs/spikes/` are historical.
 
 ## Spikes and decisions
 
