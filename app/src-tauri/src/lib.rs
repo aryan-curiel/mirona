@@ -1465,7 +1465,7 @@ impl Settings {
                 } else {
                     base
                 };
-                let local = mirona_providers::openai::is_loopback(url);
+                let local = mirona_providers::net::is_local(url);
                 let loc = if local {
                     Locality::Local
                 } else {

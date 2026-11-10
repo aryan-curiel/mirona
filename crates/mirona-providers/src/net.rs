@@ -1,7 +1,8 @@
 //! The network gate (NGR-164). Every HTTP request any provider makes asks [`allow`] first, so
 //! privacy mode is enforced where the bytes would leave, not only where providers are picked
-//! ([`crate::check_privacy`]). In privacy mode only loopback hosts (Ollama, LM Studio on this
-//! machine) are reachable, and cloud providers are refused even if pointed at one.
+//! ([`crate::check_privacy`]). In privacy mode only hosts on this machine or the local network
+//! ([`is_local`]: Ollama, LM Studio here or on an AI box next to it) are reachable, and cloud
+//! providers are refused even if pointed at one.
 //!
 //! The switch is process-wide and starts on: a process that never loaded its config can't
 //! reach the network. `Engine`, the CLI and the MCP server set it from `config.toml`.
@@ -33,6 +34,25 @@ pub fn is_loopback(url: &str) -> bool {
             .is_ok_and(|ip| ip.is_loopback())
 }
 
+/// Whether `url` points at this machine or the local network: loopback, private IPv4
+/// (10/8, 172.16/12, 192.168/16), link-local, Tailscale's 100.64/10, IPv6 unique-local, or an
+/// mDNS `.local` name. Bare names (`ai-box`) don't count: DNS could send them anywhere.
+pub fn is_local(url: &str) -> bool {
+    use std::net::IpAddr;
+    let host = host(url);
+    if is_loopback(url) || host.to_ascii_lowercase().ends_with(".local") {
+        return true;
+    }
+    match host.parse::<IpAddr>() {
+        Ok(IpAddr::V4(ip)) => {
+            let [a, b, ..] = ip.octets();
+            ip.is_private() || ip.is_link_local() || (a == 100 && (64..128).contains(&b))
+        }
+        Ok(IpAddr::V6(ip)) => ip.is_unique_local() || ip.is_unicast_link_local(),
+        Err(_) => false,
+    }
+}
+
 fn host(url: &str) -> &str {
     let rest = url.split_once("://").map_or(url, |(_, r)| r);
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
@@ -44,9 +64,9 @@ fn host(url: &str) -> &str {
 }
 
 /// Call before every request. In privacy mode, refuses cloud providers and any host that
-/// isn't this machine.
+/// isn't this machine or the local network.
 pub fn allow(url: &str, locality: Locality) -> Result<()> {
-    if privacy() && (locality == Locality::Cloud || !is_loopback(url)) {
+    if privacy() && (locality == Locality::Cloud || !is_local(url)) {
         return Err(Error::PrivacyBlocked(host(url).to_string()));
     }
     Ok(())
@@ -90,16 +110,31 @@ pub(crate) mod tests {
     pub static SWITCH: Mutex<()> = Mutex::new(());
 
     #[test]
-    fn only_this_machine_is_reachable_in_privacy_mode() {
+    fn only_the_local_network_is_reachable_in_privacy_mode() {
         let _g = SWITCH.lock().unwrap();
         set_privacy(true);
-        assert!(allow("http://localhost:11434/api/chat", Locality::Local).is_ok());
-        assert!(allow("http://[::1]:1234/v1", Locality::Local).is_ok());
+        for url in [
+            "http://localhost:11434/api/chat",
+            "http://[::1]:1234/v1",
+            "http://192.168.1.20:11434/api/chat",
+            "http://10.0.0.5:11434",
+            "http://172.20.1.1:11434",
+            "http://100.101.102.103:11434",
+            "http://ai-box.local:11434",
+            "http://[fd12::1]:11434",
+        ] {
+            assert!(allow(url, Locality::Local).is_ok(), "{url}");
+        }
         for url in [
             "https://api.openai.com/v1",
-            "http://192.168.1.20:11434",
+            "http://8.8.8.8:11434",
+            "http://172.32.0.1:11434",
+            "http://100.128.0.1:11434",
+            "http://ai-box:11434",
+            "http://ai-box.local.evil.com:11434",
             "https://localhost.evil.com/v1",
             "https://user@127.0.0.1.example.com/",
+            "https://user@192.168.1.1.example.com/",
         ] {
             assert!(
                 matches!(allow(url, Locality::Local), Err(Error::PrivacyBlocked(_))),
@@ -162,9 +197,9 @@ pub(crate) mod tests {
             json: false,
         };
         let jev = crate::jev::Jev::with_url("key", &local);
-        // A LAN address is never tried: refused before connecting, so no timeout either.
-        let lan = crate::ollama::Ollama::new("m", "http://10.255.255.1:11434/api/chat");
-        let lan_llm = crate::openai::OpenAi::new("http://10.255.255.1:1234/v1", "m", None);
+        // A public address is never tried: refused before connecting, so no timeout either.
+        let lan = crate::ollama::Ollama::new("m", "http://198.51.100.1:11434/api/chat");
+        let lan_llm = crate::openai::OpenAi::new("http://198.51.100.1:1234/v1", "m", None);
 
         set_privacy(true);
         let started = std::time::Instant::now();

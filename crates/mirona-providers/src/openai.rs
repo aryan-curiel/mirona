@@ -29,8 +29,6 @@ impl OpenAi {
     }
 }
 
-pub use crate::net::is_loopback;
-
 pub fn request(model: &str, base_url: &str, prompt: &Prompt<'_>) -> Value {
     let mut body = json!({
         "model": model,
@@ -95,7 +93,7 @@ impl Provider for OpenAi {
         "openai"
     }
     fn locality(&self) -> Locality {
-        if is_loopback(&self.base_url) {
+        if crate::net::is_local(&self.base_url) {
             Locality::Local
         } else {
             Locality::Cloud
@@ -144,13 +142,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_loopback_is_local() {
+    fn only_this_machine_and_the_local_network_are_local() {
         let local = |u| OpenAi::new(u, "m", None).locality() == Locality::Local;
         assert!(local(LM_STUDIO_URL));
         assert!(local("http://127.0.0.1:8080/v1"));
         assert!(local("http://[::1]:11434/v1/"));
         assert!(!local(OPENAI_URL));
-        assert!(!local("http://192.168.1.20:1234/v1"));
+        assert!(local("http://192.168.1.20:1234/v1"));
+        assert!(!local("http://203.0.113.7:1234/v1"));
         assert!(!local("https://localhost.evil.com/v1"));
         assert!(!local("https://user@api.groq.com/openai/v1"));
     }

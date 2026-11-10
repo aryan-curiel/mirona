@@ -30,8 +30,23 @@ Bigger models write better summaries but take longer and need more memory. `qwen
 default because it runs comfortably on a 16 GB Mac.
 
 **LM Studio, vLLM or another local server:** pick **OpenAI-compatible** and set the base URL to
-the server on this Mac (for LM Studio, `http://localhost:1234/v1`). Servers on `localhost`
-count as local, so they work in privacy mode.
+the server on this Mac (for LM Studio, `http://localhost:1234/v1`). Servers on `localhost` or
+your local network count as local, so they work in privacy mode.
+
+**Models on another computer:** if a stronger machine on your network (an AI workstation, a
+gaming PC) runs Ollama, the Mac only has to record and transcribe.
+
+1. On that computer, pull the models (`ollama pull qwen3:4b`, `ollama pull nomic-embed-text`)
+   and start Ollama so it listens on the network: `OLLAMA_HOST=0.0.0.0 ollama serve`.
+2. In Settings › AI models, set **Ollama chat URL** to that computer, e.g.
+   `http://192.168.1.20:11434/api/chat` or `http://ai-box.local:11434/api/chat`.
+
+Summaries, tags and search by meaning then all run there. Private addresses (`10.x`,
+`172.16–31.x`, `192.168.x`), Tailscale (`100.64–127.x`) and `.local` names count as local, so
+privacy mode allows them; plain names like `http://ai-box` don't, use its IP or `.local` name.
+Transcription and speaker naming stay on the Mac. The traffic is plain HTTP: on a network you
+don't trust, use Tailscale or an SSH tunnel (`ssh -N -L 11434:localhost:11434 ai-box`, then
+keep the URL on `localhost`).
 
 ### Using a cloud model
 

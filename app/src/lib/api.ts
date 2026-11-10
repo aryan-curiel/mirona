@@ -208,8 +208,11 @@ export const dayGroup = (created: string, now = new Date()) => {
   return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 };
 
-export const LLM_LOCAL = (s: Settings) =>
-  s.llm === "ollama" || (s.llm === "openai" && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(s.llmBaseUrl.trim()));
+/** This machine or the local network; mirrors `net::is_local` in mirona-providers. */
+const LOCAL_HOST =
+  /^https?:\/\/(localhost|127\.\d+\.\d+\.\d+|\[::1\]|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|169\.254\.\d+\.\d+|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+|\[f[cde][0-9a-f]*:[0-9a-f:]*\]|[a-z0-9.-]+\.local)(:|\/|$)/i;
+
+export const LLM_LOCAL = (s: Settings) => s.llm === "ollama" || (s.llm === "openai" && LOCAL_HOST.test(s.llmBaseUrl.trim()));
 
 /** Labels for the classifier's ids. */
 export const MEETING_TYPES: Record<string, string> = {

@@ -858,7 +858,11 @@ function SettingsView() {
             {st.llm !== "anthropic" && (
               <Field
                 label={st.llm === "openai" ? "Base URL" : "Ollama chat URL"}
-                hint={st.llm === "openai" ? "LM Studio, vLLM and other servers on localhost count as local." : undefined}
+                hint={
+                  st.llm === "openai"
+                    ? "LM Studio, vLLM and other servers on this Mac or your local network count as local."
+                    : "Another computer on your network works too (http://192.168.1.20:11434/api/chat or ai-box.local); tags and search use it as well."
+                }
                 value={st.llmBaseUrl}
                 placeholder={d.url}
                 onSave={(llmBaseUrl) => save({ llmBaseUrl })}

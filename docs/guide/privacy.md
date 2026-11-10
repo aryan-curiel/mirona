@@ -9,8 +9,8 @@ exactly what can leave your Mac, and when.
 **On by default.** The switch is at the bottom of the sidebar and in Settings › Privacy and
 storage. While it's on:
 
-- every cloud provider is blocked at one network gate in the code, so only this Mac (Ollama,
-  LM Studio and other local servers) can be reached
+- every cloud provider is blocked at one network gate in the code, so only this Mac or a
+  computer on your local network (Ollama, LM Studio and other local servers) can be reached
 - classification uses the local model instead of Jev, so tags are somewhat less accurate
 - the sidebar badge reads **Local only**
 

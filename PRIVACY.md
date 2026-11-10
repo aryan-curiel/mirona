@@ -37,7 +37,9 @@ Solid arrows stay on your Mac or go to an agent you connected. Dotted arrows are
 network traffic, and only in the cases shown.
 
 **Privacy mode** is on by default. While it's on, every cloud provider is blocked at one network
-gate in the code, and only this Mac (Ollama, LM Studio) can be reached. The model download is the
+gate in the code, and only this Mac or a computer on your local network (Ollama, LM Studio)
+can be reached. Traffic to another computer on your network is plain HTTP unless you tunnel it
+(SSH, Tailscale). The model download is the
 one exception, and only when you start it.
 
 **Sensitive lines** (passwords, salaries, account and card numbers, health details, and lines the

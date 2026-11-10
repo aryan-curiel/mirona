@@ -179,7 +179,7 @@ impl Provider for Ollama {
     }
     /// Ollama on another machine is someone else's server.
     fn locality(&self) -> Locality {
-        if crate::net::is_loopback(&self.url) {
+        if crate::net::is_local(&self.url) {
             Locality::Local
         } else {
             Locality::Cloud
@@ -360,7 +360,7 @@ impl Provider for OllamaEmbedder {
         "ollama"
     }
     fn locality(&self) -> Locality {
-        if crate::net::is_loopback(&self.url) {
+        if crate::net::is_local(&self.url) {
             Locality::Local
         } else {
             Locality::Cloud

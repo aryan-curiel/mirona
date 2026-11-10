@@ -127,7 +127,7 @@ flowchart LR
     PICK["Provider picked<br/>in config.toml"] --> CP{"check_privacy<br/>cloud provider and<br/>privacy mode on?"}
     CP -- yes --> REFUSE1["Refused"]
     CP -- no --> REQ["HTTP request"]
-    REQ --> NA{"net::allow<br/>privacy mode on and<br/>host not loopback?"}
+    REQ --> NA{"net::allow<br/>privacy mode on and<br/>host not local network?"}
     NA -- yes --> REFUSE2["Refused,<br/>no connection opened"]
     NA -- no --> OUT["Request sent"]
     DL["Model download<br/>(user clicked)"] --> AM{"net::allow_model<br/>HTTPS to huggingface.co<br/>or github.com?"}
@@ -141,7 +141,9 @@ flowchart LR
 Two checks, each in one place:
 
 - `check_privacy` refuses any provider whose locality is `Cloud` while privacy mode is on.
-- `net::allow` runs before every HTTP request; in privacy mode only loopback hosts pass. The
+- `net::allow` runs before every HTTP request; in privacy mode only this machine and the local network pass
+  (`net::is_local`; Ollama on another computer serves summary, tags and search through
+  `mirona_engine::ollama_url`). The
   exceptions are `net::allow_model` (model downloads the user starts, from pinned URLs) and
   `net::allow_update` (the update check the user turned on, to github.com only;
   `app/src-tauri/src/update.rs`).

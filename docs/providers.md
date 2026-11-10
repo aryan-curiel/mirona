@@ -72,8 +72,9 @@ The rules every provider follows:
 - **Say where it runs.** `locality()` is `Cloud` for anything that sends data off the machine.
   Privacy mode refuses cloud providers in `check_privacy`.
 - **Every request goes through the network gate.** Call `net::allow(url, locality)` before each
-  HTTP request. In privacy mode it lets only loopback hosts through, so a "local" provider
-  pointed at a LAN address is refused too. Don't open connections any other way.
+  HTTP request. In privacy mode it lets only this machine and the local network through
+  (`net::is_local`: loopback, private and Tailscale IPs, `.local`), so a "local" provider
+  pointed at a public address is refused too. Base `locality()` on `net::is_local`. Don't open connections any other way.
 - **No API keys in config.** Keys live in the OS keychain (`keychain::api_key("<id>")`), entered
   in Settings › AI models › API keys. Add the id to `KEY_PROVIDERS` in
   `app/src-tauri/src/lib.rs` and an `ApiKey` field in `app/src/views/Settings.tsx`.

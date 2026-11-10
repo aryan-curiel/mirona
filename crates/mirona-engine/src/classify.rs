@@ -65,7 +65,10 @@ impl AnyClassifier {
     /// the keychain (account `jev`); `None` when the config says `off`. The second value says
     /// why it fell back, when it did against the config's wish.
     pub fn from_config(cfg: &Config) -> (Option<Self>, Option<String>) {
-        let local = Some(Self::Local(Ollama::default()));
+        let local = Some(Self::Local(Ollama::new(
+            mirona_providers::ollama::MODEL,
+            crate::ollama_url(cfg, "/api/chat"),
+        )));
         match stage(cfg, "classification", "jev").as_str() {
             "off" => return (None, None),
             "local-llm" => return (local, None),

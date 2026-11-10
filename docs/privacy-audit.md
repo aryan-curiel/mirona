@@ -1,14 +1,14 @@
 # Privacy audit (Gate 3, NGR-171)
 
 Run before every release. Gate 3 passes when, with privacy mode on, a full meeting (record or
-import, summarize, search, MCP) opens **no connection that leaves this machine**, and **sensitive
+import, summarize, search, MCP) opens **no connection that leaves this machine** (or, with Ollama on another computer, the local network), and **sensitive
 content said in the call never appears in a summary or an MCP result**.
 
 ## What enforces it
 
 - **One network gate** (`crates/mirona-providers/src/net.rs`): every HTTP request a provider
-  makes calls `net::allow` first. In privacy mode only loopback hosts pass (Ollama, LM Studio on
-  this machine), and cloud providers are refused even when pointed at one. The switch starts on
+  makes calls `net::allow` first. In privacy mode only this machine and the local network pass
+  (`net::is_local`: Ollama, LM Studio here or on another computer on the network), and cloud providers are refused even when pointed at one. The switch starts on
   in every process and is set from `config.toml` by the app, the CLI and the MCP server.
   `privacy_mode_opens_no_connection` proves it with a real socket.
 - **Update check** (`app/src-tauri/src/update.rs`): off by default; runs only with Settings ›

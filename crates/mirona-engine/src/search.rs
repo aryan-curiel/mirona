@@ -36,7 +36,10 @@ impl Embed for OllamaEmbedder {
 
 /// The configured embedder, or `None` when search by meaning is off.
 pub fn embedder(cfg: &Config) -> Option<OllamaEmbedder> {
-    (stage(cfg, "embeddings", "ollama") != "off").then(OllamaEmbedder::default)
+    (stage(cfg, "embeddings", "ollama") != "off").then(|| {
+        let url = crate::ollama_url(cfg, "/api/embed");
+        OllamaEmbedder::new(mirona_providers::ollama::EMBED_MODEL, url)
+    })
 }
 
 /// Embed the lines of a meeting that have no current vector. Returns how many were embedded.

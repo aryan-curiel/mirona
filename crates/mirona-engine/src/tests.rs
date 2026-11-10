@@ -566,3 +566,27 @@ fn downloader_resumes_and_checks_the_checksum() {
     );
     assert!(!m.join("silero_vad.onnx.part").exists());
 }
+
+/// One Ollama server for every stage: the summary's chat URL, when the summary runs on Ollama.
+#[test]
+fn ollama_url_follows_the_summary_server() {
+    let mut cfg = Config::default();
+    assert_eq!(
+        ollama_url(&cfg, "/api/embed"),
+        "http://localhost:11434/api/embed"
+    );
+    cfg.llm.base_url = "http://192.168.1.20:11434/api/chat/".into();
+    assert_eq!(
+        ollama_url(&cfg, "/api/embed"),
+        "http://192.168.1.20:11434/api/embed"
+    );
+    assert_eq!(
+        ollama_url(&cfg, "/api/chat"),
+        "http://192.168.1.20:11434/api/chat"
+    );
+    cfg.providers.insert("llm".into(), "openai".into());
+    assert_eq!(
+        ollama_url(&cfg, "/api/chat"),
+        "http://localhost:11434/api/chat"
+    );
+}

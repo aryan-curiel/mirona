@@ -840,6 +840,19 @@ pub fn stage(cfg: &Config, stage: &str, default: &str) -> String {
         .unwrap_or_else(|| default.into())
 }
 
+/// Where Ollama answers for every stage that uses it (summary, tags, search): the server in the
+/// summary's "Ollama chat URL" when the summary runs on Ollama, so one AI machine on the
+/// network serves them all; this machine otherwise. `path` is e.g. `/api/embed`.
+pub fn ollama_url(cfg: &Config, path: &str) -> String {
+    let url = cfg.llm.base_url.trim();
+    let server = if stage(cfg, "llm", "ollama") == "ollama" && !url.is_empty() {
+        url.trim_end_matches('/').trim_end_matches("/api/chat")
+    } else {
+        "http://localhost:11434"
+    };
+    format!("{server}{path}")
+}
+
 /// Run a future to completion on this thread. Providers block inside their futures, so this
 /// is all the executor the engine needs.
 pub fn block_on<F: Future>(fut: F) -> F::Output {
