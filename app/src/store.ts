@@ -109,6 +109,8 @@ type State = {
   editSegment: (segmentId: string, text: string) => Promise<void>;
   enroll: (speakerId: string, name: string) => Promise<void>;
   nameSpeaker: (speakerId: string, name: string) => Promise<void>;
+  /** Move one line to another person (by name; a new name is a new person). */
+  moveLine: (segmentId: string, name: string) => Promise<void>;
   merge: (from: string, into: string) => Promise<void>;
   deleteVoiceprint: (personId: string) => Promise<void>;
   resolve: (review: Review, accept: boolean) => Promise<void>;
@@ -510,6 +512,15 @@ export const useStore = create<State>((set, get) => {
         const p = await api.nameSpeaker(m.id, speakerId, name);
         await afterFix();
         get().flash(`Named ${p.name}: transcript, summary and action items updated.`);
+      }),
+
+    moveLine: (segmentId, name) =>
+      run(async () => {
+        const m = get().meeting;
+        if (!m) return;
+        const p = await api.setLineSpeaker(m.id, segmentId, name);
+        await afterFix();
+        get().flash(`Moved the line to ${p.name}.`);
       }),
 
     merge: (from, into) =>

@@ -250,6 +250,26 @@ fn name_speaker(st: St, meeting_id: String, speaker_id: String, name: String) ->
         .name_speaker(&meeting_id, &speaker_id, &name)
 }
 
+/// Move one line to another person; it keeps them when detection runs again (NGR-201).
+#[tauri::command]
+fn set_line_speaker(st: St, meeting_id: String, segment_id: String, name: String) -> Res<Speaker> {
+    st.engine()
+        .store
+        .lock()
+        .unwrap()
+        .set_line_speaker(&meeting_id, &segment_id, &name)
+}
+
+/// Voices in a meeting nobody named yet (NGR-201).
+#[tauri::command]
+fn unnamed_speakers(st: St, meeting_id: String) -> Res<Vec<String>> {
+    st.engine()
+        .store
+        .lock()
+        .unwrap()
+        .unnamed_speakers(&meeting_id)
+}
+
 #[tauri::command]
 fn merge_people(st: St, from: String, into: String) -> Res<Speaker> {
     st.engine().store.lock().unwrap().merge_people(&from, &into)
@@ -2005,6 +2025,8 @@ pub fn run() {
             list_people,
             enroll_speaker,
             name_speaker,
+            set_line_speaker,
+            unnamed_speakers,
             merge_people,
             delete_voiceprint,
             correct_answer,
