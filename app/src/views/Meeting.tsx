@@ -4,6 +4,8 @@ import { useStore, type Tab } from "../store";
 import { api, fmt, sure, typeLabel } from "../lib/api";
 import { retime } from "../lib/notes";
 import { isHidden } from "../lib/match";
+import { type ComboOption, Combobox } from "../components/Combobox";
+import { NameVoices, newPerson, personOptions, useVoices } from "./NameVoices";
 import { Avatar, Chip, Icon, Label, Logo, Mono } from "../components/ui";
 import { ImportProgress, RecordButton, useModelNames } from "../components/Shell";
 import type { Meeting } from "../bindings/Meeting";
@@ -267,6 +269,8 @@ function Transcript({ m }: { m: Meeting }) {
   const s = useStore();
   const live = s.recording?.meetingId === m.id;
   const audio = useAudio(m);
+  const voices = useVoices(m);
+  const people = useMemo(() => personOptions(m, voices.known), [m, voices.known]);
   const list = useRef<VirtuosoHandle>(null);
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
@@ -336,6 +340,7 @@ function Transcript({ m }: { m: Meeting }) {
           Everyone on the other side shows as “Them” for now. Speakers are told apart, and voices you've named are recognized, once the call ends.
         </p>
       )}
+      <NameVoices m={m} unnamed={voices.unnamed} known={voices.known} play={audio.src ? audio.play : undefined} />
       <div className="flex flex-wrap items-center gap-2 text-[14px]">
         <input
           type="search"
@@ -384,6 +389,7 @@ function Transcript({ m }: { m: Meeting }) {
               showSensitive={s.filters.showSensitive}
               query={q}
               onPlay={audio.src ? audio.play : undefined}
+              people={live ? undefined : people}
             />
           </div>
         )}
@@ -433,6 +439,8 @@ type RowProps = {
   showSensitive: boolean;
   query: string;
   onPlay?: (ms: number) => void;
+  /** Who a line can be moved to; none while recording. */
+  people?: ComboOption[];
 };
 
 /** A speaker's name; click to name them (in this meeting, NGR-154). */
@@ -479,7 +487,43 @@ function SpeakerName({ sp, onName }: { sp: Speaker; onName: (name: string) => vo
 /** Line buttons stay out of sight until the line is hovered or focused from the keyboard. */
 const reveal = "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100";
 
-const SegmentRow = memo(function SegmentRow({ seg, speaker: sp, suggest, selected, showSensitive, query, onPlay }: RowProps) {
+/** "Who said this?": move one line to another person (NGR-201). */
+function WhoSaid({ seg, people }: { seg: Segment; people: ComboOption[] }) {
+  const moveLine = useStore((s) => s.moveLine);
+  const [open, setOpen] = useState(false);
+  if (!open)
+    return (
+      <button
+        type="button"
+        className={`rounded px-1 text-[12px] font-medium text-accent-strong hover:underline ${reveal}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(true);
+        }}
+      >
+        Who said this?
+      </button>
+    );
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: keeps clicks in the picker from selecting the line
+    // biome-ignore lint/a11y/useKeyWithClickEvents: same as above
+    <div className="w-56" onClick={(e) => e.stopPropagation()} onBlur={() => setOpen(false)}>
+      <Combobox
+        autoFocus
+        label="Who said this line?"
+        placeholder="Search people…"
+        options={people}
+        allowNew={newPerson}
+        onPick={(name) => {
+          setOpen(false);
+          void moveLine(seg.id, name);
+        }}
+      />
+    </div>
+  );
+}
+
+const SegmentRow = memo(function SegmentRow({ seg, speaker: sp, suggest, selected, showSensitive, query, onPlay, people }: RowProps) {
   const select = useStore((s) => s.selectSegment);
   const nameSpeaker = useStore((s) => s.nameSpeaker);
   const edit = useStore((s) => s.editSegment);
@@ -585,6 +629,7 @@ const SegmentRow = memo(function SegmentRow({ seg, speaker: sp, suggest, selecte
             Fix text
           </button>
         )}
+        {people && seg.speakerId !== "me" && draft === null && <WhoSaid seg={seg} people={people} />}
       </div>
     </div>
   );

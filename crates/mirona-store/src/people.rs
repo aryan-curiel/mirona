@@ -402,6 +402,19 @@ impl Store {
             .collect())
     }
 
+    /// Names of everyone in the registry, A–Z ("me" aside): what the person pickers offer.
+    pub fn known_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .voices()
+            .people
+            .into_iter()
+            .filter(|p| p.id != "me")
+            .map(|p| p.name)
+            .collect();
+        names.sort_by_key(|n| n.to_lowercase());
+        names
+    }
+
     /// Forget a person's voice: their voiceprint and every embedding behind it are deleted.
     /// Meetings keep the name; new meetings won't recognize the voice any more.
     pub fn delete_voiceprint(&mut self, person_id: &str) -> Result<()> {
@@ -849,6 +862,7 @@ mod tests {
         );
         s.name_speaker("m-a", "m-a-s1", "Ana").unwrap();
         assert_eq!(s.unnamed_speakers("m-a").unwrap(), ["m-a-s2"]);
+        assert_eq!(s.known_names(), ["Ana"]);
         // Not diarized: the other side is still "them".
         s.start_meeting("m-b").unwrap();
         s.push_segment("m-b", live_seg("m-b-0", "me", 0, "Hi."))

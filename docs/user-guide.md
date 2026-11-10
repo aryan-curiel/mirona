@@ -113,6 +113,16 @@ Mirona separates speakers after each call. In **People and voices**, name a spea
 name follows that voice to other meetings. You can also merge two speakers that are the same
 person. Voiceprints stay on your Mac.
 
+When a call ends with voices nobody has named yet, a note above the transcript says how many.
+**Name them** goes through them one at a time: each shows its three clearest lines (play them to
+hear who it is) and a field to type a name or pick someone, people from this meeting first. Skip
+a voice to leave it for later; the note stays until every voice has a name.
+
+If one line went to the wrong person, hover it and click **Who said this?** to move just that line
+to someone else, or to a new name. A moved line keeps its person when you re-run speaker
+detection, and moving lines never changes anyone's voiceprint. Your own lines ("You") can't be
+moved.
+
 ## Action items and search
 
 - **Action items** lists them across all meetings, filtered by tag, with owners and due dates when

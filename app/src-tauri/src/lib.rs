@@ -270,6 +270,12 @@ fn unnamed_speakers(st: St, meeting_id: String) -> Res<Vec<String>> {
         .unnamed_speakers(&meeting_id)
 }
 
+/// Everyone who has a name, for the person pickers (NGR-201).
+#[tauri::command]
+fn known_names(st: St) -> Vec<String> {
+    st.engine().store.lock().unwrap().known_names()
+}
+
 #[tauri::command]
 fn merge_people(st: St, from: String, into: String) -> Res<Speaker> {
     st.engine().store.lock().unwrap().merge_people(&from, &into)
@@ -2027,6 +2033,7 @@ pub fn run() {
             name_speaker,
             set_line_speaker,
             unnamed_speakers,
+            known_names,
             merge_people,
             delete_voiceprint,
             correct_answer,

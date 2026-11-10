@@ -122,6 +122,7 @@ export const api = {
   setLineSpeaker: (meetingId: string, segmentId: string, name: string) =>
     invoke<Speaker>("set_line_speaker", { meetingId, segmentId, name }),
   unnamedSpeakers: (meetingId: string) => invoke<string[]>("unnamed_speakers", { meetingId }),
+  knownNames: () => invoke<string[]>("known_names"),
   mergePeople: (from: string, into: string) => invoke<Speaker>("merge_people", { from, into }),
   deleteVoiceprint: (personId: string) => invoke<void>("delete_voiceprint", { personId }),
   /** 48 values in 0..1 drawn from the voiceprint (lossy, for the People page only). */
