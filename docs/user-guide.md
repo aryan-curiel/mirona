@@ -168,7 +168,8 @@ On by default. In privacy mode:
 What goes out in privacy mode is what you start yourself: the model download (fixed files from
 Hugging Face and GitHub) and the update check (GitHub, only if you turned it on in Settings ›
 About or clicked Check now). Neither sends anything about your meetings. When an update is out, a
-banner offers Install and restart. See
+banner offers Install and restart, and What's new opens that release's notes on GitHub in
+your browser. See
 [PRIVACY.md](../PRIVACY.md).
 
 **Sensitive lines** (tagged by the classifier, or mentioning a password, salary, account or card

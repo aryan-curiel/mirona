@@ -14,6 +14,7 @@ content said in the call never appears in a summary or an MCP result**.
 - **Update check** (`app/src-tauri/src/update.rs`): off by default; runs only with Settings ›
   About › Check for updates on, or on Check now. It calls `net::allow_update` (HTTPS to
   `github.com` only) before the check and the download, and sends no meeting data.
+  "What's new" opens the release page in the user's browser, not from the app.
 - **No other network code**: no telemetry. The other exception is the model
   downloader (NGR-174, `crates/mirona-engine/src/models.rs`): it runs only when the user clicks
   Download, calls `net::allow_model` (HTTPS to `huggingface.co` or `github.com` only), fetches

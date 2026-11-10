@@ -164,6 +164,8 @@ export const api = {
   pendingUpdate: () => invoke<UpdateInfo | null>("pending_update"),
   /** Downloads, installs and restarts the app; only returns on failure. */
   installUpdate: () => invoke<void>("install_update"),
+  /** Opens the GitHub release page of `version` in the browser. */
+  openReleaseNotes: (version: string) => invoke<void>("open_release_notes", { version }),
   stopRecording: () => invoke<string>("stop_recording"),
   setMicMuted: (muted: boolean) => invoke<void>("set_mic_muted", { muted }),
   recordingState: () => invoke<RecState>("recording_state"),

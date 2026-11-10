@@ -707,6 +707,9 @@ function Updates() {
             <span>
               <span className="font-semibold">Mirona {update.version}</span> is available.
             </span>
+            <button type="button" className="mi-ghost min-h-11! px-4" onClick={() => void api.openReleaseNotes(update.version)}>
+              What's new
+            </button>
             <button type="button" className="mi-btn-primary h-11 px-5" onClick={() => void install()} disabled={installing}>
               {installing ? "Installing…" : "Install and restart"}
             </button>

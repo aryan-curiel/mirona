@@ -1970,6 +1970,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -2126,6 +2127,7 @@ pub fn run() {
             update::check_update,
             update::pending_update,
             update::install_update,
+            update::open_release_notes,
         ])
         // Closing the main window keeps Mirona in the menu bar, so recording can still be
         // started from the tray or the shortcut. Quit from the menu bar popover. Settings just close.

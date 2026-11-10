@@ -4,7 +4,8 @@
 //! clicks "Check now" in Settings › About. Every request asks `net::allow_update` first, so
 //! the only host reached is github.com. A found update is announced on the "update" channel
 //! and in a notification; installing it needs a click, verifies the signature against the
-//! public key in `tauri.conf.json`, replaces the app and restarts it.
+//! public key in `tauri.conf.json`, replaces the app and restarts it. "What's new" opens the
+//! release page in the browser (`latest.json` only carries the fixed install text).
 
 use super::{AppState, Res};
 use mirona_providers::net;
@@ -13,6 +14,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State, Url};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 #[derive(Clone, Serialize)]
@@ -62,6 +64,29 @@ pub async fn check_update(app: AppHandle) -> Res<Option<UpdateInfo>> {
 #[tauri::command]
 pub fn pending_update(pending: State<Pending>) -> Option<UpdateInfo> {
     pending.0.lock().unwrap().as_ref().map(info)
+}
+
+/// The GitHub release page of `version`, where its notes are written.
+fn release_page(version: &str) -> Res<String> {
+    let v = version.trim_start_matches('v');
+    if v.is_empty()
+        || !v
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || ".-+".contains(c))
+    {
+        return Err(format!("Not a version: {version}"));
+    }
+    Ok(format!(
+        "https://github.com/aryan-curiel/mirona/releases/tag/v{v}"
+    ))
+}
+
+/// Opens the release notes of `version` in the browser.
+#[tauri::command]
+pub fn open_release_notes(app: AppHandle, version: String) -> Res<()> {
+    app.opener()
+        .open_url(release_page(&version)?, None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 /// Downloads, verifies and installs the pending update, then restarts Mirona.
@@ -115,4 +140,18 @@ pub fn watch(app: AppHandle) {
             std::thread::sleep(Duration::from_hours(1));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::release_page;
+
+    #[test]
+    fn release_page_is_the_version_tag_only() {
+        let page = "https://github.com/aryan-curiel/mirona/releases/tag/v0.3.0";
+        assert_eq!(release_page("0.3.0").unwrap(), page);
+        assert_eq!(release_page("v0.3.0").unwrap(), page);
+        assert!(release_page("0.3.0/../../evil").is_err());
+        assert!(release_page("").is_err());
+    }
 }
