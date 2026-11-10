@@ -466,10 +466,7 @@ mod tests {
     const MEETING: &str = "Karen: Thanks for joining. Our compliance audit is in two weeks and the export still drops rows.\nMarco: We found the bug, the fix ships Friday. I'll send you a written plan today.\nKaren: Please do, my director is not happy about the delay. Also, can you add the audit log to the export?\nPriya: Yes, we'll scope that and get back to you by Monday.";
 
     fn questions() -> Vec<Question> {
-        meeting_questions(
-            &crate::questions::tests::tags(),
-            &std::collections::BTreeMap::new(),
-        )
+        meeting_questions(&crate::questions::tests::tags())
     }
 
     #[test]

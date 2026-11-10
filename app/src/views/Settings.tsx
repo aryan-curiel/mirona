@@ -239,46 +239,36 @@ function NumberField({ label, value, def, onSave }: { label: string; value?: num
   );
 }
 
-type Row = { orig: string | null; name: string; about: string };
-const toRows = (m: Record<string, string>): Row[] => Object.entries(m).map(([name, about]) => ({ orig: name, name, about }));
+type Row = { orig: string | null; name: string };
+const toRows = (m: Record<string, string>): Row[] => Object.keys(m).map((name) => ({ orig: name, name }));
 
-/** Name → description rows, saved on blur. A changed name of an existing row is a rename
- * (`onRename`); everything else saves the whole map. */
-function Described({ items, onSave, onRename, noun, namePlaceholder, aboutPlaceholder }: {
-  items: Record<string, string>;
-  onSave: (m: Record<string, string>) => void;
-  onRename?: (old: string, next: string) => void;
-  noun: string;
-  namePlaceholder: string;
-  aboutPlaceholder: string;
-}) {
+/** Tag names, saved on blur. A changed name of an existing row is a rename (`onRename`). */
+function TagList({ items, onSave, onRename }: { items: Record<string, string>; onSave: (m: Record<string, string>) => void; onRename: (old: string, next: string) => void }) {
   const [rows, setRows] = useState<Row[]>(() => toRows(items));
   useEffect(() => setRows(toRows(items)), [items]);
   const commit = (next: Row[]) => {
     const renamed = next.find((r) => r.orig && r.name.trim() && r.name.trim() !== r.orig);
-    if (onRename && renamed?.orig) return onRename(renamed.orig, renamed.name.trim());
-    const out = Object.fromEntries(next.filter((r) => r.name.trim()).map((r) => [r.name.trim(), r.about.trim()]));
-    if (JSON.stringify(out) !== JSON.stringify(items)) onSave(out);
+    if (renamed?.orig) return onRename(renamed.orig, renamed.name.trim());
+    const out = Object.fromEntries(next.filter((r) => r.name.trim()).map((r) => [r.name.trim(), ""]));
+    if (JSON.stringify(Object.keys(out)) !== JSON.stringify(Object.keys(items))) onSave(out);
   };
-  const edit = (i: number, patch: Partial<Row>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   return (
     <div className="flex flex-col gap-2">
       {rows.map((r, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: rows are edited in place; a name can change while typing
         <div key={i} className="flex gap-2">
-          <input className="mi-field w-52 text-[14px]" aria-label={`${noun} name`} placeholder={namePlaceholder} value={r.name} onChange={(e) => edit(i, { name: e.target.value })} onBlur={() => commit(rows)} />
           <input
             className="mi-field min-w-0 flex-1 text-[14px]"
-            aria-label={`What ${r.name || `this ${noun}`} covers`}
-            placeholder={aboutPlaceholder}
-            value={r.about}
-            onChange={(e) => edit(i, { about: e.target.value })}
+            aria-label="Tag name"
+            placeholder="project:setr"
+            value={r.name}
+            onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
             onBlur={() => commit(rows)}
           />
           <button
             type="button"
             className="mi-ghost text-[13px]"
-            aria-label={`Remove ${r.name || noun}`}
+            aria-label={`Remove ${r.name || "tag"}`}
             onClick={() => {
               const next = rows.filter((_, j) => j !== i);
               setRows(next);
@@ -290,15 +280,15 @@ function Described({ items, onSave, onRename, noun, namePlaceholder, aboutPlaceh
         </div>
       ))}
       <div>
-        <button type="button" className="mi-ghost text-[13px]" onClick={() => setRows([...rows, { orig: null, name: "", about: "" }])}>
-          Add {noun}
+        <button type="button" className="mi-ghost text-[13px]" onClick={() => setRows([...rows, { orig: null, name: "" }])}>
+          Add tag
         </button>
       </div>
     </div>
   );
 }
 
-/** Tags and their optional groups. Renaming a tag renames it on every meeting. */
+/** Tags (`group:name` or `name`). Renaming a tag renames it on every meeting. */
 function Tags({ st, save }: { st: Settings; save: (patch: Partial<Settings>) => Promise<boolean> }) {
   const flash = useStore((s) => s.flash);
   const rename = async (old: string, next: string) => {
@@ -310,25 +300,13 @@ function Tags({ st, save }: { st: Settings; save: (patch: Partial<Settings>) => 
     }
   };
   return (
-    <>
-      <Row title="Tags" sub="A meeting can have several. The classifier asks about each one after every call; describe them so it can tell them apart">
-        <Described
-          items={st.tags}
-          onSave={(tags) => void save({ tags })}
-          onRename={(o, n) => void rename(o, n)}
-          noun="tag"
-          namePlaceholder="project:setr"
-          aboutPlaceholder="What it covers: product, people, keywords"
-        />
-        <p className="mt-2 text-[12px] text-muted">
-          Write tags as group:name, or just a name. Keep the list short: when no tag fits a meeting, Mirona suggests one new tag under To check, and adds it only if you
-          say yes. Removing a tag here leaves it on past meetings.
-        </p>
-      </Row>
-      <Row title="Groups" sub="Optional. What the tags in a group have in common, e.g. project: client work">
-        <Described items={st.tagGroups} onSave={(tagGroups) => void save({ tagGroups })} noun="group" namePlaceholder="project" aboutPlaceholder="What its tags have in common" />
-      </Row>
-    </>
+    <Row title="Tags" sub="A meeting can have several. The classifier asks about each one after every call, so name them clearly">
+      <TagList items={st.tags} onSave={(tags) => void save({ tags })} onRename={(o, n) => void rename(o, n)} />
+      <p className="mt-2 text-[12px] text-muted">
+        Write tags as group:name, or just a name. Tags in the same group share a colour. Keep the list short: when no tag fits a meeting, Mirona suggests one new tag
+        under To check, and adds it only if you say yes. Removing a tag here leaves it on past meetings.
+      </p>
+    </Row>
   );
 }
 

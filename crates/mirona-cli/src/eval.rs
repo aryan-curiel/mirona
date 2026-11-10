@@ -100,12 +100,10 @@ fn questions(e: &Example) -> Vec<Question> {
         qs.push(meeting_type_question());
     }
     if e.labels.contains_key("follow_up")
-        && let Some(q) = mirona_providers::questions::meeting_questions(
-            &std::collections::BTreeMap::new(),
-            &std::collections::BTreeMap::new(),
-        )
-        .into_iter()
-        .find(|q| q.id == "follow_up")
+        && let Some(q) =
+            mirona_providers::questions::meeting_questions(&std::collections::BTreeMap::new())
+                .into_iter()
+                .find(|q| q.id == "follow_up")
     {
         qs.push(q);
     }

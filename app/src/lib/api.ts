@@ -44,10 +44,8 @@ export type Settings = {
   floors: Record<string, number>;
   /** Floor defaults (read-only); 0 means nothing is auto-rejected. */
   floorDefaults: Record<string, number>;
-  /** Tag (`group:name` or `name`) → what it covers. The classifier asks one yes/no per tag. */
+  /** Tag (`group:name` or `name`) → "" (no descriptions, NGR-202). The classifier asks one yes/no per tag. */
   tags: Record<string, string>;
-  /** Tag group (`project`) → what its tags have in common. */
-  tagGroups: Record<string, string>;
   /** Suggest recording when a call app opens the mic (NGR-170). */
   detectCalls: boolean;
   /** Name meetings after the calendar event happening now. */

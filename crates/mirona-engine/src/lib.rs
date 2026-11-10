@@ -186,14 +186,14 @@ impl Engine {
         Ok(())
     }
 
-    /// Add a tag to the list (an accepted proposal). An existing tag keeps its description.
-    pub fn add_tag(&self, app_dir: &Path, tag: &str, about: &str) -> Result<()> {
+    /// Add a tag to the list (an accepted proposal).
+    pub fn add_tag(&self, app_dir: &Path, tag: &str) -> Result<()> {
         let tag = clean_tag(tag)?;
         let mut cfg = self.config();
         if cfg.tags.keys().any(|t| t.eq_ignore_ascii_case(&tag)) {
             return Ok(());
         }
-        cfg.tags.insert(tag, about.trim().into());
+        cfg.tags.insert(tag, String::new());
         self.save_config(app_dir, cfg)
     }
 
@@ -209,11 +209,10 @@ impl Engine {
         {
             return Err(format!("There is already a tag {new}."));
         }
-        let old_key = cfg.tags.keys().find(|t| same(t)).cloned();
-        let about = old_key
-            .and_then(|k| cfg.tags.remove(&k))
-            .unwrap_or_default();
-        cfg.tags.insert(new.clone(), about);
+        if let Some(k) = cfg.tags.keys().find(|t| same(t)).cloned() {
+            cfg.tags.remove(&k);
+        }
+        cfg.tags.insert(new.clone(), String::new());
         if let Some(k) = cfg.retention.tags.keys().find(|t| same(t)).cloned() {
             let d = cfg.retention.tags.remove(&k).unwrap_or_default();
             cfg.retention.tags.insert(new.clone(), d);

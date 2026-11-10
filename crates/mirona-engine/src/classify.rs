@@ -495,7 +495,7 @@ pub fn classify_meeting(
     }
     // ponytail: one yes/no per tag in the same call; fine for dozens of tags (the list is kept
     // short on purpose). Pre-filter by embeddings if lists grow to hundreds.
-    let qs = meeting_questions(&cfg.tags, &cfg.tag_groups);
+    let qs = meeting_questions(&cfg.tags);
     let replies = block_on(c.ask(&text, &qs)).map_err(|e| e.to_string())?;
     let local = is_local(c);
     let get = |id: &str| qs.iter().zip(&replies).find(|(q, _)| q.id == id);
@@ -740,19 +740,15 @@ pub fn propose_tag(
     if !m.tags.is_empty() || answers.tags.iter().any(TagAnswer::needs_review) {
         return Ok(None);
     }
-    let lines = |map: &std::collections::BTreeMap<String, String>| -> String {
-        let l: Vec<String> = map.iter().map(|(k, v)| format!("- {k}: {v}")).collect();
-        if l.is_empty() {
-            "(none)".into()
-        } else {
-            l.join("\n")
-        }
-    };
+    let tags: Vec<String> = cfg.tags.keys().map(|t| format!("- {t}")).collect();
     let decisions: Vec<&str> = summary.decisions.iter().map(|d| d.text.as_str()).collect();
     let user = format!(
-        "Groups:\n{}\n\nTags:\n{}\n\nMeeting: {}\n{}\nDecisions: {}",
-        lines(&cfg.tag_groups),
-        lines(&cfg.tags),
+        "Tags:\n{}\n\nMeeting: {}\n{}\nDecisions: {}",
+        if tags.is_empty() {
+            "(none)".into()
+        } else {
+            tags.join("\n")
+        },
         m.title,
         summary.overview,
         decisions.join("; "),

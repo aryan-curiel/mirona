@@ -94,9 +94,10 @@ still say Yes to one. Sensitive lines are never rejected without asking.
 A meeting can have several tags, such as the client or project it is for. A tag is `group:name`
 (`project:setr`) or just a name. Case doesn't matter.
 
-- **Settings › Tags** has two lists: **Tags** (name and what it covers, so the classifier can tell
-  them apart) and **Groups** (optional, name and description). Renaming a tag renames it on
-  every meeting and in its rules. Removing a tag from the list leaves it on past meetings.
+- **Settings › Tags** lists your tags by name. The classifier goes by the name alone, so make it
+  clear (`project:setr`, not `p1`). Renaming a tag renames it on every meeting and in its rules.
+  Removing a tag from the list leaves it on past meetings. Descriptions from earlier versions
+  are dropped.
 - After each call the classifier asks about each tag. Sure answers add the tag; unsure ones
   wait in the inspector's review list as "Tag this meeting?". It never removes a tag, and never
   changes a tag you set, removed or answered.

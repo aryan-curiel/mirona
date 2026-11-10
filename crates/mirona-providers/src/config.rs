@@ -48,11 +48,10 @@ pub struct Config {
     /// Question id → floor, overriding [`default_floor`]: a model "yes" below it is rejected
     /// outright instead of asked about (only counted, viewable on demand).
     pub floors: BTreeMap<String, f32>,
-    /// The user's tags: `group:name` (or `name`) → what it is about. The classifier asks one
-    /// yes/no per tag over each meeting; a meeting can have many.
+    /// The user's tags: `group:name` (or `name`). The classifier asks one yes/no per tag over
+    /// each meeting; a meeting can have many. Values are always empty: tags had descriptions
+    /// before NGR-202, a map keeps those files loading (they're emptied on load).
     pub tags: BTreeMap<String, String>,
-    /// Tag group (`project`) → what its tags have in common. Optional, helps the classifier.
-    pub tag_groups: BTreeMap<String, String>,
     /// Before tags: client name → description. Read once and moved to `project:<name>` tags.
     #[serde(skip_serializing)]
     pub clients: BTreeMap<String, String>,
@@ -139,7 +138,6 @@ impl Default for Config {
             thresholds: BTreeMap::new(),
             floors: BTreeMap::new(),
             tags: BTreeMap::new(),
-            tag_groups: BTreeMap::new(),
             clients: BTreeMap::new(),
             detect_calls: true,
             calendar_titles: false,
@@ -209,6 +207,7 @@ impl Config {
             cfg.privacy = true;
         }
         cfg.migrate_clients();
+        cfg.tags.values_mut().for_each(String::clear);
         Ok(cfg)
     }
 
@@ -233,9 +232,6 @@ impl Config {
                 *c = tag(c);
             }
         }
-        self.tag_groups
-            .entry(PROJECT_GROUP.into())
-            .or_insert_with(|| "Clients and projects a meeting is for.".into());
         if let Some(t) = self.thresholds.remove("client") {
             self.thresholds.entry("tag".into()).or_insert(t);
         }
@@ -272,7 +268,6 @@ Northwind = 90
         cfg.migrate_clients();
         assert!(cfg.clients.is_empty() && cfg.retention.clients.is_empty());
         assert_eq!(cfg.tags["project:Northwind"], "a bank");
-        assert!(cfg.tag_groups.contains_key("project"));
         assert_eq!(cfg.retention.tags["project:Northwind"], 90);
         assert_eq!(cfg.auto_record, ["project:Northwind", "standup"]);
         assert_eq!(cfg.consent_given, ["project:northwind"]);
@@ -280,6 +275,30 @@ Northwind = 90
         // The old keys are never written back.
         let s = toml::to_string_pretty(&cfg).unwrap();
         assert!(!s.contains("[clients]") && !s.contains("retention.clients"));
+    }
+
+    #[test]
+    fn old_described_tags_load_with_descriptions_dropped() {
+        let dir = std::env::temp_dir().join(format!("mirona-tags-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[tags]
+"project:setr" = "Setr app work"
+[tag_groups]
+project = "Clients"
+[clients]
+Atlas = "Atlas Corp"
+"#,
+        )
+        .unwrap();
+        let cfg = Config::load(&path).unwrap();
+        assert_eq!(cfg.tags["project:setr"], "");
+        assert_eq!(cfg.tags["project:Atlas"], "");
+        let s = toml::to_string_pretty(&cfg).unwrap();
+        assert!(!s.contains("tag_groups") && !s.contains("Setr app"), "{s}");
     }
 
     #[test]
@@ -311,8 +330,7 @@ Northwind = 90
         cfg.thresholds.insert("action".into(), 0.8);
         cfg.floors.insert("action".into(), 0.4);
         cfg.tags
-            .insert("project:Northwind Bank".into(), "contact: Karen".into());
-        cfg.tag_groups.insert("project".into(), "Clients".into());
+            .insert("project:Northwind Bank".into(), String::new());
         cfg.save(&path).unwrap();
         let back = Config::load(&path).unwrap();
         assert_eq!(back, cfg);

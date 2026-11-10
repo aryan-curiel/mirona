@@ -247,23 +247,18 @@ pub fn client_question<'a>(clients: impl IntoIterator<Item = (&'a str, &'a str)>
     }
 }
 
-/// Does the meeting talk about this tag? `about` and the group's description (if any) tell
-/// the classifier what the tag covers.
-pub fn tag_question(tag: &str, about: &str, group_about: &str) -> Question {
+/// Does the meeting talk about this tag? Tags have no descriptions (NGR-202): the model gets
+/// the name and its group.
+pub fn tag_question(tag: &str) -> Question {
     let (group, name) = tag.split_once(':').unwrap_or(("", tag));
-    let group = match (group, group_about) {
-        ("", _) => String::new(),
-        (g, "") => format!(" (a {g})"),
-        (g, a) => format!(" (a {g}: {a})"),
-    };
-    let about = if about.is_empty() {
+    let group = if group.is_empty() {
         String::new()
     } else {
-        format!(". {name}: {about}")
+        format!(" (a {group})")
     };
     let yes = format!(
-        "The meeting discusses {name}{group}{about}. A meeting can be about several topics; \
-         a real part of it is enough."
+        "The meeting discusses {name}{group}. A meeting can be about several topics; a real \
+         part of it is enough."
     );
     Question {
         id: format!("{TAG_PREFIX}{tag}"),
@@ -276,24 +271,13 @@ pub fn tag_question(tag: &str, about: &str, group_about: &str) -> Question {
     }
 }
 
-/// One [`tag_question`] per tag, with its group's description.
-pub fn tag_questions(
-    tags: &BTreeMap<String, String>,
-    groups: &BTreeMap<String, String>,
-) -> Vec<Question> {
-    tags.iter()
-        .map(|(t, about)| {
-            let group = t.split_once(':').map_or("", |(g, _)| g);
-            tag_question(t, about, groups.get(group).map_or("", String::as_str))
-        })
-        .collect()
+/// One [`tag_question`] per tag.
+pub fn tag_questions(tags: &BTreeMap<String, String>) -> Vec<Question> {
+    tags.keys().map(|t| tag_question(t)).collect()
 }
 
 /// Asked once over the whole meeting after the call (NGR-157), then one yes/no per tag.
-pub fn meeting_questions(
-    tags: &BTreeMap<String, String>,
-    groups: &BTreeMap<String, String>,
-) -> Vec<Question> {
+pub fn meeting_questions(tags: &BTreeMap<String, String>) -> Vec<Question> {
     let levels = |l: &[&str]| l.iter().map(|s| (*s).to_string()).collect();
     let mut qs = vec![meeting_type_question()];
     qs.extend([
@@ -332,7 +316,7 @@ pub fn meeting_questions(
             },
         },
     ]);
-    qs.extend(tag_questions(tags, groups));
+    qs.extend(tag_questions(tags));
     qs
 }
 
@@ -432,24 +416,24 @@ pub(crate) mod tests {
 
     #[test]
     fn meeting_questions_ask_one_yes_no_per_tag() {
-        let none = BTreeMap::new();
-        assert_eq!(meeting_questions(&none, &none).len(), 4);
+        assert_eq!(meeting_questions(&BTreeMap::new()).len(), 4);
         let tags = BTreeMap::from([
             ("project:setr".to_string(), "live streaming app".to_string()),
             ("hiring".to_string(), String::new()),
         ]);
-        let groups = BTreeMap::from([("project".to_string(), "client work".to_string())]);
-        let qs = meeting_questions(&tags, &groups);
+        let qs = meeting_questions(&tags);
         assert_eq!(options(&qs[1]).len(), 6, "priority has six levels");
         let ids: Vec<&str> = qs[4..].iter().map(|q| q.id.as_str()).collect();
         assert_eq!(ids, ["tag:hiring", "tag:project:setr"]);
         let Kind::YesNo { yes, .. } = &qs[5].kind else {
             panic!("tags are yes/no")
         };
+        // Tags have no descriptions (NGR-202): the name and its group are all the model gets.
         assert!(
-            yes.contains("setr (a project: client work). setr: live streaming app"),
+            yes.contains("discusses setr (a project). A meeting"),
             "{yes}"
         );
+        assert!(!yes.contains("live streaming"), "{yes}");
     }
 
     #[test]

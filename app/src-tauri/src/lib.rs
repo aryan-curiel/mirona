@@ -346,7 +346,7 @@ fn set_meeting_tags(app: AppHandle, st: St, meeting_id: String, tags: Vec<String
         .map(|t| mirona_engine::clean_tag(t))
         .collect::<Res<Vec<_>>>()?;
     for t in &tags {
-        engine.add_tag(&st.app_dir, t, "")?;
+        engine.add_tag(&st.app_dir, t)?;
     }
     let m = engine.store.lock().unwrap().set_tags(&meeting_id, &tags)?;
     changed(&app, Ok(m))
@@ -384,16 +384,7 @@ fn resolve_review(
         accept,
     )?;
     if accept && review.question == "new_tag" {
-        let about = engine
-            .store
-            .lock()
-            .unwrap()
-            .meeting(&meeting_id)?
-            .answers
-            .and_then(|a| a.tags.into_iter().find(|t| t.tag == review.value))
-            .map(|t| t.about)
-            .unwrap_or_default();
-        changed(&app, engine.add_tag(&st.app_dir, &review.value, &about))?;
+        changed(&app, engine.add_tag(&st.app_dir, &review.value))?;
     }
     if accept && matches!(review.question.as_str(), "action" | "action_item") {
         let seg = review.segment_id.clone().or_else(|| {
@@ -1335,12 +1326,10 @@ struct Settings {
     floors: BTreeMap<String, f32>,
     #[serde(default, skip_deserializing)]
     floor_defaults: BTreeMap<String, f32>,
-    /// Tag (`group:name` or `name`) → what it covers; one yes/no each per meeting.
+    /// Tags (`group:name` or `name`) → "" (no descriptions since NGR-202); one yes/no each per
+    /// meeting.
     #[serde(default)]
     tags: BTreeMap<String, String>,
-    /// Tag group → what its tags have in common.
-    #[serde(default)]
-    tag_groups: BTreeMap<String, String>,
     /// Suggest recording when a call app opens the mic (NGR-170).
     #[serde(default)]
     detect_calls: bool,
@@ -1441,7 +1430,6 @@ impl Settings {
                 .map(|q| ((*q).to_string(), default_floor(q)))
                 .collect(),
             tags: cfg.tags.clone(),
-            tag_groups: cfg.tag_groups.clone(),
             detect_calls: cfg.detect_calls,
             calendar_titles: cfg.calendar_titles,
             auto_record: cfg.auto_record.clone(),
@@ -1508,16 +1496,8 @@ impl Settings {
             }
         }
         let mut tags = BTreeMap::new();
-        for (tag, about) in &self.tags {
-            tags.insert(mirona_engine::clean_tag(tag)?, about.trim().to_string());
-        }
-        let mut groups = BTreeMap::new();
-        for (group, about) in &self.tag_groups {
-            let g = group.trim();
-            if g.is_empty() || g.contains(':') {
-                return Err(format!("“{g}”: a group is one word, like project."));
-            }
-            groups.insert(g.to_string(), about.trim().to_string());
+        for tag in self.tags.keys() {
+            tags.insert(mirona_engine::clean_tag(tag)?, String::new());
         }
         let dir = |p: &Path, default: &Path| (p != default).then(|| p.to_path_buf());
         cfg.privacy = self.privacy;
@@ -1549,7 +1529,6 @@ impl Settings {
             .filter(|c| tags.contains_key(c))
             .collect();
         cfg.tags = tags;
-        cfg.tag_groups = groups;
         cfg.detect_calls = self.detect_calls;
         cfg.calendar_titles = self.calendar_titles;
         cfg.check_updates = self.check_updates;
@@ -2189,11 +2168,8 @@ mod tests {
         s.classification = "local-llm".into();
         s.diarization = "speakrs-cpu".into();
         s.thresholds.insert("action".into(), 0.8);
-        s.tags.insert(
-            " project : Northwind Bank ".into(),
-            " contact: Karen ".into(),
-        );
-        s.tag_groups.insert("project".into(), "clients".into());
+        s.tags
+            .insert(" project : Northwind Bank ".into(), String::new());
         assert!(s.detect_calls && !s.calendar_titles);
         s.calendar_titles = true;
         s.auto_record = vec!["project:Northwind Bank".into(), "Gone Client".into()];
@@ -2207,8 +2183,7 @@ mod tests {
         assert_eq!(cfg.providers["classification"], "local-llm");
         assert_eq!(cfg.providers["diarization"], "speakrs-cpu");
         assert!((cfg.threshold("action", true) - 0.8).abs() < 1e-6);
-        assert_eq!(cfg.tags["project:Northwind Bank"], "contact: Karen");
-        assert_eq!(cfg.tag_groups["project"], "clients");
+        assert_eq!(cfg.tags["project:Northwind Bank"], "");
         let back = Settings::of(&cfg, &d);
         assert_eq!(back.thresholds, cfg.thresholds);
 
@@ -2235,10 +2210,6 @@ mod tests {
             },
             Settings {
                 tags: [("a:b:c".into(), String::new())].into(),
-                ..back.clone()
-            },
-            Settings {
-                tag_groups: [("a:b".into(), String::new())].into(),
                 ..back.clone()
             },
         ] {
