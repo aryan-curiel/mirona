@@ -211,42 +211,48 @@ export function ActionItemsView() {
       <p className="mb-3 text-[13px] text-muted" aria-live="polite">
         {rows.length} item{rows.length === 1 ? "" : "s"}
       </p>
-      <div className="mi-card overflow-hidden">
+      <div className="flex flex-col gap-3">
         {rows.map((a, i) => (
-          <div key={a.id} style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }} className={`mi-enter grid grid-cols-[auto_1fr_120px_110px_auto] items-center gap-4 px-6 py-4 ${i ? "border-t border-line-soft" : ""}`}>
-            <input type="checkbox" checked={a.done} onChange={() => s.toggleAction(a.id)} aria-label={`Done: ${a.text}`} />
-            <div className="min-w-0">
+          <div key={a.id} style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }} className="mi-card mi-enter flex items-start gap-4 px-6 py-4">
+            <input type="checkbox" className="mt-1" checked={a.done} onChange={() => s.toggleAction(a.id)} aria-label={`Done: ${a.text}`} />
+            <div className="min-w-0 flex-1">
               <p className={`text-[15px] ${a.done ? "text-muted line-through" : ""}`}>
                 {a.text} {a.needsReview && <span className="mi-chip mi-chip--review ml-1">Needs review</span>}
               </p>
-              <button
-                type="button"
-                className="text-left text-[13px] text-muted hover:text-accent hover:underline"
-                aria-label={`Open ${a.meetingTitle}${a.atMs != null ? ` at ${fmt(a.atMs)}` : ""}`}
-                onClick={() => (a.atMs != null ? s.openAt(a.meetingId, a.atMs) : s.openMeeting(a.meetingId))}
-              >
-                {a.meetingTitle}
-                {a.atMs != null && ` · ${fmt(a.atMs)}`}
-              </button>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-ink-3">
+                <button
+                  type="button"
+                  className="text-left text-muted hover:text-accent hover:underline"
+                  aria-label={`Open ${a.meetingTitle}${a.atMs != null ? ` at ${fmt(a.atMs)}` : ""}`}
+                  onClick={() => (a.atMs != null ? s.openAt(a.meetingId, a.atMs) : s.openMeeting(a.meetingId))}
+                >
+                  {a.meetingTitle}
+                  {a.atMs != null && ` · ${fmt(a.atMs)}`}
+                </button>
+                <span aria-hidden="true">·</span>
+                <span title={a.ownerConfirmed ? "Owner set by you" : undefined}>{a.owner || <span className="text-muted">No owner</span>}</span>
+                {a.due && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>Due {a.due}</span>
+                  </>
+                )}
+                <span className="ml-auto flex flex-wrap gap-1">
+                  {a.tags.length ? (
+                    a.tags.map((t) => (
+                      <span key={t} className={`mi-chip ${tagClass(t)}`}>
+                        {t}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="mi-chip mi-chip--neutral">No tag</span>
+                  )}
+                </span>
+              </div>
             </div>
-            <span className="truncate text-[15px]" title={a.ownerConfirmed ? "Owner set by you" : undefined}>
-              {a.owner || <span className="text-muted">No owner</span>}
-            </span>
-            <span className="truncate text-[13px] text-ink-3">{a.due ?? "—"}</span>
-            <span className="flex flex-wrap justify-end gap-1 justify-self-end">
-              {a.tags.length ? (
-                a.tags.map((t) => (
-                  <span key={t} className={`mi-chip ${tagClass(t)}`}>
-                    {t}
-                  </span>
-                ))
-              ) : (
-                <span className="mi-chip mi-chip--neutral">No tag</span>
-              )}
-            </span>
           </div>
         ))}
-        {!rows.length && <p className="px-6 py-10 text-center text-[14px] text-muted">{s.actionItems.length ? "No action items match these filters." : "No action items yet. They come from each meeting's summary."}</p>}
+        {!rows.length && <p className="mi-card px-6 py-10 text-center text-[14px] text-muted">{s.actionItems.length ? "No action items match these filters." : "No action items yet. They come from each meeting's summary."}</p>}
       </div>
     </div>
   );
