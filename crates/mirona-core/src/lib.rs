@@ -208,6 +208,9 @@ pub struct Segment {
     /// (NGR-156).
     #[serde(default)]
     pub due: Option<String>,
+    /// Speaker set by the user (NGR-201); speaker detection leaves it alone.
+    #[serde(default)]
+    pub by_hand: bool,
 }
 
 impl Segment {

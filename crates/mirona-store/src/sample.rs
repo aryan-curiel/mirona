@@ -86,6 +86,7 @@ pub fn seg(
             })
             .collect(),
         due: None,
+        by_hand: false,
     }
 }
 

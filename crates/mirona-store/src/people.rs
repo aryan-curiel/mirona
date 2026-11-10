@@ -206,14 +206,7 @@ impl Store {
             // A known person under another name, or the generic source voice "them": a new
             // person, in this meeting only.
             (None, known) if known.is_some() || GENERIC.contains(&speaker_id) => {
-                let id = (1..=v.people.len() + self.people.len() + 1)
-                    .map(|n| format!("{meeting_id}-p{n}"))
-                    .find(|id| v.person(id).is_none() && !self.people.iter().any(|p| p.id == *id))
-                    .expect("a free id");
-                v.people.push(Person {
-                    id: id.clone(),
-                    name: name.into(),
-                });
+                let id = new_person(&mut v, &self.people, meeting_id, name);
                 v.relabel(Some(meeting_id), speaker_id, &id);
                 self.save_voices(&v)?;
                 self.relabel(i, speaker_id, &named(&id, name))?;
@@ -340,6 +333,75 @@ impl Store {
         Ok(())
     }
 
+    /// Move one line to another person (NGR-201): a known name (any case) is that person, any
+    /// other name becomes a new person with no voiceprint. The line is marked `by_hand`, so
+    /// speaker detection leaves it alone; a voice left with no lines leaves the meeting.
+    // ponytail: a moved line never updates voiceprints (one line is too short, a misclick
+    // shouldn't train a voice); NGR-201 if users ask for it.
+    pub fn set_line_speaker(
+        &mut self,
+        meeting_id: &str,
+        segment_id: &str,
+        name: &str,
+    ) -> Result<Speaker> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("A person needs a name.".into());
+        }
+        let i = self.idx(meeting_id)?;
+        let from = self.entries[i]
+            .meeting
+            .segments
+            .iter()
+            .find(|g| g.id == segment_id)
+            .ok_or_else(|| format!("no line {segment_id} in this meeting"))?
+            .speaker_id
+            .clone();
+        if from == "me" {
+            return Err("Lines from your mic can't be moved.".into());
+        }
+        let mut v = self.voices();
+        let to = if let Some(p) = v.by_name(name) {
+            p.id.clone()
+        } else {
+            let id = new_person(&mut v, &self.people, meeting_id, name);
+            self.save_voices(&v)?;
+            id
+        };
+        if to == "me" {
+            return Err("Lines can't be moved to you.".into());
+        }
+        let sp = self
+            .person_speaker(&to)
+            .unwrap_or_else(|_| named(&to, name));
+        let m = &mut self.entries[i].meeting;
+        for g in m.segments.iter_mut().filter(|g| g.id == segment_id) {
+            g.speaker_id.clone_from(&to);
+            g.by_hand = true;
+        }
+        if !m.speakers.iter().any(|s| s.id == to) {
+            m.speakers.push(sp.clone());
+        }
+        if !m.segments.iter().any(|g| g.speaker_id == from) {
+            m.speakers.retain(|s| s.id != from);
+        }
+        self.save(i, true)?;
+        self.refresh_people();
+        Ok(sp)
+    }
+
+    /// Voices in a meeting nobody named yet (not in the registry), "me" aside.
+    pub fn unnamed_speakers(&self, meeting_id: &str) -> Result<Vec<Id>> {
+        let v = self.voices();
+        Ok(self.entries[self.idx(meeting_id)?]
+            .meeting
+            .speakers
+            .iter()
+            .filter(|s| s.id != "me" && v.person(&s.id).is_none())
+            .map(|s| s.id.clone())
+            .collect())
+    }
+
     /// Forget a person's voice: their voiceprint and every embedding behind it are deleted.
     /// Meetings keep the name; new meetings won't recognize the voice any more.
     pub fn delete_voiceprint(&mut self, person_id: &str) -> Result<()> {
@@ -451,6 +513,19 @@ fn rename(s: &mut Speaker, name: &str) {
     s.name = name.into();
     s.initial = name.chars().next().unwrap_or('?').to_uppercase().collect();
     s.suggestion = None;
+}
+
+/// Register a new person (no voiceprint yet) under a free `{meeting_id}-p{n}` id.
+fn new_person(v: &mut Voices, people: &[Speaker], meeting_id: &str, name: &str) -> Id {
+    let id = (1..=v.people.len() + people.len() + 1)
+        .map(|n| format!("{meeting_id}-p{n}"))
+        .find(|id| v.person(id).is_none() && !people.iter().any(|p| p.id == *id))
+        .expect("a free id");
+    v.people.push(Person {
+        id: id.clone(),
+        name: name.into(),
+    });
+    id
 }
 
 fn named(id: &str, name: &str) -> Speaker {
@@ -713,6 +788,88 @@ mod tests {
         let v = s.voices();
         assert_eq!(v.clusters.len(), 1);
         assert_eq!(v.clusters[0].speaker_id, "m-a-s1");
+    }
+
+    #[test]
+    fn a_line_moves_to_a_known_person_and_the_empty_voice_drops() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path()).unwrap();
+        diarized(
+            &mut s,
+            "m-a",
+            &[("m-a-s1", vec![1.0, 0.0]), ("m-a-s2", vec![0.0, 1.0])],
+        );
+        s.name_speaker("m-a", "m-a-s1", "Ana").unwrap();
+        let sp = s.set_line_speaker("m-a", "m-a-2", "ana").unwrap();
+        assert_eq!(sp.id, "m-a-s1");
+        assert_eq!(names(&s, "m-a"), ["Me", "Ana", "Ana"]);
+        let m = s.meeting("m-a").unwrap();
+        assert!(m.segments[2].by_hand);
+        assert!(!m.segments[1].by_hand);
+        assert!(!m.speakers.iter().any(|p| p.id == "m-a-s2"));
+        assert_eq!(s.voices().clusters.len(), 2, "voiceprints untouched");
+    }
+
+    #[test]
+    fn a_line_moves_to_a_new_person_who_joins_the_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path()).unwrap();
+        diarized(&mut s, "m-a", &[("m-a-s1", vec![1.0, 0.0])]);
+        let bo = s.set_line_speaker("m-a", "m-a-1", "Bo").unwrap();
+        assert!(bo.id.starts_with("m-a-p"), "{}", bo.id);
+        assert_eq!(bo.name, "Bo");
+        assert_eq!(names(&s, "m-a"), ["Me", "Bo"]);
+        assert!(s.voices().people.iter().any(|p| p.name == "Bo"));
+        assert_eq!(s.unnamed_speakers("m-a").unwrap(), Vec::<Id>::new());
+        // Naming a voice "Bo" later is the same person, not a second Bo.
+        diarized(&mut s, "m-b", &[("m-b-s1", vec![0.0, 1.0])]);
+        let again = s.name_speaker("m-b", "m-b-s1", "Bo").unwrap();
+        assert_eq!(again.id, bo.id);
+    }
+
+    #[test]
+    fn mic_lines_and_moves_to_me_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path()).unwrap();
+        diarized(&mut s, "m-a", &[("m-a-s1", vec![1.0, 0.0])]);
+        assert!(s.set_line_speaker("m-a", "m-a-0", "Ana").is_err());
+        assert!(s.set_line_speaker("m-a", "m-a-1", "  ").is_err());
+        assert!(s.set_line_speaker("m-a", "nope", "Ana").is_err());
+        assert_eq!(names(&s, "m-a"), ["Me", "Speaker 1"]);
+    }
+
+    #[test]
+    fn unnamed_speakers_lists_unknown_voices_but_not_me() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path()).unwrap();
+        diarized(
+            &mut s,
+            "m-a",
+            &[("m-a-s1", vec![1.0, 0.0]), ("m-a-s2", vec![0.0, 1.0])],
+        );
+        s.name_speaker("m-a", "m-a-s1", "Ana").unwrap();
+        assert_eq!(s.unnamed_speakers("m-a").unwrap(), ["m-a-s2"]);
+        // Not diarized: the other side is still "them".
+        s.start_meeting("m-b").unwrap();
+        s.push_segment("m-b", live_seg("m-b-0", "me", 0, "Hi."))
+            .unwrap();
+        s.push_segment("m-b", live_seg("m-b-1", "them", 900, "Hello."))
+            .unwrap();
+        assert_eq!(s.unnamed_speakers("m-b").unwrap(), ["them"]);
+    }
+
+    #[test]
+    fn moving_a_line_works_on_an_encrypted_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = crate::crypt::Key::generate().unwrap();
+        let mut s = Store::open_with(dir.path(), Some(key.clone())).unwrap();
+        diarized(&mut s, "m-a", &[("m-a-s1", vec![1.0, 0.0])]);
+        s.set_line_speaker("m-a", "m-a-1", "Bo").unwrap();
+        let s2 = Store::open_with(dir.path(), Some(key)).unwrap();
+        let m = s2.meeting("m-a").unwrap();
+        let line = m.segments.iter().find(|g| g.id == "m-a-1").unwrap();
+        assert!(line.by_hand);
+        assert_eq!(names(&s2, "m-a"), ["Me", "Bo"]);
     }
 
     #[test]

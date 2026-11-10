@@ -330,6 +330,7 @@ mod tests {
             answers: vec![],
             owners: vec![],
             due: None,
+            by_hand: false,
         }
     }
 

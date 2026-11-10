@@ -581,6 +581,7 @@ mod tests {
             answers: vec![],
             owners: vec![],
             due: None,
+            by_hand: false,
         };
         // Old transcripts (end 0): estimated.
         let segs = [
@@ -677,6 +678,7 @@ mod tests {
                 answers: vec![],
                 owners: vec![],
                 due: None,
+                by_hand: false,
             };
             s.push_segment(id, seg).unwrap();
         }

@@ -829,6 +829,7 @@ fn segment(meeting_id: &str, n: usize, s: &mirona_capture::Segment) -> Segment {
         answers: vec![],
         owners: vec![],
         due: None,
+        by_hand: false,
     }
 }
 

@@ -1218,6 +1218,7 @@ mod tests {
             answers: vec![],
             owners: vec![],
             due: None,
+            by_hand: false,
         })
         .collect();
         for seg in &segs {

@@ -21,4 +21,8 @@ owners: Array<Choice>,
  * The due date as said ("by Thursday", "end of month") when "is a due date said?" is yes
  * (NGR-156).
  */
-due: string | null, };
+due: string | null, 
+/**
+ * Speaker set by the user (NGR-201); speaker detection leaves it alone.
+ */
+byHand: boolean, };
