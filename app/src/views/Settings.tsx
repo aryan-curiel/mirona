@@ -3,6 +3,7 @@ import { Fragment, useEffect, useState, type KeyboardEvent, type ReactNode } fro
 import { type SettingsTab, useStore } from "../store";
 import { allTags, api, LLM_LOCAL, type Settings } from "../lib/api";
 import { applyPlatform, detected } from "../lib/platform";
+import { tagClass } from "../lib/match";
 import { CopyLine, Folder, ModelDownload } from "./Setup";
 import { Icon, type IconName, Logo, QwenNote, Toggle } from "../components/ui";
 import { shortcutKeys, shortcutLabel, Toast } from "../components/Shell";
@@ -256,7 +257,9 @@ function TagList({ items, onSave, onRename }: { items: Record<string, string>; o
     <div className="flex flex-col gap-2">
       {rows.map((r, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: rows are edited in place; a name can change while typing
-        <div key={i} className="flex gap-2">
+        <div key={i} className="flex items-center gap-2">
+          {/* The group's colour, so tags in a group visibly belong together. */}
+          <span aria-hidden="true" className={`mi-chip ${tagClass(r.name)} h-4 w-4 shrink-0 p-0`} />
           <input
             className="mi-field min-w-0 flex-1 text-[14px]"
             aria-label="Tag name"
@@ -338,7 +341,7 @@ function CallSettings({ st, onSave }: { st: Settings; onSave: (patch: Partial<Se
           {tags.map((c) => (
             <label key={c} className="flex items-center gap-2">
               <input type="checkbox" checked={st.autoRecord.includes(c)} onChange={(e) => void auto(c, e.target.checked)} />
-              {c}
+              <span className={`mi-chip ${tagClass(c)}`}>{c}</span>
             </label>
           ))}
         </fieldset>
@@ -459,7 +462,9 @@ function ConsentSettings({ st, save }: { st: Settings; save: (patch: Partial<Set
           <p className="text-[13px] text-ink-3">Already agreed, no reminder:</p>
           {st.consentGiven.map((c) => (
             <div key={c} className="flex items-center gap-2">
-              <span className="flex-1">{c}</span>
+              <span className="flex-1">
+                <span className={`mi-chip ${tagClass(c)}`}>{c}</span>
+              </span>
               <button type="button" className="mi-ghost text-[13px]" onClick={() => save({ consentGiven: st.consentGiven.filter((x) => x !== c) })}>
                 Remind me again
               </button>
@@ -566,7 +571,9 @@ function Storage({ st, save, tags }: { st: Settings; save: (patch: Partial<Setti
               <span />
               {tags.map((c) => (
                 <div key={c} className="contents">
-                  <span className="truncate text-[14px]" title={c}>{c}</span>
+                  <span className="truncate text-[14px]" title={c}>
+                    <span className={`mi-chip ${tagClass(c)}`}>{c}</span>
+                  </span>
                   <Field hideLabel label={`Delete ${c} meetings after days`} value={st.retentionTags[c]?.toString() ?? ""} placeholder="Keep" onSave={(v) => void rule(c, v)} />
                   <button
                     type="button"

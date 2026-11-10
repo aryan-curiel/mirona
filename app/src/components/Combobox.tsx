@@ -68,7 +68,7 @@ export function Combobox({ label, placeholder, options, onPick, allowNew, initia
           } else if (e.key === "Enter") {
             e.preventDefault();
             if (active >= 0 && rows[active]) pick(rows[active].value);
-            else if (newLabel) pick(typed);
+            else if (byValue.has(typed) || newLabel) pick(typed);
             else if (shown.length === 1) pick(shown[0].value);
           } else if (e.key === "Escape") {
             setOpen(false);

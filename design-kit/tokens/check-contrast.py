@@ -37,6 +37,7 @@ SURFACES = ["glass-panel-bg", "glass-card-bg", "glass-row-bg", "glass-row-select
 CHIPS = [("accent-strong", "accent-tint"), ("decision", "decision-tint"),
          ("question", "question-tint"), ("question", "review-tint"),
          ("neutral-text", "neutral-tint"), ("sensitive", "sensitive-tint")]
+CHIPS += [(f"tag-{n}", f"tag-{n}-tint") for n in range(1, 9)]  # tag groups (NGR-202)
 
 failed = 0
 light = block(":root")

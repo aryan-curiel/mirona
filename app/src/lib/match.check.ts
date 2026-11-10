@@ -1,7 +1,7 @@
 // Self-check for match.ts: node --experimental-strip-types app/src/lib/match.check.ts
 import assert from "node:assert/strict";
 import type { Segment } from "../bindings/Segment";
-import { rank, samples } from "./match.ts";
+import { rank, samples, tagClass } from "./match.ts";
 
 const tags = ["project:setr", "project:atlas", "team:design", "setup", "hiring"];
 assert.equal(rank("setr", tags)[0], "project:setr"); // prefix after ':'
@@ -36,5 +36,11 @@ const picked = samples(segs, "s1", false).map((s) => s.id);
 assert.deepEqual(picked, ["a", "c", "e"]); // ≤ 3, spread out, by start
 assert.ok(samples(segs, "s1", true).some((s) => s.id === "d"));
 assert.deepEqual(samples(segs, "other", false), []);
+
+// Group colours: one per group, any case; no group stays neutral.
+assert.equal(tagClass("project:a"), tagClass("Project:b"));
+assert.match(tagClass("project:a"), /^mi-chip--tag-[1-8]$/);
+assert.equal(tagClass("solo"), "mi-chip--neutral");
+assert.ok(new Set(["project", "team", "client", "area", "topic", "person"].map((g) => tagClass(`${g}:x`))).size >= 4);
 
 console.log("match ok");

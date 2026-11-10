@@ -41,3 +41,12 @@ export function samples(segs: Segment[], speakerId: string, showSensitive: boole
   }
   return picked.sort((a, b) => a.startMs - b.startMs);
 }
+
+/** Chip class for a tag: one of 8 colours per group (FNV-1a of the group name), neutral without one. */
+export function tagClass(tag: string): string {
+  const i = tag.indexOf(":");
+  if (i < 0) return "mi-chip--neutral";
+  let h = 0x811c9dc5;
+  for (const c of tag.slice(0, i).trim().toLowerCase()) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193) >>> 0;
+  return `mi-chip--tag-${1 + (((h ^ (h >>> 16)) >>> 0) % 8)}`;
+}

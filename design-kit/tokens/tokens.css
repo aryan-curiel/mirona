@@ -29,6 +29,16 @@
   --mi-sensitive: #9B2C22;    --mi-sensitive-tint: #FBE9E7;
   --mi-record: #C2362B;       --mi-record-text: #8E2219;    --mi-record-tint: rgba(253, 236, 232, 0.7);
 
+  /* Tag groups (NGR-202): a group's tags share one pair, picked by hashing the group name */
+  --mi-tag-1: #6B2E73;  --mi-tag-1-tint: #F3E6F4;  /* plum */
+  --mi-tag-2: #8A2A4F;  --mi-tag-2-tint: #FAE6EE;  /* rose */
+  --mi-tag-3: #575A16;  --mi-tag-3-tint: #EFEFD8;  /* olive */
+  --mi-tag-4: #3D5068;  --mi-tag-4-tint: #E6EBF1;  /* steel */
+  --mi-tag-5: #6E4430;  --mi-tag-5-tint: #F2E8E2;  /* brown */
+  --mi-tag-6: #2F5E2A;  --mi-tag-6-tint: #E3F0E1;  /* moss */
+  --mi-tag-7: #1F5F78;  --mi-tag-7-tint: #E0EEF4;  /* cyan */
+  --mi-tag-8: #6A4A63;  --mi-tag-8-tint: #F0E8EE;  /* mauve */
+
   /* Backdrop: three soft glows behind the glass */
   --mi-backdrop-base: #ECEFEE;
   --mi-backdrop:
@@ -127,6 +137,16 @@
   --mi-sensitive: #F4A49A;    --mi-sensitive-tint: #43201C;
   --mi-record: #E5584B;       --mi-record-text: #F4A49A;    --mi-record-tint: rgba(120, 30, 24, 0.45);
 
+  /* Tag groups (NGR-202): a group's tags share one pair, picked by hashing the group name */
+  --mi-tag-1: #E0B0E6;  --mi-tag-1-tint: #3A2440;  /* plum */
+  --mi-tag-2: #F2A9C4;  --mi-tag-2-tint: #45222F;  /* rose */
+  --mi-tag-3: #D4D68A;  --mi-tag-3-tint: #33341C;  /* olive */
+  --mi-tag-4: #B3C3D9;  --mi-tag-4-tint: #2A323D;  /* steel */
+  --mi-tag-5: #E2BFA8;  --mi-tag-5-tint: #3A2C24;  /* brown */
+  --mi-tag-6: #A9D6A2;  --mi-tag-6-tint: #213320;  /* moss */
+  --mi-tag-7: #9DD3E8;  --mi-tag-7-tint: #1C3640;  /* cyan */
+  --mi-tag-8: #D9BED3;  --mi-tag-8-tint: #362A33;  /* mauve */
+
   --mi-backdrop-base: #121514;
   --mi-backdrop:
     radial-gradient(900px 640px at 8% 0%, rgba(14, 116, 102, 0.30), transparent 62%),
@@ -170,5 +190,13 @@
 .mi-chip--review    { background: var(--mi-review-tint);    color: var(--mi-question); border: 1px dashed var(--mi-review-edge); }
 .mi-chip--neutral   { background: var(--mi-neutral-tint);   color: var(--mi-neutral-text); }
 .mi-chip--sensitive { background: var(--mi-sensitive-tint); color: var(--mi-sensitive); }
+.mi-chip--tag-1     { background: var(--mi-tag-1-tint); color: var(--mi-tag-1); }
+.mi-chip--tag-2     { background: var(--mi-tag-2-tint); color: var(--mi-tag-2); }
+.mi-chip--tag-3     { background: var(--mi-tag-3-tint); color: var(--mi-tag-3); }
+.mi-chip--tag-4     { background: var(--mi-tag-4-tint); color: var(--mi-tag-4); }
+.mi-chip--tag-5     { background: var(--mi-tag-5-tint); color: var(--mi-tag-5); }
+.mi-chip--tag-6     { background: var(--mi-tag-6-tint); color: var(--mi-tag-6); }
+.mi-chip--tag-7     { background: var(--mi-tag-7-tint); color: var(--mi-tag-7); }
+.mi-chip--tag-8     { background: var(--mi-tag-8-tint); color: var(--mi-tag-8); }
 .mi-label { font: var(--mi-text-label); text-transform: uppercase; letter-spacing: 0.04em; color: var(--mi-muted); }
 :focus-visible { outline: 2px solid var(--mi-accent); outline-offset: 2px; }

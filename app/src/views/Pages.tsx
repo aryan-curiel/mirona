@@ -2,10 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store";
 import { allTags, api, dayGroup, fmt, typeLabel, type McpActivity, type Person } from "../lib/api";
 import { Avatar, Icon, PageHeader } from "../components/ui";
+import { tagClass } from "../lib/match";
 
-const TINTS = ["mi-chip--action", "mi-chip--decision", "mi-chip--question"];
-/** A stable tint per tag. */
-const tagChip = (c: string) => (c ? TINTS[[...c].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 997, 0) % TINTS.length] : "mi-chip--neutral");
 
 type Status = "all" | "open" | "done" | "review";
 const STATUS: [Status, string][] = [
@@ -148,7 +146,19 @@ export function AllMeetingsView() {
                     </button>
                     {m.sample && <span className="ml-2 text-[12px] text-muted">Sample</span>}
                   </td>
-                  <td className="max-w-[220px] px-3 py-2.5 text-ink-3">{m.tags.join(", ") || "—"}</td>
+                  <td className="max-w-[220px] px-3 py-2.5 text-ink-3">
+                    {m.tags.length ? (
+                      <span className="flex flex-wrap gap-1">
+                        {m.tags.map((t) => (
+                          <span key={t} className={`mi-chip ${tagClass(t)}`}>
+                            {t}
+                          </span>
+                        ))}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="px-3 py-2.5 text-ink-3">{m.meetingType ? typeLabel(m.meetingType) : "—"}</td>
                   <td className="px-3 py-2.5 whitespace-nowrap text-ink-3">{m.when}</td>
                   <td className="px-3 py-2.5 text-right whitespace-nowrap text-ink-3">{m.durationMin} min</td>
@@ -226,7 +236,7 @@ export function ActionItemsView() {
             <span className="flex flex-wrap justify-end gap-1 justify-self-end">
               {a.tags.length ? (
                 a.tags.map((t) => (
-                  <span key={t} className={`mi-chip ${tagChip(t)}`}>
+                  <span key={t} className={`mi-chip ${tagClass(t)}`}>
                     {t}
                   </span>
                 ))

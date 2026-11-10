@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useStore } from "../store";
 import { allTags, fmt, needsReview, priorityLabel, rejected, sure, toneLabel, typeLabel } from "../lib/api";
 import { Label, Mono, Toggle } from "../components/ui";
+import { Combobox } from "../components/Combobox";
+import { tagClass } from "../lib/match";
 import type { Answer } from "../bindings/Answer";
 import type { ChoiceAnswer } from "../bindings/ChoiceAnswer";
 import type { Review } from "../bindings/Review";
@@ -110,12 +112,10 @@ function TagsRow() {
   const st = useStore((s) => s.settings);
   const meetings = useStore((s) => s.meetings);
   const setTags = useStore((s) => s.setTags);
-  const [draft, setDraft] = useState("");
   if (!m) return null;
   const known = allTags(st, meetings).filter((t) => !m.tags.includes(t));
-  const add = () => {
-    const t = draft.trim();
-    setDraft("");
+  const add = (raw: string) => {
+    const t = raw.trim();
     if (t && !m.tags.some((x) => x.toLowerCase() === t.toLowerCase())) void setTags([...m.tags, t]);
   };
   return (
@@ -126,28 +126,21 @@ function TagsRow() {
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
         {m.tags.map((t) => (
-          <span key={t} className="mi-chip mi-chip--neutral gap-1">
+          <span key={t} className={`mi-chip ${tagClass(t)} gap-1`}>
             {t}
-            <button type="button" className="-mr-1 rounded px-1 text-muted hover:text-ink" aria-label={`Remove tag ${t}`} onClick={() => void setTags(m.tags.filter((x) => x !== t))}>
+            <button type="button" className="-mr-1 rounded px-1 opacity-70 hover:opacity-100" aria-label={`Remove tag ${t}`} onClick={() => void setTags(m.tags.filter((x) => x !== t))}>
               ×
             </button>
           </span>
         ))}
-        <input
-          className="mi-field h-8 min-w-0 flex-1 text-[13px]"
-          list="mi-known-tags"
-          aria-label="Add a tag"
+        <Combobox
+          className="min-w-40 flex-1"
+          label="Add a tag"
           placeholder="Add a tag, e.g. project:setr"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-          onBlur={add}
+          options={known.map((t) => ({ value: t, render: <span className={`mi-chip ${tagClass(t)}`}>{t}</span> }))}
+          allowNew={(t) => (t.trim() ? `Add “${t.trim()}”` : null)}
+          onPick={add}
         />
-        <datalist id="mi-known-tags">
-          {known.map((t) => (
-            <option key={t} value={t} />
-          ))}
-        </datalist>
       </div>
     </div>
   );

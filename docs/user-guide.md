@@ -103,8 +103,11 @@ A meeting can have several tags, such as the client or project it is for. A tag 
   changes a tag you set, removed or answered.
 - When no tag fits, Mirona may suggest one new tag from the summary ("New tag?"). Accept it and
   it's added to the meeting and to Settings › Tags; reject it and it's dropped.
+- Tags in the same group share a colour everywhere (all `project:` tags look alike); tags without
+  a group are grey. Colours are picked for you.
 - In the inspector, **This meeting › Tags** shows the tags. × removes one; type in the box to add
-  one (known tags are suggested, a new one joins the list).
+  one. Suggestions match any part of a tag: "setr", "proj" or even "pset" find `project:setr`.
+  Use the arrow keys and Enter, or press Enter on new text to add a new tag.
 
 Clients from Mirona 0.1.0 become `project:` tags automatically, with their rules.
 
