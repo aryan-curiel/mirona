@@ -9,3 +9,5 @@ spikes/**/audio/
 spikes/**/target/
 __pycache__/
 .venv/
+
+.superpowers/
