@@ -50,3 +50,18 @@ export function tagClass(tag: string): string {
   for (const c of tag.slice(0, i).trim().toLowerCase()) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193) >>> 0;
   return `mi-chip--tag-${1 + (((h ^ (h >>> 16)) >>> 0) % 8)}`;
 }
+
+/** The item equal to `typed`, ignoring case. */
+export const exactMatch = (typed: string, items: string[]) => {
+  const t = typed.trim().toLowerCase();
+  return t ? items.find((i) => i.toLowerCase() === t) : undefined;
+};
+
+/** What Enter picks in a picker: the highlighted row, an existing item typed in any case, the
+ * typed text when new ones are allowed, or the only match. Nothing for empty text. */
+export function enterChoice(typed: string, shown: string[], all: string[], active: string | undefined, canNew: boolean): string | null {
+  if (active !== undefined) return active;
+  const t = typed.trim();
+  if (!t) return null;
+  return exactMatch(t, all) ?? (canNew ? t : shown.length === 1 ? shown[0] : null);
+}

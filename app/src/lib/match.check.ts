@@ -1,7 +1,7 @@
 // Self-check for match.ts: node --experimental-strip-types app/src/lib/match.check.ts
 import assert from "node:assert/strict";
 import type { Segment } from "../bindings/Segment";
-import { rank, samples, tagClass } from "./match.ts";
+import { enterChoice, exactMatch, rank, samples, tagClass } from "./match.ts";
 
 const tags = ["project:setr", "project:atlas", "team:design", "setup", "hiring"];
 assert.equal(rank("setr", tags)[0], "project:setr"); // prefix after ':'
@@ -42,5 +42,16 @@ assert.equal(tagClass("project:a"), tagClass("Project:b"));
 assert.match(tagClass("project:a"), /^mi-chip--tag-[1-8]$/);
 assert.equal(tagClass("solo"), "mi-chip--neutral");
 assert.ok(new Set(["project", "team", "client", "area", "topic", "person"].map((g) => tagClass(`${g}:x`))).size >= 4);
+
+// Enter in a picker (review fixes): case-insensitive exact match wins, empty text picks nothing.
+assert.equal(exactMatch("ana", ["Ana", "Bo"]), "Ana");
+assert.equal(exactMatch("an", ["Ana"]), undefined);
+const all = ["Ana", "Anabel", "Bo"];
+assert.equal(enterChoice("ana", ["Ana", "Anabel"], all, undefined, true), "Ana"); // not "New person: ana"
+assert.equal(enterChoice("", ["Ana"], ["Ana"], undefined, true), null); // a stray Enter names nobody
+assert.equal(enterChoice("zoe", [], all, undefined, true), "zoe");
+assert.equal(enterChoice("zoe", [], all, undefined, false), null);
+assert.equal(enterChoice("bo", ["Bo"], all, "Anabel", true), "Anabel"); // the highlighted row wins
+assert.equal(enterChoice("nab", ["Anabel"], all, undefined, false), "Anabel"); // the only match
 
 console.log("match ok");

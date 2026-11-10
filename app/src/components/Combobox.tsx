@@ -1,5 +1,5 @@
 import { type ReactNode, useId, useState } from "react";
-import { rank } from "../lib/match";
+import { enterChoice, exactMatch, rank } from "../lib/match";
 
 export type ComboOption = { value: string; group?: string; render?: ReactNode };
 
@@ -7,11 +7,13 @@ export type ComboOption = { value: string; group?: string; render?: ReactNode };
  * A text field with suggestions that match anywhere (NGR-201/202). ↑/↓ move, Enter picks the
  * highlighted one (or the typed text when `allowNew` labels it), Escape closes.
  */
-export function Combobox({ label, placeholder, options, onPick, allowNew, initial = "", autoFocus = false, className = "" }: {
+export function Combobox({ label, placeholder, options, onPick, onText, allowNew, initial = "", autoFocus = false, className = "" }: {
   label: string;
   placeholder: string;
   options: ComboOption[];
   onPick: (value: string) => void;
+  /** The text as typed, for callers with their own Save button. */
+  onText?: (text: string) => void;
   /** Label for "use what I typed" (e.g. "New person: Zoe"), or null when it can't be used. */
   allowNew?: (typed: string) => string | null;
   initial?: string;
@@ -28,11 +30,13 @@ export function Combobox({ label, placeholder, options, onPick, allowNew, initia
   const groups = [...new Set(options.map((o) => o.group ?? ""))];
   const shown = groups.flatMap((g) => hits.filter((o) => (o.group ?? "") === g));
   const typed = text.trim();
-  const newLabel = typed && !byValue.has(typed) ? (allowNew?.(typed) ?? null) : null;
+  const values = [...byValue.keys()];
+  const newLabel = typed && !exactMatch(typed, values) ? (allowNew?.(typed) ?? null) : null;
   const rows = [...shown.map((o) => ({ value: o.value, o })), ...(newLabel ? [{ value: typed, o: null }] : [])];
 
   const pick = (value: string) => {
     setText("");
+    onText?.("");
     setOpen(false);
     setActive(-1);
     onPick(value);
@@ -54,6 +58,7 @@ export function Combobox({ label, placeholder, options, onPick, allowNew, initia
         value={text}
         onChange={(e) => {
           setText(e.target.value);
+          onText?.(e.target.value);
           setOpen(true);
           setActive(-1);
         }}
@@ -67,9 +72,8 @@ export function Combobox({ label, placeholder, options, onPick, allowNew, initia
             setActive((a) => (rows.length ? (a + step + rows.length) % rows.length : -1));
           } else if (e.key === "Enter") {
             e.preventDefault();
-            if (active >= 0 && rows[active]) pick(rows[active].value);
-            else if (byValue.has(typed) || newLabel) pick(typed);
-            else if (shown.length === 1) pick(shown[0].value);
+            const v = enterChoice(text, shown.map((o) => o.value), values, rows[active]?.value, !!newLabel);
+            if (v !== null) pick(v);
           } else if (e.key === "Escape") {
             setOpen(false);
             setActive(-1);

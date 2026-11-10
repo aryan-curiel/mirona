@@ -3,7 +3,7 @@ import type { Meeting } from "../bindings/Meeting";
 import { type ComboOption, Combobox } from "../components/Combobox";
 import { Mono } from "../components/ui";
 import { api, fmt } from "../lib/api";
-import { samples } from "../lib/match";
+import { exactMatch, samples } from "../lib/match";
 import { useStore } from "../store";
 
 /** Voices nobody named yet and everyone who has a name; refetched whenever the meeting changes. */
@@ -41,13 +41,26 @@ export function NameVoices({ m, unnamed, known, play }: { m: Meeting; unnamed: s
   const busy = useStore((s) => s.recording?.meetingId === m.id || s.processing.includes(m.id));
   const [open, setOpen] = useState(false);
   const [at, setAt] = useState(0);
+  const [text, setText] = useState("");
   if (busy || !unnamed.length) return null;
   const n = unnamed.length;
   const k = Math.min(at, n - 1);
   const sp = m.speakers.find((p) => p.id === unnamed[k]);
   const lines = m.segments.filter((x) => x.speakerId === sp?.id);
   const ms = lines.reduce((t, x) => t + Math.max(0, x.endMs - x.startMs), 0);
-  const next = () => (k + 1 < n ? setAt(k + 1) : setOpen(false));
+  const next = () => {
+    setText("");
+    if (k + 1 < n) setAt(k + 1);
+    else setOpen(false);
+  };
+  const save = (raw: string) => {
+    const name = exactMatch(raw, known) ?? raw.trim();
+    if (!sp || !name) return;
+    void nameSpeaker(sp.id, name);
+    setText("");
+    // The named voice leaves the list, so the next one moves into this slot.
+    if (k + 1 >= n) setOpen(false);
+  };
 
   return (
     <section aria-label="Unnamed voices" className="mb-4 rounded-lg border border-dashed border-[var(--mi-review-edge)] bg-[var(--mi-review-tint)] p-3 text-[14px]">
@@ -102,17 +115,17 @@ export function NameVoices({ m, unnamed, known, play }: { m: Meeting; unnamed: s
             options={personOptions(m, known)}
             allowNew={newPerson}
             initial={sp.suggestion?.name ?? ""}
-            onPick={(name) => {
-              void nameSpeaker(sp.id, name);
-              // The named voice leaves the list, so the next one moves into this slot.
-              if (k + 1 >= n) setOpen(false);
-            }}
+            onText={setText}
+            onPick={save}
           />
           <div className="mt-3 flex gap-2">
+            <button type="button" className="mi-btn-primary h-11 px-4 text-[14px]" disabled={!(text || sp.suggestion?.name)} onClick={() => save(text || sp.suggestion?.name || "")}>
+              Save
+            </button>
             <button type="button" className="mi-ghost h-11 px-4 text-[14px]" onClick={next}>
               Skip
             </button>
-            <button type="button" className="mi-ghost h-11 px-4 text-[14px]" disabled={k + 1 >= n} onClick={() => setAt(k + 1)}>
+            <button type="button" className="mi-ghost h-11 px-4 text-[14px]" disabled={k + 1 >= n} onClick={next}>
               Next ›
             </button>
             <span className="flex-1" />
