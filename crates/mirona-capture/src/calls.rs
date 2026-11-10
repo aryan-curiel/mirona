@@ -17,7 +17,7 @@ pub struct CallApp {
 /// Bundle id (or id prefix: helpers are `<app>.helper…`) → what we call the app.
 // ponytail: a browser can't be told apart from Meet without reading its tabs, so any browser
 // using the mic counts as a call; per-tab detection would need the Accessibility API (NGR-170).
-const APPS: [(&str, &str); 19] = [
+const APPS: [(&str, &str); 26] = [
     ("us.zoom.xos", "Zoom"),
     ("com.microsoft.teams2", "Microsoft Teams"),
     ("com.microsoft.teams", "Microsoft Teams"),
@@ -33,8 +33,18 @@ const APPS: [(&str, &str); 19] = [
     // Safari's (and other WebKit apps') capture runs in WebKit's GPU process.
     ("com.apple.WebKit", "Safari (Google Meet?)"),
     ("company.thebrowser.Browser", "Arc (Google Meet?)"),
+    ("company.thebrowser.dia", "Dia (Google Meet?)"),
     ("com.microsoft.edgemac", "Edge (Google Meet?)"),
     ("org.mozilla.firefox", "Firefox (Google Meet?)"),
+    (
+        "org.mozilla.firefoxdeveloperedition",
+        "Firefox (Google Meet?)",
+    ),
+    ("org.mozilla.nightly", "Firefox (Google Meet?)"),
+    ("app.zen-browser.zen", "Zen (Google Meet?)"),
+    ("org.chromium.Chromium", "Chromium (Google Meet?)"),
+    ("com.operasoftware.OperaGX", "Opera GX (Google Meet?)"),
+    ("ru.yandex.desktop.yandex-browser", "Yandex (Google Meet?)"),
     ("com.brave.Browser", "Brave (Google Meet?)"),
     ("com.operasoftware.Opera", "Opera (Google Meet?)"),
     ("com.vivaldi.Vivaldi", "Vivaldi (Google Meet?)"),
@@ -261,6 +271,14 @@ mod tests {
             Some("Safari (Google Meet?)")
         );
         // A prefix only counts at a dot: com.microsoft.teamsX is not Teams.
+        assert_eq!(
+            app_name("company.thebrowser.dia.helper"),
+            Some("Dia (Google Meet?)")
+        );
+        assert_eq!(
+            app_name("org.mozilla.nightly"),
+            Some("Firefox (Google Meet?)")
+        );
         assert_eq!(app_name("com.microsoft.teamsX"), None);
         assert_eq!(app_name("com.nagare.mirona"), None);
     }
