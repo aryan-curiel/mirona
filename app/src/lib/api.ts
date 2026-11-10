@@ -35,6 +35,9 @@ export type Settings = {
   meetingsDir: string;
   modelsDir: string;
   classification: "jev" | "local-llm" | "off";
+  /** The local classifier (Ollama); empty: qwen3:4b on the summary's Ollama server. */
+  classifierModel: string;
+  classifierBaseUrl: string;
   diarization: "speakrs" | "speakrs-cpu" | "off";
   /** Question id → the user's threshold; the rest use `thresholdDefaults`. */
   thresholds: Record<string, number>;

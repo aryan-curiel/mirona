@@ -39,7 +39,7 @@ except API keys and the encryption key, which are in the macOS keychain.
 | --- | --- | --- |
 | **Speech to text** | Parakeet TDT 0.6B (Whisper in builds that include it) | Parakeet |
 | **Summaries and notes** | Ollama, OpenAI-compatible, Anthropic; plus the model name and the server URL | Ollama, `qwen3:4b` |
-| **Classification** | Jev (hosted), Local LLM (`qwen3:4b`), Off | Jev; the local LLM while privacy mode is on or without a Jev key |
+| **Classification** | Jev (hosted), Local LLM, Off; for the local LLM, the Ollama model and chat URL | Jev; the local LLM (`qwen3:4b` on the summary's Ollama server) while privacy mode is on or without a Jev key |
 | **Speaker detection** | speakrs, speakrs CPU only, Off | speakrs |
 | **Models folder** | Where the speech and voice models are. Shows what's missing, with a download button. | `~/Library/Application Support/com.nagare.mirona/models` |
 | **API keys** | OpenAI, Anthropic and Jev keys, saved in the keychain. | – |

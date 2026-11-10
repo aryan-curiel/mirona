@@ -10,7 +10,7 @@ Mirona uses a different model for each stage. Settings › **AI models** picks t
 | --- | --- | --- | --- |
 | **Speech to text** | Live transcription | Parakeet TDT 0.6B (default). Whisper only in builds with the `whisper` feature | – |
 | **Speaker detection** | Splits "Them" into people, matches known voices | speakrs (Neural Engine on 16 GB+ Macs, CPU otherwise), or CPU only | – |
-| **Classification** | Tags lines, answers the meeting questions | Local LLM (`qwen3:4b` in Ollama) | Jev (TypeSafe) |
+| **Classification** | Tags lines, answers the meeting questions | Local LLM (`qwen3:4b` in Ollama by default, any Ollama model) | Jev (TypeSafe) |
 | **Summaries and notes** | Summary, enhanced notes, follow-up email, task wording, tag suggestions | Ollama (`qwen3:4b` by default), or an OpenAI-compatible server on this Mac (LM Studio, vLLM…) | OpenAI-compatible (default `gpt-4.1-mini`), Anthropic (default `claude-opus-5-5`) |
 | **Search by meaning** | Embeddings for search | Ollama `nomic-embed-text` | – |
 
@@ -47,6 +47,11 @@ privacy mode allows them; plain names like `http://ai-box` don't, use its IP or 
 Transcription and speaker naming stay on the Mac. The traffic is plain HTTP: on a network you
 don't trust, use Tailscale or an SSH tunnel (`ssh -N -L 11434:localhost:11434 ai-box`, then
 keep the URL on `localhost`).
+
+**A different model for tags:** Settings › AI models › Classification › **Model** and **Ollama
+chat URL** (shown while the local LLM tags). Empty, tags use `qwen3:4b` on the summary's server.
+`qwen3:4b` scored best in our tests; before switching, compare a bigger model on your own
+meetings: `mirona eval --with local-llm` uses the model set here.
 
 ### Using a cloud model
 

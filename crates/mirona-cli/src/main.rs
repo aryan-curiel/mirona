@@ -344,7 +344,7 @@ fn run_eval(
     limit: Option<usize>,
 ) -> Result {
     use mirona_engine::classify::AnyClassifier;
-    use mirona_providers::{fake::Fake, jev::Jev, ollama::Ollama};
+    use mirona_providers::{fake::Fake, jev::Jev};
     let (cfg, _) = mirona_mcp::load(app_dir)?;
     let labels = if no_labels {
         None
@@ -389,9 +389,9 @@ fn run_eval(
                 )
             }
             "local-llm" => {
-                let c = Ollama::default();
+                let c = mirona_engine::classify::local_classifier(&cfg);
                 (
-                    eval::name(&c) + " " + mirona_providers::ollama::MODEL,
+                    eval::name(&c) + " " + c.model(),
                     eval::run(&c, &examples, context),
                 )
             }

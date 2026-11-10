@@ -1318,6 +1318,11 @@ struct Settings {
     /// jev | local-llm | off
     #[serde(default)]
     classification: String,
+    /// The local classifier's Ollama model and chat URL; empty: `qwen3:4b`, the summary's server.
+    #[serde(default)]
+    classifier_model: String,
+    #[serde(default)]
+    classifier_base_url: String,
     /// speakrs (`CoreML` when it can) | speakrs-cpu | off
     #[serde(default)]
     diarization: String,
@@ -1420,6 +1425,8 @@ impl Settings {
             meetings_dir: paths.meetings.clone(),
             models_dir: paths.models.clone(),
             classification: mirona_engine::stage(cfg, "classification", "jev"),
+            classifier_model: cfg.classifier.model.clone(),
+            classifier_base_url: cfg.classifier.base_url.clone(),
             diarization: mirona_engine::stage(cfg, "diarization", "speakrs"),
             thresholds: cfg.thresholds.clone(),
             threshold_defaults: {
@@ -1447,6 +1454,19 @@ impl Settings {
             retention_tags: cfg.retention.tags.clone(),
             check_updates: cfg.check_updates,
         }
+    }
+
+    /// The classifier's Ollama URL; in privacy mode only this Mac or the local network.
+    fn classifier_url(&self) -> Res<&str> {
+        let url = self.classifier_base_url.trim();
+        if self.privacy && !url.is_empty() && !mirona_providers::net::is_local(url) {
+            return Err(
+                "In privacy mode the classification server must be on this Mac or your \
+                        local network."
+                    .into(),
+            );
+        }
+        Ok(url)
     }
 
     /// `cfg` with these settings applied. The LLM goes through the privacy gate; folders equal
@@ -1493,6 +1513,7 @@ impl Settings {
         if !["jev", "local-llm", "off"].contains(&self.classification.as_str()) {
             return Err(format!("unknown classifier {}", self.classification));
         }
+        let classifier_url = self.classifier_url()?;
         if !["speakrs", "speakrs-cpu", "off"].contains(&self.diarization.as_str()) {
             return Err(format!("unknown speaker detection {}", self.diarization));
         }
@@ -1511,6 +1532,8 @@ impl Settings {
         cfg.providers.insert("llm".into(), self.llm.clone());
         cfg.llm.model = self.llm_model.trim().into();
         cfg.llm.base_url = base.into();
+        cfg.classifier.model = self.classifier_model.trim().into();
+        cfg.classifier.base_url = classifier_url.into();
         cfg.template = self.template.trim().into();
         cfg.mcp_enabled = self.mcp_enabled;
         cfg.mcp_http = self.mcp_http;
@@ -2400,5 +2423,28 @@ mod tests {
         assert_eq!(cfg.providers["llm"], "anthropic");
         s.llm = "gpt-5".into();
         assert!(s.apply(Config::default(), &d).is_err(), "unknown provider");
+    }
+
+    #[test]
+    fn classifier_model_and_server_are_saved_and_gated() {
+        let d = defaults();
+        let mut s = Settings::of(&Config::default(), &d);
+        s.classification = "local-llm".into();
+        s.classifier_model = " qwen3:14b ".into();
+        s.classifier_base_url = "http://192.168.1.20:11434/api/chat".into();
+        let cfg = s.apply(Config::default(), &d).unwrap();
+        assert_eq!(cfg.classifier.model, "qwen3:14b");
+        assert_eq!(
+            cfg.classifier.base_url,
+            "http://192.168.1.20:11434/api/chat"
+        );
+        assert_eq!(Settings::of(&cfg, &d).classifier_model, "qwen3:14b");
+        s.classifier_base_url = "https://ollama.example.com/api/chat".into();
+        assert!(
+            s.apply(Config::default(), &d).is_err(),
+            "public server in privacy mode"
+        );
+        s.privacy = false;
+        assert!(s.apply(Config::default(), &d).is_ok());
     }
 }

@@ -590,3 +590,18 @@ fn ollama_url_follows_the_summary_server() {
         "http://localhost:11434/api/chat"
     );
 }
+
+/// The local classifier: `[classifier]` when set, else qwen3:4b on the summary's server.
+#[test]
+fn local_classifier_uses_its_own_model_and_server() {
+    use crate::classify::local_classifier;
+    use mirona_providers::Provider;
+    let mut cfg = Config::default();
+    cfg.llm.base_url = "http://192.168.1.20:11434/api/chat".into();
+    let c = local_classifier(&cfg);
+    assert_eq!(c.model(), mirona_providers::ollama::MODEL);
+    assert_eq!(c.locality(), Locality::Local);
+    cfg.classifier.model = "qwen3:14b".into();
+    cfg.classifier.base_url = "http://10.0.0.9:11434/api/chat".into();
+    assert_eq!(local_classifier(&cfg).model(), "qwen3:14b");
+}

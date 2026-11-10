@@ -60,15 +60,34 @@ pub enum AnyClassifier {
     Local(Ollama),
 }
 
+/// The local classifier: `[classifier]` model and Ollama chat URL, else `qwen3:4b` on the
+/// summary's Ollama server.
+pub fn local_classifier(cfg: &Config) -> Ollama {
+    let pick = |v: &str, default: String| {
+        if v.trim().is_empty() {
+            default
+        } else {
+            v.trim().into()
+        }
+    };
+    Ollama::new(
+        pick(
+            &cfg.classifier.model,
+            mirona_providers::ollama::MODEL.into(),
+        ),
+        pick(
+            &cfg.classifier.base_url,
+            crate::ollama_url(cfg, "/api/chat"),
+        ),
+    )
+}
+
 impl AnyClassifier {
     /// Jev unless privacy mode is on, the config says `local-llm`, or there is no Jev key in
     /// the keychain (account `jev`); `None` when the config says `off`. The second value says
     /// why it fell back, when it did against the config's wish.
     pub fn from_config(cfg: &Config) -> (Option<Self>, Option<String>) {
-        let local = Some(Self::Local(Ollama::new(
-            mirona_providers::ollama::MODEL,
-            crate::ollama_url(cfg, "/api/chat"),
-        )));
+        let local = Some(Self::Local(local_classifier(cfg)));
         match stage(cfg, "classification", "jev").as_str() {
             "off" => return (None, None),
             "local-llm" => return (local, None),

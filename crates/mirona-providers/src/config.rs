@@ -26,6 +26,9 @@ pub struct Config {
     /// Summary template id used after each recording (NGR-146).
     pub template: String,
     pub llm: LlmSettings,
+    /// The local model behind `classification = "local-llm"` (Ollama). Empty model:
+    /// `qwen3:4b`; empty URL: the summary's Ollama server ([`LlmSettings`]).
+    pub classifier: LlmSettings,
     /// Let MCP clients read meetings. Off: `mirona mcp` refuses to serve (NGR-148/150).
     pub mcp_enabled: bool,
     /// Also serve MCP over streamable HTTP on 127.0.0.1 (`mcp_port`), for clients that can't
@@ -126,6 +129,7 @@ impl Default for Config {
             models_dir: None,
             template: "client-call".into(),
             llm: LlmSettings::default(),
+            classifier: LlmSettings::default(),
             // Off until the user lets agents in (onboarding or Settings).
             mcp_enabled: false,
             mcp_http: false,

@@ -879,7 +879,7 @@ function SettingsView() {
             value={st.classification}
             options={[
               { id: "jev", name: "Jev (hosted)", cloud: true },
-              { id: "local-llm", name: "Local LLM (qwen3:4b)" },
+              { id: "local-llm", name: `Local LLM (${st.classifierModel || "qwen3:4b"})` },
               { id: "off", name: "Off", tag: "" },
             ]}
             onPick={(classification) => save({ classification })}
@@ -887,7 +887,25 @@ function SettingsView() {
           {st.classification === "jev" && privacy && (
             <p className="mt-2 text-[12px] text-ink-3">Privacy mode is on, so the local LLM answers instead of Jev. Tags are less accurate in privacy mode.</p>
           )}
-          {st.classification === "local-llm" && <p className="mt-2 text-[12px] text-ink-3">Runs through Ollama on this device. Tags are less accurate than with Jev.</p>}
+          {st.classification === "local-llm" && <p className="mt-2 text-[12px] text-ink-3">Runs through Ollama. Tags are less accurate than with Jev.</p>}
+          {(st.classification === "local-llm" || (st.classification === "jev" && privacy)) && (
+            <div className="mt-3 flex max-w-[420px] flex-col gap-3">
+              <Field
+                label="Model"
+                hint="qwen3:4b scored best in our tests; check another with mirona eval --with local-llm."
+                value={st.classifierModel}
+                placeholder="qwen3:4b"
+                onSave={(classifierModel) => save({ classifierModel })}
+              />
+              <Field
+                label="Ollama chat URL"
+                hint="Empty: the same Ollama server as summaries."
+                value={st.classifierBaseUrl}
+                placeholder={st.llm === "ollama" && st.llmBaseUrl ? st.llmBaseUrl : llmDefaults.ollama.url}
+                onSave={(classifierBaseUrl) => save({ classifierBaseUrl })}
+              />
+            </div>
+          )}
           {st.classification === "jev" && !privacy && !status.keys.includes("jev") && (
             <p className="mt-2 text-[12px] text-record-text">Add your Jev key under API keys below; until then the local LLM answers.</p>
           )}

@@ -27,6 +27,10 @@ impl Ollama {
             http: ureq::Agent::new_with_defaults(),
         }
     }
+
+    pub fn model(&self) -> &str {
+        &self.model
+    }
 }
 
 impl Default for Ollama {

@@ -28,6 +28,8 @@ const settings = {
   meetingsDir: "~/Documents/Mirona",
   modelsDir: "~/Library/Application Support/com.nagare.mirona/models",
   classification: "local-llm",
+  classifierModel: "",
+  classifierBaseUrl: "",
   diarization: "speakrs",
   thresholds: {},
   thresholdDefaults: { action: 0.99, decision: 0.95, unanswered: 0.85, smalltalk: 0.85, sensitive: 0.6, meeting_type: 0.85, tag: 0.85, follow_up: 0.85 },
