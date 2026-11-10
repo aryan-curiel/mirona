@@ -36,7 +36,7 @@ Every crate also depends on `mirona-core`; those arrows are left out.
 | `mirona-engine` | The pipeline: `Engine::record` → `Session::stop`, `import`, `summarize`, classification, search, retention and the model downloader. |
 | `mirona-mcp` | The MCP server (`rmcp`), on stdio or localhost HTTP with per-client tokens. It rereads the store on every call. |
 | `mirona-cli` | The `mirona` command. |
-| `app/src-tauri` | Tauri commands over the engine; the tray, global shortcut, windows (main, Settings, onboarding). |
+| `app/src-tauri` | Tauri commands over the engine; the tray, global shortcut, windows (main, Settings, onboarding, menu bar popover). |
 | `app/src` | React 19, Tailwind v4, zustand. `lib/api.ts` wraps each command; `store.ts` holds the state and applies pipeline events. |
 
 ## A recording

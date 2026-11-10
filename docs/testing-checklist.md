@@ -50,7 +50,7 @@ Tick items as you go (`- [x]`). Anything that fails: note what you saw under **F
 
 ## 2. Start and stop from everywhere
 
-- [ ] **Menu-bar icon:** Start recording / Stop from the tray menu.
+- [ ] **Menu-bar icon:** Start recording / Stop, Mute, Open, Settings and Quit from the menu bar popover; it closes on a click elsewhere or Escape.
 - [ ] **Global shortcut** (default ⌘⌥⇧R) while another app is in front: starts and stops recording.
 - [ ] **Change the shortcut:** Settings › General › Record shortcut, press a new combination, then use it.
   Expected: the new one works, the old one doesn't, and the tray and recording bar show the new one.

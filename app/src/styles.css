@@ -282,3 +282,6 @@ select.mi-field { appearance: none; -webkit-appearance: none; padding-right: 32p
   .mi-scene, .mi-scene[data-on] { transform: none; filter: none; }
   @keyframes mi-step-in { from { opacity: 0; } }
 }
+
+/* Menu bar popover: native popover material on macOS, a plain card elsewhere. */
+[data-platform="windows"] .mi-tray, [data-platform="linux"] .mi-tray { background: var(--mi-backdrop); border: 1px solid var(--mi-line); border-radius: var(--mi-radius-xl); }

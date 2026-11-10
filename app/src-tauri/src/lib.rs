@@ -26,8 +26,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex, RwLock};
-use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::TrayIconBuilder;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -1022,20 +1022,8 @@ fn toggle(app: &AppHandle) {
     });
 }
 
-struct TrayItem(MenuItem<tauri::Wry>, CheckMenuItem<tauri::Wry>);
-
 fn rec_changed(app: &AppHandle) {
     let state = app.state::<AppState>().rec_state();
-    if let Some(item) = app.try_state::<TrayItem>() {
-        let text = if state.recording.is_some() {
-            "Stop recording"
-        } else {
-            "Start recording"
-        };
-        item.0.set_text(text).ok();
-        item.1.set_enabled(state.recording.is_some()).ok();
-        item.1.set_checked(state.mic_muted).ok();
-    }
     if state.recording.is_some() {
         animate_tray(app);
     }
@@ -1800,13 +1788,6 @@ fn swap_shortcut(app: &AppHandle, old: &str, new: &str, mute: bool) -> Res<()> {
             if mute { "mute" } else { "record" }
         ));
     }
-    if let Some(item) = app.try_state::<TrayItem>() {
-        if mute {
-            item.1.set_accelerator(Some(new)).ok();
-        } else {
-            item.0.set_accelerator(Some(new)).ok();
-        }
-    }
     Ok(())
 }
 
@@ -1831,18 +1812,7 @@ fn open_engine(app_dir: &Path, documents: &Path) -> Res<(Engine, Vec<String>)> {
     }
 }
 
-fn tray(app: &tauri::App, shortcut: &str, mute_shortcut: &str) -> tauri::Result<()> {
-    // An accelerator the menu can't show must not cost the tray icon.
-    let accel = parse_shortcut(shortcut).is_ok().then_some(shortcut);
-    let mute_accel = parse_shortcut(mute_shortcut)
-        .is_ok()
-        .then_some(mute_shortcut);
-    let toggle_item = MenuItem::with_id(app, "toggle", "Start recording", true, accel)?;
-    let mute_item = CheckMenuItem::with_id(app, "mute", "Mute my mic", false, false, mute_accel)?;
-    let show = MenuItem::with_id(app, "show", "Open Mirona", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
-    let quit = PredefinedMenuItem::quit(app, Some("Quit Mirona"))?;
-    let menu = Menu::with_items(app, &[&toggle_item, &mute_item, &show, &settings, &quit])?;
+fn tray(app: &tauri::App) -> tauri::Result<()> {
     let icon = if cfg!(target_os = "macos") {
         tauri::image::Image::from_bytes(TRAY_PNG)?
     } else {
@@ -1852,30 +1822,124 @@ fn tray(app: &tauri::App, shortcut: &str, mute_shortcut: &str) -> tauri::Result<
         .icon(icon)
         .icon_as_template(cfg!(target_os = "macos"))
         .tooltip("Mirona")
-        .menu(&menu)
-        .on_menu_event(|app, ev| match ev.id.as_ref() {
-            "toggle" => toggle(app),
-            "mute" => {
-                // The menu flips the check itself; resync it if nothing is recording.
-                if mute(app, None).is_err() {
-                    rec_changed(app);
-                }
+        .on_tray_icon_event(|tray, ev| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                rect,
+                ..
+            } = ev
+                && let Err(e) = toggle_popover(tray.app_handle(), rect)
+            {
+                eprintln!("mirona: menu bar popover: {e}");
             }
-            "show" => {
-                if let Some(w) = app.get_webview_window("main") {
-                    w.show().ok();
-                    w.set_focus().ok();
-                }
-            }
-            "settings" => {
-                if let Err(e) = show_settings(app, None) {
-                    eprintln!("mirona: settings window: {e}");
-                }
-            }
-            _ => {}
         })
         .build(app)?;
-    app.manage(TrayItem(toggle_item, mute_item));
+    Ok(())
+}
+
+const POPOVER_W: f64 = 304.0;
+const POPOVER_H: f64 = 264.0;
+/// When the popover last hid itself on losing focus, so the icon click that caused it
+/// doesn't open it again straight away.
+static POPOVER_HIDDEN: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+
+/// The menu bar popover (window `tray`, `TrayWindow` in `views/Tray.tsx`), under the icon
+/// (above it when the icon sits low, as on the Windows taskbar). Built on first click.
+fn toggle_popover(app: &AppHandle, rect: tauri::Rect) -> Res<()> {
+    let w = match app.get_webview_window("tray") {
+        Some(w) => w,
+        None => build_popover(app)?,
+    };
+    if w.is_visible().unwrap_or(false) {
+        return w.hide().map_err(|e| e.to_string());
+    }
+    let just_hid = POPOVER_HIDDEN
+        .lock()
+        .unwrap()
+        .is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(300));
+    if just_hid {
+        return Ok(());
+    }
+    let at = rect.position.to_physical::<f64>(1.0);
+    let monitor = app
+        .monitor_from_point(at.x, at.y)
+        .ok()
+        .flatten()
+        .or_else(|| w.primary_monitor().ok().flatten())
+        .ok_or("no display")?;
+    let scale = monitor.scale_factor();
+    let (pos, size) = (
+        rect.position.to_logical::<f64>(scale),
+        rect.size.to_logical::<f64>(scale),
+    );
+    let area = monitor.work_area();
+    let (left, top) = (
+        f64::from(area.position.x) / scale,
+        f64::from(area.position.y) / scale,
+    );
+    let (right, bottom) = (
+        left + f64::from(area.size.width) / scale,
+        top + f64::from(area.size.height) / scale,
+    );
+    let x = (pos.x + size.width / 2.0 - POPOVER_W / 2.0).clamp(left + 8.0, right - POPOVER_W - 8.0);
+    let y = if pos.y + size.height + POPOVER_H < bottom {
+        pos.y + size.height + 6.0
+    } else {
+        pos.y - POPOVER_H - 6.0
+    };
+    w.set_position(tauri::LogicalPosition::new(x, y))
+        .map_err(|e| e.to_string())?;
+    w.show().map_err(|e| e.to_string())?;
+    w.set_focus().map_err(|e| e.to_string())
+}
+
+fn build_popover(app: &AppHandle) -> Res<tauri::WebviewWindow> {
+    let url = tauri::WebviewUrl::App("index.html".into());
+    let b = tauri::WebviewWindowBuilder::new(app, "tray", url)
+        .title("Mirona")
+        .theme(Some(tauri::Theme::Light))
+        .inner_size(POPOVER_W, POPOVER_H)
+        .resizable(false)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible(false);
+    #[cfg(target_os = "macos")]
+    let b = b.effects(
+        tauri::window::EffectsBuilder::new()
+            .effect(tauri::window::Effect::Popover)
+            .state(tauri::window::EffectState::Active)
+            .radius(12.0)
+            .build(),
+    );
+    b.build().map_err(|e| e.to_string())
+}
+
+/// The popover's buttons. Each closes it except mute, which flips in place.
+/// Async: on Windows a window built from a sync command deadlocks (settings).
+#[tauri::command]
+async fn tray_action(app: AppHandle, action: String) -> Res<()> {
+    if action != "mute"
+        && let Some(w) = app.get_webview_window("tray")
+    {
+        w.hide().ok();
+    }
+    match action.as_str() {
+        "toggle" => toggle(&app),
+        "mute" => mute(&app, None)?,
+        "show" => {
+            if let Some(w) = app.get_webview_window("main") {
+                w.show().ok();
+                w.set_focus().ok();
+            }
+        }
+        "settings" => show_settings(&app, None)?,
+        "quit" => app.exit(0),
+        "hide" => {} // Escape: hidden above
+        _ => return Err(format!("Unknown tray action {action}.")),
+    }
     Ok(())
 }
 
@@ -1937,7 +2001,7 @@ pub fn run() {
                     ));
                 }
             }
-            if let Err(e) = tray(app, &cfg.shortcut, &cfg.mute_shortcut) {
+            if let Err(e) = tray(app) {
                 errors.push(format!("No menu bar icon: {e}"));
             }
             #[cfg(target_os = "macos")]
@@ -2057,17 +2121,23 @@ pub fn run() {
             revoke_mcp_client,
             open_settings,
             show_onboarding,
+            tray_action,
             voiceprint_shape,
             update::check_update,
             update::pending_update,
             update::install_update,
         ])
         // Closing the main window keeps Mirona in the menu bar, so recording can still be
-        // started from the tray or the shortcut. Quit from the tray menu. Settings just close.
+        // started from the tray or the shortcut. Quit from the menu bar popover. Settings just close.
         .on_window_event(|w, e| match e {
             tauri::WindowEvent::CloseRequested { api, .. } if w.label() == "main" => {
                 w.hide().ok();
                 api.prevent_close();
+            }
+            // The popover closes like a menu: on any click elsewhere.
+            tauri::WindowEvent::Focused(false) if w.label() == "tray" => {
+                w.hide().ok();
+                *POPOVER_HIDDEN.lock().unwrap() = Some(std::time::Instant::now());
             }
             tauri::WindowEvent::Destroyed if w.label() == "onboarding" => {
                 onboarding_closed(w.app_handle());

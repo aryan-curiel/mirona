@@ -49,7 +49,7 @@ spoken shows in italics ("Still speaking…") and grows as the sentence goes on;
 ends it becomes a normal line and is tagged as an action item, decision, open question or small
 talk. Write notes in the
 **Notes** tab as you go. Muted in the call and talking to someone in the room? Click **Mute me**
-in the recording bar, the menu bar icon › Mute my mic, or press <kbd>⌘⌥⇧M</kbd> (Settings ›
+in the recording bar, the menu bar icon › Mute me, or press <kbd>⌘⌥⇧M</kbd> (Settings ›
 General › Mute shortcut): until you unmute, your mic records silence, so none of it reaches the
 transcript or the audio file. On macOS the menu bar icon shows it too: its bars move with
 a red dot while recording, and the dot becomes a crossed-out mic while you're muted. Stop with

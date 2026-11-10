@@ -11,11 +11,12 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App";
 import { SettingsWindow } from "./views/Settings";
 import { OnboardingWindow } from "./views/Setup";
+import { TrayWindow } from "./views/Tray";
 
 const label = getCurrentWindow().label;
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    {label === "settings" ? <SettingsWindow /> : label === "onboarding" ? <OnboardingWindow /> : <App />}
+    {label === "settings" ? <SettingsWindow /> : label === "onboarding" ? <OnboardingWindow /> : label === "tray" ? <TrayWindow /> : <App />}
   </React.StrictMode>,
 );

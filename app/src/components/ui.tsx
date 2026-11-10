@@ -17,6 +17,10 @@ const paths = {
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>,
   plug: <path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0zM12 16v5" />,
   tag: <><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1.5" /></>,
+  micOff: <><path d="M15 9.3V6a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 4.7 2.5M5 11a7 7 0 0 0 11.2 5.6M19 11a7 7 0 0 1-.6 2.8M12 18v3M3 3l18 18" /></>,
+  stop: <rect x="6" y="6" width="12" height="12" rx="2.5" />,
+  window: <><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M3 9h18" /></>,
+  power: <path d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0" />,
 };
 
 export type IconName = keyof typeof paths;
