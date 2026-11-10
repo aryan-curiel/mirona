@@ -70,7 +70,8 @@ fn overlap(a: (u32, u32), b: (u32, u32)) -> u32 {
 /// Which voice (index into `d.speakers`) each segment gets; `None` keeps its current speaker.
 /// Mic segments stay; voices under `MIN_SPEAKER_SPEECH_MS` or made mostly of mic speech are
 /// never given out. Any other segment goes to the voice it overlaps most, else the nearest one.
-/// Only speaker ids change, so segment order (and overlapping speech) is untouched.
+/// Only speaker ids change, so segment order (and overlapping speech) is untouched. Lines the
+/// user moved by hand are reset to `None` by the caller ([`Engine::apply_diarization`]).
 pub fn assign(spans: &[Span], d: &Diarization) -> Vec<Option<usize>> {
     let mut mic_ms = vec![0u32; d.speakers.len()];
     for s in spans.iter().filter(|s| s.mic) {
@@ -376,7 +377,13 @@ impl Engine {
     pub fn apply_diarization(&self, id: &str, d: &Diarization) -> Result<u32> {
         let mut store = self.store.lock().unwrap();
         let meeting = store.meeting(id)?;
-        let labels = assign(&spans(&meeting.segments), d);
+        let mut labels = assign(&spans(&meeting.segments), d);
+        // Lines the user moved keep their speaker (NGR-201).
+        for (l, s) in labels.iter_mut().zip(&meeting.segments) {
+            if s.by_hand {
+                *l = None;
+            }
+        }
         let prints = store.voiceprints();
         let voices = store.voices();
         let name_of = |pid: &str| voices.people.iter().find(|p| p.id == pid).map(|p| &p.name);
@@ -700,6 +707,43 @@ mod tests {
                 .clone()
         };
         m.segments.iter().map(|g| name(&g.speaker_id)).collect()
+    }
+
+    #[test]
+    fn rerunning_detection_keeps_lines_moved_by_hand() {
+        let dir = tempfile::tempdir().unwrap();
+        let e = engine(dir.path(), dir.path());
+        let segs = [
+            ("me", 1_000, 2_000, "Hi.".to_string()),
+            ("them", 26_000, 27_000, "Hello.".to_string()),
+            ("them", 40_000, 42_000, "Prices are up.".to_string()),
+            ("them", 61_000, 62_000, "Agreed.".to_string()),
+        ];
+        let found = |speech_ms| FoundSpeaker {
+            embedding: vec![1.0, 0.0],
+            speech_ms,
+        };
+        let d = Diarization {
+            turns: vec![turn(0, 25_000, 0), turn(25_000, 90_000, 1)],
+            speakers: vec![found(25_000), found(65_000)],
+        };
+        meeting(&e, "m-a", &segs, None);
+        e.apply_diarization("m-a", &d).unwrap();
+        assert_eq!(
+            names(&e, "m-a"),
+            ["Me", "Speaker 1", "Speaker 1", "Speaker 1"]
+        );
+        let zoe = e
+            .store
+            .lock()
+            .unwrap()
+            .set_line_speaker("m-a", "m-a-1", "Zoe")
+            .unwrap();
+        e.apply_diarization("m-a", &d).unwrap();
+        assert_eq!(names(&e, "m-a"), ["Me", "Zoe", "Speaker 1", "Speaker 1"]);
+        let m = e.store.lock().unwrap().meeting("m-a").unwrap();
+        assert!(m.segments[1].by_hand);
+        assert!(m.speakers.iter().any(|p| p.id == zoe.id));
     }
 
     #[test]
