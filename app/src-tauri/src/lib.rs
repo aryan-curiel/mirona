@@ -1902,11 +1902,7 @@ fn toggle_popover(app: &AppHandle, rect: tauri::Rect) -> Res<()> {
     if just_hid {
         return Ok(());
     }
-    let at = rect.position.to_physical::<f64>(1.0);
-    let monitor = app
-        .monitor_from_point(at.x, at.y)
-        .ok()
-        .flatten()
+    let monitor = clicked_monitor(app, rect)
         .or_else(|| w.primary_monitor().ok().flatten())
         .ok_or("no display")?;
     let scale = monitor.scale_factor();
@@ -1933,6 +1929,33 @@ fn toggle_popover(app: &AppHandle, rect: tauri::Rect) -> Res<()> {
         .map_err(|e| e.to_string())?;
     w.show().map_err(|e| e.to_string())?;
     w.set_focus().map_err(|e| e.to_string())
+}
+
+/// The display whose menu bar (or taskbar) holds the clicked icon. On macOS each display's
+/// "physical" numbers are its own points times its own scale, so the click rect can't be
+/// looked up across a Retina laptop and a 1x monitor (it lands on the wrong one); the cursor,
+/// in the primary display's scale, converts back to points that every display can be matched in.
+#[cfg(target_os = "macos")]
+fn clicked_monitor(app: &AppHandle, _rect: tauri::Rect) -> Option<tauri::Monitor> {
+    let primary = app.primary_monitor().ok().flatten()?;
+    let c = app
+        .cursor_position()
+        .ok()?
+        .to_logical::<f64>(primary.scale_factor());
+    app.available_monitors().ok()?.into_iter().find(|m| {
+        let s = m.scale_factor();
+        let (p, z) = (
+            m.position().to_logical::<f64>(s),
+            m.size().to_logical::<f64>(s),
+        );
+        (p.x..p.x + z.width).contains(&c.x) && (p.y..p.y + z.height).contains(&c.y)
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn clicked_monitor(app: &AppHandle, rect: tauri::Rect) -> Option<tauri::Monitor> {
+    let at = rect.position.to_physical::<f64>(1.0);
+    app.monitor_from_point(at.x, at.y).ok().flatten()
 }
 
 fn build_popover(app: &AppHandle) -> Res<tauri::WebviewWindow> {
