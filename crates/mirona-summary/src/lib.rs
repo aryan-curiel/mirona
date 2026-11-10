@@ -54,6 +54,20 @@ impl Template {
         }
     }
 
+    /// What the template is for: its name and first paragraph line ("Retro: what went
+    /// well…"), the name alone without one. The classifier reads it to pick the template.
+    pub fn about(&self) -> String {
+        let line = self
+            .body
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty() && !l.starts_with('#'));
+        match line {
+            Some(l) => format!("{}: {l}", self.name),
+            None => self.name.clone(),
+        }
+    }
+
     /// The embedded default, without touching the disk.
     pub fn default_for(id: &str) -> Option<Self> {
         DEFAULT_TEMPLATES
@@ -61,6 +75,18 @@ impl Template {
             .find(|(i, _)| *i == id)
             .map(|(i, body)| Self::new(i, body))
     }
+}
+
+/// The user's own templates (not one of the defaults) as meeting types: (id, [`Template::about`]).
+pub fn custom_types(dir: &Path) -> Result<Vec<(String, String)>> {
+    Ok(templates(dir)?
+        .into_iter()
+        .filter(|t| Template::default_for(&t.id).is_none())
+        .map(|t| {
+            let about = t.about();
+            (t.id, about)
+        })
+        .collect())
 }
 
 /// Write each default that has no file yet. Existing files are never overwritten.

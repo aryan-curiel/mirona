@@ -32,6 +32,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_opener::OpenerExt;
 
 mod tray_icon;
 mod update;
@@ -535,7 +536,14 @@ fn rerun_classification(app: AppHandle, st: St, meeting_id: String) -> Res<()> {
         tx.send(notice(&meeting_id, why, false)).ok();
     }
     std::thread::spawn(move || {
-        let res = mirona_engine::classify::reclassify(&engine.store, &cfg, &meeting_id, &c, &tx);
+        let res = mirona_engine::classify::reclassify(
+            &engine.store,
+            &engine.paths.templates,
+            &cfg,
+            &meeting_id,
+            &c,
+            &tx,
+        );
         let ev = match res {
             Ok(0) => notice(
                 &meeting_id,
@@ -723,6 +731,16 @@ fn add_demo_meetings(st: St) -> Res<()> {
     mirona_store::sample::seed(&mut engine.store.lock().unwrap())?;
     embed_later(engine);
     Ok(())
+}
+
+/// Shows the summary templates folder in Finder (defaults written first, so it's never empty).
+#[tauri::command]
+fn open_templates(app: AppHandle, st: St) -> Res<()> {
+    let dir = st.engine().paths.templates.clone();
+    mirona_summary::templates(&dir)?;
+    app.opener()
+        .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]
@@ -2102,6 +2120,7 @@ pub fn run() {
             dismiss_call,
             add_demo_meetings,
             list_templates,
+            open_templates,
             regenerate,
             import_audio,
             download_models,

@@ -16,7 +16,7 @@ the macOS keychain.
 | --- | --- | --- |
 | Model files (download only) | When you click Download in onboarding or Settings | Hugging Face, GitHub (and the download servers they redirect to). Fixed files, checked against pinned checksums. Nothing about you or your meetings is sent. |
 | Transcript text for summaries, notes, follow-up drafts and agents' open questions | Only with privacy mode off and a cloud LLM picked (Anthropic, or an OpenAI-compatible server that isn't on this Mac) | That provider, with your API key |
-| Transcript lines for tags and meeting questions, and agents' `ask_meeting` questions | Only with privacy mode off and Jev picked for classification | Jev (TypeSafe), with your API key |
+| Transcript lines for tags and meeting questions (with your tag names and the first line of your own summary templates), and agents' `ask_meeting` questions | Only with privacy mode off and Jev picked for classification | Jev (TypeSafe), with your API key |
 | Meeting data for AI agents | Only if you turn on agent access (off by default) and connect an MCP client yourself | The MCP client you connected, on this Mac. Your agent may then send it to its own provider. |
 
 ```mermaid

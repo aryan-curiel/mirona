@@ -185,7 +185,7 @@ mod tests {
             "contact: Karen".to_string(),
         )]
         .into();
-        let mq = meeting_questions(&tags);
+        let mq = meeting_questions(&tags, &[]);
         let body = request(MODEL, "x", &mq);
         assert_eq!(
             body["questions"]["tag:project:Northwind Bank"]["type"],
@@ -218,7 +218,7 @@ mod tests {
     fn parses_a_recorded_meeting_response() {
         // Recorded before tags (it still carries a `client` answer, ignored here); tag answers
         // are `noul`, parsed like the segment ones above. Re-record with `live_records_fixtures`.
-        let qs = meeting_questions(&std::collections::BTreeMap::new());
+        let qs = meeting_questions(&std::collections::BTreeMap::new(), &[]);
         let replies = parse(&fixture("jev-meeting.json"), &qs).unwrap();
         let Reply::Score {
             score,
@@ -268,7 +268,7 @@ mod tests {
             (
                 "jev-meeting.json",
                 MEETING,
-                meeting_questions(&crate::questions::tests::tags()),
+                meeting_questions(&crate::questions::tests::tags(), &[]),
             ),
         ] {
             let body = request(MODEL, text, &qs);

@@ -150,6 +150,8 @@ export const api = {
   storageUsage: () => invoke<[string, number][]>("storage_usage"),
   setEncryption: (on: boolean) => invoke<Settings>("set_encryption", { on }),
   listTemplates: () => invoke<Template[]>("list_templates"),
+  /** Shows the summary templates folder in Finder. */
+  openTemplates: () => invoke<void>("open_templates"),
   regenerate: (meetingId: string, template: string) => invoke<void>("regenerate", { meetingId, template }),
   /** Opens the file picker; the file name, or null when cancelled. Errors while one runs. */
   importAudio: () => invoke<string | null>("import_audio"),
@@ -217,7 +219,8 @@ export const MEETING_TYPES: Record<string, string> = {
   planning: "Planning",
   other: "Other",
 };
-export const typeLabel = (v: string) => MEETING_TYPES[v] ?? v;
+/** A custom type is a template id: "sales-demo" → "Sales demo". */
+export const typeLabel = (v: string) => MEETING_TYPES[v] ?? (v.charAt(0).toUpperCase() + v.slice(1)).replace(/[-_]/g, " ");
 export const TONES = ["Very unhappy", "Concerned", "Neutral", "Positive", "Delighted"];
 export const toneLabel = (t: number) => TONES[Math.min(4, Math.max(0, Math.round(t)))];
 export const PRIORITIES = ["Nothing to do", "Low", "Normal", "High", "Very high", "Critical"];

@@ -151,6 +151,8 @@ export const useStore = create<State>((set, get) => {
     }
   };
 
+  /** Template files can change in Finder; refetch when a window comes back. */
+  const reloadTemplates = () => void api.listTemplates().then((templates) => set({ templates })).catch(() => {});
   const reloadLists = async () => {
     const [meetings, actionItems, people] = await Promise.all([api.listMeetings(), api.listActionItems(), api.listPeople()]);
     set({ meetings, actionItems, people });
@@ -319,6 +321,7 @@ export const useStore = create<State>((set, get) => {
       await listen<CallSuggestion | null>("call", (ev) => set({ call: ev.payload }));
       await listen("settings", () => void onSettings());
       await listen<UpdateInfo | null>("update", (ev) => set({ update: ev.payload }));
+      window.addEventListener("focus", reloadTemplates);
       // A call that started before this window listened.
       set({ call: await api.pendingCall().catch(() => null), update: await api.pendingUpdate().catch(() => null) });
       const [settings, status, templates] = await Promise.all([api.getSettings(), api.status(), api.listTemplates().catch(() => [])]);
@@ -347,6 +350,7 @@ export const useStore = create<State>((set, get) => {
       await listen("settings", () => void onSettings());
       await listen<SettingsTab>("settings-tab", (ev) => set({ settingsTab: ev.payload }));
       await listen<UpdateInfo | null>("update", (ev) => set({ update: ev.payload }));
+      window.addEventListener("focus", reloadTemplates);
       set({ update: await api.pendingUpdate().catch(() => null) });
       const [settings, status, templates] = await Promise.all([api.getSettings(), api.status(true), api.listTemplates().catch(() => [])]);
       set({ settings, status, templates });

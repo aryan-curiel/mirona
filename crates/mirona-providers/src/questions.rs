@@ -207,17 +207,25 @@ pub const NO_CLIENT: &str = "none";
 /// Question ids of tag questions: `tag:` + the tag (`tag:project:setr`).
 pub const TAG_PREFIX: &str = "tag:";
 
-pub fn meeting_type_question() -> Question {
+/// The built-in types, then `custom` (the user's own summary templates: id, description) before
+/// "other". A custom id that is already an option is skipped.
+pub fn meeting_type_question(custom: &[(String, String)]) -> Question {
+    let mut options: Vec<(String, String)> = MEETING_TYPES
+        .iter()
+        .map(|(o, d)| ((*o).into(), (*d).into()))
+        .collect();
+    let other = options.pop().expect("MEETING_TYPES ends with other");
+    for (id, about) in custom {
+        if !options.iter().any(|(o, _)| o == id) && *id != other.0 {
+            options.push((id.clone(), about.clone()));
+        }
+    }
+    options.push(other);
     Question {
         id: "meeting_type".into(),
         question: "What kind of meeting is this?".into(),
         instructions: "What kind of meeting is this transcript from?".into(),
-        kind: Kind::Choice(
-            MEETING_TYPES
-                .iter()
-                .map(|(o, d)| ((*o).into(), (*d).into()))
-                .collect(),
-        ),
+        kind: Kind::Choice(options),
     }
 }
 
@@ -277,9 +285,13 @@ pub fn tag_questions(tags: &BTreeMap<String, String>) -> Vec<Question> {
 }
 
 /// Asked once over the whole meeting after the call (NGR-157), then one yes/no per tag.
-pub fn meeting_questions(tags: &BTreeMap<String, String>) -> Vec<Question> {
+/// `types`: custom meeting types, see [`meeting_type_question`].
+pub fn meeting_questions(
+    tags: &BTreeMap<String, String>,
+    types: &[(String, String)],
+) -> Vec<Question> {
     let levels = |l: &[&str]| l.iter().map(|s| (*s).to_string()).collect();
-    let mut qs = vec![meeting_type_question()];
+    let mut qs = vec![meeting_type_question(types)];
     qs.extend([
         Question {
             id: "priority".into(),
@@ -415,13 +427,34 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn custom_meeting_types_go_before_other() {
+        let custom = [
+            ("retro".to_string(), "Retro: what went well.".to_string()),
+            ("standup".into(), "a duplicate".into()),
+            ("other".into(), "a duplicate".into()),
+        ];
+        let q = meeting_type_question(&custom);
+        assert_eq!(
+            options(&q),
+            [
+                "standup",
+                "client_call",
+                "one_on_one",
+                "planning",
+                "retro",
+                "other"
+            ]
+        );
+    }
+
+    #[test]
     fn meeting_questions_ask_one_yes_no_per_tag() {
-        assert_eq!(meeting_questions(&BTreeMap::new()).len(), 4);
+        assert_eq!(meeting_questions(&BTreeMap::new(), &[]).len(), 4);
         let tags = BTreeMap::from([
             ("project:setr".to_string(), "live streaming app".to_string()),
             ("hiring".to_string(), String::new()),
         ]);
-        let qs = meeting_questions(&tags);
+        let qs = meeting_questions(&tags, &[]);
         assert_eq!(options(&qs[1]).len(), 6, "priority has six levels");
         let ids: Vec<&str> = qs[4..].iter().map(|q| q.id.as_str()).collect();
         assert_eq!(ids, ["tag:hiring", "tag:project:setr"]);

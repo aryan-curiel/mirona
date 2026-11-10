@@ -372,6 +372,11 @@ fn defaults_are_written_once_and_user_edits_win() {
     );
     assert_eq!(template(&dir, "retro").unwrap().name, "Retro");
     assert_eq!(templates(&dir).unwrap().len(), 5);
+    // Only user-added templates become meeting types, described by their first line.
+    assert_eq!(
+        custom_types(&dir).unwrap(),
+        [("retro".to_string(), "Retro: What went well.".to_string())]
+    );
     assert!(template(&dir, "../etc/passwd").is_err());
     assert!(template(&dir, "missing").is_err());
     std::fs::remove_dir_all(dir).unwrap();

@@ -153,9 +153,12 @@ API keys go in Settings › AI models › API keys. They're stored in the macOS 
 config files.
 
 Summary templates are Markdown files in
-`~/Library/Application Support/com.nagare.mirona/templates/`. Edit them, or add your own.
-After each call the meeting type picks the template when the classifier is sure of it; otherwise
-Settings › General › Default summary template is used.
+`~/Library/Application Support/com.nagare.mirona/templates/` (Settings › General › Edit
+templates… opens the folder). Edit them, or add your own: the `# Heading` is its name, and the
+first line under it says what kind of meeting it's for ("A sprint retrospective: what went well,
+what to change."). After each call the meeting type picks the template when the classifier is
+sure of it, and your own templates are among the types it picks from; otherwise Settings ›
+General › Default summary template is used.
 
 ## Privacy mode
 

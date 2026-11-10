@@ -786,11 +786,19 @@ function SettingsView() {
       {tab === "general" && (
       <section className="mi-card overflow-hidden">
         <Row title="Default summary template" sub="Used after each recording; any meeting can be rewritten with another">
-          <select className="mi-field text-[14px]" value={st.template} onChange={(e) => save({ template: e.target.value })} aria-label="Default summary template">
-            {s.templates.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <select className="mi-field text-[14px]" value={st.template} onChange={(e) => save({ template: e.target.value })} aria-label="Default summary template">
+              {s.templates.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            <button type="button" className="mi-ghost text-[13px]" onClick={() => void api.openTemplates().catch((e) => s.flash(String(e), true))}>
+              Edit templates…
+            </button>
+          </div>
+          <p className="mt-2 text-[13px] text-muted">
+            Templates are Markdown files. Add one and its first line tells Mirona when to pick it after a call.
+          </p>
         </Row>
         <Row title="Record shortcut" sub="Starts and stops a recording from any app">
           <ShortcutField label="Record shortcut" value={st.shortcut} onSave={(shortcut) => save({ shortcut })} />

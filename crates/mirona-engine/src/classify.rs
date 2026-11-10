@@ -35,6 +35,7 @@ use mirona_providers::{
     Classifier, LlmProvider, Prompt, Provider, Result as PResult, check_privacy, keychain,
 };
 use std::collections::VecDeque;
+use std::path::Path;
 use std::sync::mpsc::{Sender, channel};
 use std::thread::JoinHandle;
 
@@ -481,9 +482,11 @@ fn choice(q: Option<(&Question, &Reply)>, threshold: f32, floor: f32) -> ChoiceA
 }
 
 /// Ask the meeting questions over the whole transcript and store the answers. Tags the user
-/// already decided on are kept (`Store::set_answers`).
+/// already decided on are kept (`Store::set_answers`). The user's own summary templates in
+/// `templates` are offered as meeting types too.
 pub fn classify_meeting(
     store: &Shared,
+    templates: &Path,
     id: &str,
     c: &impl Classifier,
     cfg: &Config,
@@ -495,7 +498,7 @@ pub fn classify_meeting(
     }
     // ponytail: one yes/no per tag in the same call; fine for dozens of tags (the list is kept
     // short on purpose). Pre-filter by embeddings if lists grow to hundreds.
-    let qs = meeting_questions(&cfg.tags);
+    let qs = meeting_questions(&cfg.tags, &mirona_summary::custom_types(templates)?);
     let replies = block_on(c.ask(&text, &qs)).map_err(|e| e.to_string())?;
     let local = is_local(c);
     let get = |id: &str| qs.iter().zip(&replies).find(|(q, _)| q.id == id);
@@ -540,7 +543,8 @@ pub fn classify_meeting(
         .ok_or_else(|| "answers not saved".into())
 }
 
-/// The summary template for a meeting type at/above its threshold; `default` otherwise.
+/// The summary template for a meeting type at/above its threshold; `default` otherwise. A
+/// custom type is the id of the user's template.
 pub fn template_for(a: &MeetingAnswers, default: &str) -> String {
     let t = &a.meeting_type;
     if !t.confirmed && t.probability < t.threshold {
@@ -551,7 +555,8 @@ pub fn template_for(a: &MeetingAnswers, default: &str) -> String {
         "client_call" => "client-call",
         "one_on_one" => "one-on-one",
         "planning" => "planning",
-        _ => default,
+        "" | "other" => default,
+        custom => custom,
     }
     .into()
 }
@@ -892,6 +897,7 @@ fn parse_proposal(text: &str) -> Option<(String, String)> {
 /// The summary is left alone (rewrite it with the template the new type picks).
 pub fn reclassify(
     store: &Shared,
+    templates: &Path,
     cfg: &Config,
     id: &str,
     c: &impl Classifier,
@@ -907,7 +913,7 @@ pub fn reclassify(
         events,
         segs.into_iter().filter(|s| !user(s)),
     );
-    classify_meeting(store, id, c, cfg)?;
+    classify_meeting(store, templates, id, c, cfg)?;
     Ok(failed)
 }
 
@@ -930,7 +936,7 @@ pub fn after_call(
     // A broken LLM is said first; the tags and meeting answers still get done.
     let llm = llm.map_err(|e| notice(format!("No summary: {e}"), true));
     let template = match c {
-        Some(c) => classify_all(store, cfg, id, c, events),
+        Some(c) => classify_all(store, &paths.templates, cfg, id, c, events),
         None => cfg.template.clone(),
     };
     let Ok(llm) = llm else { return };
@@ -972,6 +978,7 @@ pub fn after_call(
 /// Tag the segments still untagged and answer the meeting questions; returns the template.
 fn classify_all(
     store: &Shared,
+    templates: &Path,
     cfg: &Config,
     id: &str,
     c: &impl Classifier,
@@ -984,7 +991,7 @@ fn classify_all(
             .collect()
     });
     run(store, id, c, cfg, events, pending);
-    match classify_meeting(store, id, c, cfg) {
+    match classify_meeting(store, templates, id, c, cfg) {
         Ok(a) => template_for(&a, &cfg.template),
         Err(e) => {
             events
@@ -1495,7 +1502,18 @@ mod tests {
         let (store, segs) = meeting(dir.path());
         let c = Scripted::default();
         let (events, _rx) = channel();
-        assert_eq!(reclassify(&store, &cfg(), "m1", &c, &events).unwrap(), 0);
+        assert_eq!(
+            reclassify(
+                &store,
+                &dir.path().join("templates"),
+                &cfg(),
+                "m1",
+                &c,
+                &events
+            )
+            .unwrap(),
+            0
+        );
         let fix = mirona_core::Correction {
             segment_id: segs[0].id.clone(),
             answer_id: "action".into(),
@@ -1503,7 +1521,15 @@ mod tests {
         };
         store.lock().unwrap().correct(fix).unwrap();
         c.states.lock().unwrap().clear();
-        reclassify(&store, &cfg(), "m1", &c, &events).unwrap();
+        reclassify(
+            &store,
+            &dir.path().join("templates"),
+            &cfg(),
+            "m1",
+            &c,
+            &events,
+        )
+        .unwrap();
         let asked = c.states.lock().unwrap().clone();
         assert!(
             !asked.iter().any(|s| s.contains("SOW") && !s.contains('\n')),
@@ -1519,7 +1545,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (store, segs) = meeting(dir.path());
         let (events, _rx) = channel();
-        reclassify(&store, &cfg(), "m1", &Scripted::default(), &events).unwrap();
+        reclassify(
+            &store,
+            &dir.path().join("templates"),
+            &cfg(),
+            "m1",
+            &Scripted::default(),
+            &events,
+        )
+        .unwrap();
         let fix = mirona_core::Correction {
             segment_id: segs[1].id.clone(),
             answer_id: "action".into(),
@@ -1561,6 +1595,11 @@ mod tests {
         assert_eq!(template_for(&a, "client-call"), "client-call");
         a.meeting_type.confirmed = true;
         assert_eq!(template_for(&a, "client-call"), "standup");
+        // A custom type is its template's id; "other" keeps the default.
+        a.meeting_type.value = "retro".into();
+        assert_eq!(template_for(&a, "client-call"), "retro");
+        a.meeting_type.value = "other".into();
+        assert_eq!(template_for(&a, "client-call"), "client-call");
     }
 
     #[test]
