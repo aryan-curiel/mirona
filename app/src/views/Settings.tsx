@@ -809,7 +809,7 @@ function SettingsView() {
         <Row title="Call detection" sub="When Zoom, Teams, Meet or another call app opens the microphone">
           <CallSettings st={st} onSave={save} />
         </Row>
-        <Row title="Consent reminder" sub="Recording rules differ by country. Shown before each recording; remembered per client">
+        <Row title="Consent reminder" sub="Recording rules differ by country. Shown before each recording; skipped for tags whose people already agreed">
           <ConsentSettings st={st} save={save} />
         </Row>
         <Row title="Meetings folder" sub="One Markdown folder per meeting">
@@ -870,7 +870,7 @@ function SettingsView() {
           )}
           {privacy && <p className="mt-2 text-[12px] text-muted">Cloud options are off while privacy mode is on.</p>}
         </Row>
-        <Row title="Classification" sub="Typed questions: action, decision, open question, meeting type, client…">
+        <Row title="Classification" sub="Typed questions: action, decision, open question, meeting type, tags…">
           <Options
             value={st.classification}
             options={[
