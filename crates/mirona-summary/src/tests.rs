@@ -225,6 +225,21 @@ fn bad_citations_drop_decisions_and_questions() {
 }
 
 #[test]
+fn an_echoed_title_placeholder_is_no_title() {
+    let reply = r#"{"title": "...", "overview": "o", "decisions": [], "action_items": [],
+        "open_questions": []}"#;
+    let (s, _) = block_on(summarize(
+        &claims(),
+        &client_call(),
+        &Scripted::new(&[reply]),
+    ))
+    .unwrap();
+    assert_eq!(s.title, "");
+    // The instruction sits outside the JSON shape, so it can't be echoed as the title.
+    assert!(SUMMARY_RULES.contains(r#"{"title": "...","#));
+}
+
+#[test]
 fn garbage_is_a_clear_error() {
     for reply in [
         "I'm sorry, I can't help with that.",

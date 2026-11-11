@@ -279,6 +279,7 @@ fn field(v: &Value, key: &str) -> Option<String> {
             "unspecified",
             "not mentioned",
             "tbd",
+            "...", // the shape's placeholder, echoed back
         ]
         .contains(&&*s.to_lowercase());
     (!blank).then(|| s.to_string())
@@ -380,12 +381,13 @@ fn header(m: &Meeting, part: usize, parts: usize) -> String {
 const SUMMARY_RULES: &str = r#"You summarize a meeting transcript for the people who were in it.
 Each transcript line starts with [line number, time]. Only use what was actually said.
 Reply with one JSON object and nothing else, in this shape:
-{"title": "3 to 6 words naming what the meeting was about",
+{"title": "...",
  "overview": "...",
  "decisions": [{"text": "...", "segment": 12}],
  "action_items": [{"text": "...", "owner": "Name or empty", "due": "as said, or null", "segment": 12}],
  "open_questions": [{"text": "...", "segment": 12}]}
-"segment" is the line number where the item was said. Use empty lists when there is nothing.
+"title" is 3 to 6 words naming what the meeting was about. "segment" is the line number where
+the item was said. Use empty lists when there is nothing.
 Write in the language of the transcript. Follow this template for what each section holds:"#;
 
 pub fn summary_prompt(template: &Template) -> String {
