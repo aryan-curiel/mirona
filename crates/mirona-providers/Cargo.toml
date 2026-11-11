@@ -11,7 +11,6 @@ jev = ["dep:ureq", "dep:serde_json"]
 ollama = ["dep:ureq", "dep:serde_json"]
 parakeet = ["dep:sherpa-onnx"]
 speakrs = ["dep:speakrs"]
-# Milestone 1 (owners in docs/m1-plan.md). Dependencies are added by the owner.
 whisper = ["dep:whisper-rs"]
 openai = ["dep:ureq", "dep:serde_json"]
 anthropic = ["dep:ureq", "dep:serde_json"]

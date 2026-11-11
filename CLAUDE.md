@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Mirona is a local-first meeting memory app (transcription, speakers, typed classification via hosted Jev (qwen3:4b via Ollama in privacy mode; Kev is not used), summaries, MCP server). Tauri 2 + Rust workspace + React. **Status: M4 (open-source release), in progress.** M1–M3 are in: it records mic + system audio on macOS, transcribes live (Parakeet), diarizes and names voices (speakrs), tags lines and meetings with typed questions (Jev, or qwen3:4b via Ollama in privacy mode), summarizes with a local or cloud LLM, and serves meetings over MCP (stdio and localhost HTTP) and a CLI. Privacy mode is enforced at one network gate; meetings can be encrypted at rest; search is hybrid (FTS5 + local embeddings); retention rules, a consent reminder and call detection are in. M4 so far: model downloader, Settings and onboarding in their own windows, signed and notarized macOS releases (macOS 14.6+), user and contributor docs. Gates 1–3 need real use / a manual audit (`docs/testing-checklist.md`, `docs/privacy-audit.md`).
+Mirona is a local-first meeting memory app (transcription, speakers, typed classification via hosted Jev (qwen3:4b via Ollama in privacy mode), summaries, MCP server). Tauri 2 + Rust workspace + React. **Status: M4 (open-source release), in progress.** M1–M3 are in: it records mic + system audio on macOS, transcribes live (Parakeet), diarizes and names voices (speakrs), tags lines and meetings with typed questions (Jev, or qwen3:4b via Ollama in privacy mode), summarizes with a local or cloud LLM, and serves meetings over MCP (stdio and localhost HTTP) and a CLI. Privacy mode is enforced at one network gate; meetings can be encrypted at rest; search is hybrid (FTS5 + local embeddings); retention rules, a consent reminder and call detection are in. M4 so far: model downloader, Settings and onboarding in their own windows, signed and notarized macOS releases (macOS 14.6+), user and contributor docs. Gates 1–3 need real use / a manual audit (`docs/testing-checklist.md`, `docs/privacy-audit.md`).
 
 ## Commands
 
@@ -65,7 +65,7 @@ Workspace crates (`crates/*`) plus the Tauri crate `app/src-tauri` (`mirona-app`
 
 ## Docs
 
-- Users: `README.md`, `docs/user-guide.md` (index) + `docs/guide/*.md` (chapters), `PRIVACY.md`. Screenshots: `cd app && pnpm shots` (real UI over demo data via `app/scripts/shots/`). Contributors: `CONTRIBUTING.md`, `docs/architecture.md`, `docs/providers.md`, `docs/cli-and-mcp.md`, `docs/releasing.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md`. Update the matching doc when behaviour changes. `docs/m1-plan.md`, `docs/m2-plan.md` and `docs/spikes/` are historical.
+- Users: `README.md`, `docs/user-guide.md` (index) + `docs/guide/*.md` (chapters), `PRIVACY.md`. Screenshots: `cd app && pnpm shots` (real UI over demo data via `app/scripts/shots/`). Contributors: `CONTRIBUTING.md`, `docs/architecture.md`, `docs/providers.md`, `docs/cli-and-mcp.md`, `docs/releasing.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md`. Update the matching doc when behaviour changes. `docs/spikes/` are historical.
 
 ## Spikes and decisions
 

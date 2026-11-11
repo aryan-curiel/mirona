@@ -13,7 +13,6 @@ Everything needed to start implementing the Mirona desktop app UI: the interacti
 | `tokens/` | `tokens.css` (CSS variables + ready-made `.mi-*` surface classes) and `tokens.json` (same values, for Tailwind or TS). |
 | `brand/` | `app-icon.svg` (64 px and up), `mark-small.svg` (under 64 px), `mark-mono.svg` (uses `currentColor`), `tray-template.svg` (black, for the macOS menu bar), `png/icon-16…1024.png` (full bleed, Windows) and `png/icon-macos-1024.png` (with Apple's margin, macOS). |
 | `screenshots/` | Retina screenshots of the current app: `09-settings-window.png` and `10-onboarding-*.png`. The prototype in `prototype/` shows the other screens. |
-| `source/` | The original `.dc.html` design files the pages were built from (`Main`, `DesignSystem`). |
 
 ## Screens in the prototype
 

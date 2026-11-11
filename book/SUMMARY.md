@@ -40,5 +40,3 @@
 - [Spike: Parakeet](docs/spikes/ngr-128-parakeet.md)
 - [Spike: speakrs](docs/spikes/ngr-129-speakrs.md)
 - [Spike: Jev](docs/spikes/ngr-130-jev.md)
-- [Milestone 1 plan](docs/m1-plan.md)
-- [Milestone 2 plan](docs/m2-plan.md)

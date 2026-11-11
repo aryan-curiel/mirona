@@ -30,4 +30,3 @@ The same pages are published as a website with the Rust API reference
 
 - [Model and code licenses](licenses.md)
 - [Decisions](adr/) and [spike write-ups](spikes/)
-- Milestone plans: [1](m1-plan.md), [2](m2-plan.md) (historical)
