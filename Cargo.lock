@@ -3183,7 +3183,7 @@ dependencies = [
 
 [[package]]
 name = "mirona-app"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "mirona-capture",
  "mirona-core",
@@ -3206,7 +3206,7 @@ dependencies = [
 
 [[package]]
 name = "mirona-capture"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "block2",
  "cpal",
@@ -3227,7 +3227,7 @@ dependencies = [
 
 [[package]]
 name = "mirona-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "clap",
  "ctrlc",
@@ -3243,7 +3243,7 @@ dependencies = [
 
 [[package]]
 name = "mirona-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "ts-rs",
@@ -3251,7 +3251,7 @@ dependencies = [
 
 [[package]]
 name = "mirona-engine"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "hound",
  "jiff",
@@ -3267,7 +3267,7 @@ dependencies = [
 
 [[package]]
 name = "mirona-mcp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "getrandom 0.3.4",
  "http",
@@ -3290,7 +3290,7 @@ dependencies = [
 
 [[package]]
 name = "mirona-providers"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "hound",
  "keyring",
@@ -3306,7 +3306,7 @@ dependencies = [
 
 [[package]]
 name = "mirona-store"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chacha20poly1305",
  "getrandom 0.3.4",
@@ -3323,7 +3323,7 @@ dependencies = [
 
 [[package]]
 name = "mirona-summary"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "mirona-core",
  "mirona-providers",
