@@ -394,7 +394,8 @@ function Transcript({ m }: { m: Meeting }) {
         data={rows}
         computeItemKey={(_, seg) => seg.id}
         itemContent={(_, seg) => (
-          <div className="pb-3">
+          // The row with the open picker must paint over the rows below it.
+          <div className="relative pb-3 focus-within:z-10">
             <SegmentRow
               seg={seg}
               meetingId={m.id}
