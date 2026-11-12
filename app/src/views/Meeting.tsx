@@ -8,7 +8,7 @@ import { type ComboOption, Combobox } from "../components/Combobox";
 import { NameVoices, newPerson, personOptions, useVoices } from "./NameVoices";
 import { Avatar, Chip, Icon, Label, Logo, Mono } from "../components/ui";
 import { Renamed, withRenames } from "../components/Renamed";
-import { pendingCount, renamedLine, voiceRenames } from "../lib/speakerEdits";
+import { lineVoice, nameOf, pendingCount, renamedLine, voiceRenames } from "../lib/speakerEdits";
 import { ImportProgress, RecordButton, useModelNames } from "../components/Shell";
 import type { Meeting } from "../bindings/Meeting";
 import type { MeetingPart } from "../bindings/MeetingPart";
@@ -272,9 +272,15 @@ function Transcript({ m }: { m: Meeting }) {
   const live = s.recording?.meetingId === m.id;
   const audio = useAudio(m);
   const voices = useVoices(m);
-  const people = useMemo(() => personOptions(m, voices.known), [m, voices.known]);
+  const people = useMemo(() => personOptions(m, voices.known, true), [m, voices.known]);
+  const lineCount = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const x of m.segments) n.set(x.speakerId, (n.get(x.speakerId) ?? 0) + 1);
+    return n;
+  }, [m.segments]);
   const list = useRef<VirtuosoHandle>(null);
   const [query, setQuery] = useState("");
+  const [splitting, setSplitting] = useState(false);
   const q = query.trim().toLowerCase();
   // The list scrolls with the page (header and tabs above it), so it needs the page's scroller.
   const [scroller, setScroller] = useState<HTMLElement | null>(null);
@@ -310,12 +316,7 @@ function Transcript({ m }: { m: Meeting }) {
     for (const x of m.segments) if (!seen.has(x.speakerId)) seen.set(x.speakerId, x.id);
     return new Set(seen.values());
   }, [m.segments]);
-  const voiceLines = useMemo(() => {
-    const count = new Map<string, number>();
-    for (const x of m.segments) count.set(x.speakerId, (count.get(x.speakerId) ?? 0) + 1);
-    return count;
-  }, [m.segments]);
-  // Entries of a voice that no pending line edit moved: what a voice-wide rename reaches.
+  // Lines of a voice that no pending change of their own moves: what renaming the voice reaches.
   const lineEdits = s.pending?.meetingId === m.id ? s.pending.lines : null;
   const voiceFree = useMemo(() => {
     const count = new Map<string, number>();
@@ -382,7 +383,13 @@ function Transcript({ m }: { m: Meeting }) {
             {label}
           </button>
         ))}
+        {!live && m.segments.length > 0 && (
+          <button type="button" className="mi-ghost ml-auto min-h-9 text-[13px]" onClick={() => setSplitting(true)}>
+            Split voices…
+          </button>
+        )}
       </div>
+      {splitting && <SplitVoices m={m} play={audio.src ? audio.play : undefined} onClose={() => setSplitting(false)} />}
       <p className="mt-3 mb-3 flex text-[13px] text-muted">
         <span className="flex-1">{q ? `${rows.length} segment${rows.length === 1 ? "" : "s"} match “${query.trim()}”` : `${m.segments.length} segments`}</span>
         <span>{counts}</span>
@@ -393,24 +400,29 @@ function Transcript({ m }: { m: Meeting }) {
         customScrollParent={scroller}
         data={rows}
         computeItemKey={(_, seg) => seg.id}
-        itemContent={(_, seg) => (
+        itemContent={(_, seg) => {
+          const renamed = renamedLine(s.pending, m, seg);
+          return (
           // The row with the open picker must paint over the rows below it.
           <div className="relative pb-3 focus-within:z-10">
             <SegmentRow
               seg={seg}
               meetingId={m.id}
               speaker={m.speakers.find((p) => p.id === seg.speakerId)}
+              lines={lineCount.get(seg.speakerId) ?? 0}
               suggest={firstOf.has(seg.id)}
               selected={s.segmentId === seg.id}
               showSensitive={s.filters.showSensitive}
               query={q}
               onPlay={audio.src ? audio.play : undefined}
               people={live ? undefined : people}
-              voiceLines={voiceLines.get(seg.speakerId) ?? 1}
-              voiceFree={voiceFree.get(seg.speakerId) ?? 0}
+              reach={(voiceFree.get(seg.speakerId) ?? 0) + (renamed?.by === "line" ? 1 : 0)}
+              renamedTo={renamed?.to}
+              renamedBy={renamed?.by}
             />
           </div>
-        )}
+          );
+        }}
       />}
       {live && s.recording ? (
         <>
@@ -427,6 +439,197 @@ function Transcript({ m }: { m: Meeting }) {
         !rows.length && <p className="py-10 text-center text-muted">{m.segments.length ? "No segments match." : "No speech in this meeting."}</p>
       )}
     </div>
+  );
+}
+
+/**
+ * Split voices: every voice of the meeting as a column of its lines. Drag a line to another
+ * column (or pick one from its menu) to move just that line; find voices again at another
+ * sensitivity when two people were merged or one was split. Moved lines stay where you put them.
+ */
+function SplitVoices({ m, play, onClose }: { m: Meeting; play?: (ms: number) => void; onClose: () => void }) {
+  const editLine = useStore((s) => s.editLine);
+  const undoLine = useStore((s) => s.undoLine);
+  const pending = useStore((s) => (s.pending?.meetingId === m.id ? s.pending : null));
+  const saveEdits = useStore((s) => s.saveSpeakerEdits);
+  const discardEdits = useStore((s) => s.discardSpeakerEdits);
+  const rerun = useStore((s) => s.rerun);
+  const flash = useStore((s) => s.flash);
+  const running = useStore((s) => !!s.rerunning[m.id] || s.processing.includes(m.id));
+  const detection = useStore((s) => s.settings?.diarization !== "off");
+  const showSensitive = useStore((s) => s.filters.showSensitive);
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => ref.current?.showModal(), []);
+  const [sensitivity, setSensitivity] = useState(0.5);
+  const [newName, setNewName] = useState("");
+  const [over, setOver] = useState<string | null>(null);
+  const NEW = "\u0000new";
+  // Where each line sits once saved: a voice of this meeting, or `name:<name>` for someone new.
+  const at = new Map(m.segments.map((x) => [x.id, lineVoice(pending, m, x)]));
+  const cols: { id: string; sp?: Speaker; name: string }[] = [
+    ...[...m.speakers].sort((a, b) => Number(b.id === "me") - Number(a.id === "me")).map((sp) => ({ id: sp.id, sp, name: sp.name })),
+    ...[...new Set(at.values())].filter((id) => id.startsWith("name:")).map((id) => ({ id, name: id.slice(5) })),
+  ];
+  const move = (segId: string, to: string) => {
+    if (at.get(segId) === to) return;
+    if (to === NEW) {
+      if (!newName.trim()) return flash("Type the new person's name first.", true);
+      return editLine(segId, newName.trim(), true);
+    }
+    editLine(segId, to.startsWith("name:") ? to.slice(5) : to, true); // a speaker id of this meeting, or a name
+  };
+  const findAgain = async (keep?: "save" | "discard") => {
+    if (keep === "save") {
+      await saveEdits();
+      if (useStore.getState().pending) return;
+    } else if (keep === "discard") discardEdits();
+    await rerun("diarization", sensitivity);
+  };
+  const target = (id: string) => ({
+    onDragOver: (e: React.DragEvent) => {
+      e.preventDefault();
+      setOver(id);
+    },
+    onDragLeave: () => setOver((o) => (o === id ? null : o)),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      setOver(null);
+      move(e.dataTransfer.getData("text/plain"), id);
+    },
+  });
+  const col = (id: string) => `mi-card flex w-64 shrink-0 flex-col p-2 ${over === id ? "outline-2 outline-[var(--mi-accent)]" : ""}`;
+  return (
+    <dialog ref={ref} onClose={onClose} aria-labelledby="split-title" className="mi-card mi-pop m-auto w-[min(1180px,94vw)] max-w-none p-6 text-ink backdrop:bg-black/20">
+      <div className="flex items-start gap-4">
+        <div className="flex-1">
+          <h2 id="split-title" className="text-[18px] font-semibold">Split voices</h2>
+          <p className="mt-1 text-[14px] text-ink-3">Drag a line to the person who said it, or use its menu. Only that line moves, and it stays put when voices are found again. Moves wait for Save, like every speaker change.</p>
+        </div>
+        <button type="button" className="mi-ghost min-h-11! px-4" onClick={() => ref.current?.close()}>
+          Done
+        </button>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-accent-tint px-3 py-2 text-[13px]">
+        <label htmlFor="split-sensitivity" className="font-medium">Sensitivity</label>
+        <span className="text-ink-3">Fewer voices</span>
+        <input
+          id="split-sensitivity"
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          value={sensitivity}
+          onChange={(e) => setSensitivity(Number(e.target.value))}
+          aria-valuetext={sensitivity === 0.5 ? "default" : sensitivity < 0.5 ? "fewer voices" : "more voices"}
+          className="w-48"
+        />
+        <span className="text-ink-3">More voices</span>
+        {pending ? (
+          <>
+            <button type="button" className="mi-btn-primary h-9 px-3.5" disabled={running || !detection} onClick={() => void findAgain("save")}>
+              Save changes and find voices again
+            </button>
+            <button type="button" className="mi-ghost h-9 px-3.5" disabled={running || !detection} onClick={() => void findAgain("discard")}>
+              Discard changes and find again
+            </button>
+          </>
+        ) : (
+          <button type="button" className="mi-btn-primary h-9 px-3.5" disabled={running || !detection} onClick={() => void findAgain()}>
+            {running ? "Finding voices…" : "Find voices again"}
+          </button>
+        )}
+        <span className="text-ink-3">{detection ? "Two people merged into one? Slide right. One person split in two? Slide left." : "Speaker detection is off in Settings › AI models."}</span>
+      </div>
+      <div className="mt-4 flex max-h-[62vh] gap-3 overflow-x-auto pb-2">
+        {cols.map(({ id, sp, name }) => {
+          const lines = m.segments.filter((x) => at.get(x.id) === id);
+          const renamed = sp && pending?.speakers[sp.id];
+          return (
+            <section key={id} aria-label={`${renamed || name}: ${lines.length} lines`} className={col(id)} {...target(id)}>
+              <h3 className="flex items-center gap-2 px-1 pb-2">
+                {sp ? <Avatar tint={sp.tint} initial={sp.initial} /> : <Avatar tint="accent" initial={name.slice(0, 1).toUpperCase()} />}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] font-semibold">{renamed ? <Renamed from={name} to={renamed} /> : name}</span>
+                  <span className="block text-[12px] text-muted">
+                    {lines.length} line{lines.length === 1 ? "" : "s"}
+                    {id === "me" && " · your mic"}
+                    {!sp && " · new, not saved"}
+                  </span>
+                </span>
+              </h3>
+              <ul className="flex min-h-16 flex-col gap-1.5 overflow-y-auto">
+                {lines.map((x) => (
+                  <li
+                    key={x.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/plain", x.id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    className="cursor-grab rounded-md border border-line-soft bg-white/50 p-2 text-[13px] active:cursor-grabbing"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={!play}
+                        aria-label={`Play line at ${fmt(x.startMs)}`}
+                        className="mi-ghost h-7 shrink-0 px-1.5 disabled:opacity-50"
+                        onClick={() => play?.(x.startMs)}
+                      >
+                        <svg width="9" height="10" viewBox="0 0 9 10" aria-hidden="true">
+                          <path d="M0 0l9 5-9 5z" fill="currentColor" />
+                        </svg>
+                      </button>
+                      <Mono>{fmt(x.startMs)}</Mono>
+                      {pending?.lines[x.id] ? (
+                        <span className="flex items-center text-[11px] text-muted">
+                          not saved
+                          <button type="button" className="rounded px-1 text-[13px] leading-none hover:text-ink" aria-label={`Undo moving the line at ${fmt(x.startMs)}`} title="Undo this move" onClick={() => undoLine(x.id)}>
+                            ×
+                          </button>
+                        </span>
+                      ) : (
+                        x.byHand && <span className="text-[11px] text-muted" title="Moved by you: stays when voices are found again">moved</span>
+                      )}
+                      <select
+                        aria-label={`Move line at ${fmt(x.startMs)} to`}
+                        className="mi-field ml-auto h-7 max-w-24 px-1 text-[12px]"
+                        value=""
+                        onChange={(e) => move(x.id, e.target.value)}
+                      >
+                        <option value="" disabled>
+                          Move to…
+                        </option>
+                        {cols
+                          .filter((c) => c.id !== id)
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {(c.sp && pending?.speakers[c.sp.id]) || c.name}
+                            </option>
+                          ))}
+                        {newName.trim() && <option value={NEW}>{newName.trim()} (new)</option>}
+                      </select>
+                    </div>
+                    <p className="mt-1 line-clamp-3 text-ink-2">{isHidden(x, showSensitive) ? <span className="italic text-sensitive">[Sensitive: hidden]</span> : x.text}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+        <section aria-label="Someone else" className={`${col(NEW)} border-dashed`} {...target(NEW)}>
+          <h3 className="px-1 pb-2 text-[14px] font-semibold">Someone else</h3>
+          <input
+            aria-label="New person's name"
+            placeholder="Their name…"
+            className="mi-field h-8 w-full text-[13px]"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+          />
+          <p className="mt-2 px-1 text-[12px] text-muted">Name them, then drop their lines here.</p>
+        </section>
+      </div>
+    </dialog>
   );
 }
 
@@ -458,7 +661,7 @@ function SpeakerChanges({ m, below }: { m: Meeting; below: boolean }) {
   const undoLine = useStore((s) => s.undoLine);
   if (pending?.meetingId !== m.id) return null;
   const n = pendingCount(pending);
-  const nameOf = (id: string) => m.speakers.find((p) => p.id === id)?.name ?? id;
+  const was = (id: string) => m.speakers.find((p) => p.id === id)?.name ?? id;
   return (
     // The recording player is sticky at the top too; sit under it.
     <section aria-label="Unsaved speaker changes" className={`mi-card sticky z-10 mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 p-3 text-[14px] ${below ? "top-16" : "top-2"}`}>
@@ -468,7 +671,7 @@ function SpeakerChanges({ m, below }: { m: Meeting; below: boolean }) {
       <ul className="flex min-w-0 flex-1 flex-wrap gap-x-4 gap-y-1">
         {Object.entries(pending.speakers).map(([id, to]) => (
           <li key={id} className="flex items-baseline gap-1.5">
-            <Renamed from={nameOf(id)} to={to} onUndo={() => undoSpeaker(id)} />
+            <Renamed from={was(id)} to={to} onUndo={() => undoSpeaker(id)} />
             <span className="text-[12px] text-muted">every line</span>
           </li>
         ))}
@@ -476,7 +679,7 @@ function SpeakerChanges({ m, below }: { m: Meeting; below: boolean }) {
           const seg = m.segments.find((x) => x.id === id);
           return (
             <li key={id} className="flex items-baseline gap-1.5">
-              <Renamed from={nameOf(seg?.speakerId ?? "")} to={to} onUndo={() => undoLine(id)} />
+              <Renamed from={nameOf(pending, m, seg?.speakerId ?? "")} to={nameOf(pending, m, to)} onUndo={() => undoLine(id)} />
               {seg && <Mono>{fmt(seg.startMs)}</Mono>}
             </li>
           );
@@ -496,6 +699,8 @@ type RowProps = {
   seg: Segment;
   meetingId: string;
   speaker?: Speaker;
+  /** How many lines this speaker has in the meeting. */
+  lines: number;
   suggest: boolean;
   selected: boolean;
   showSensitive: boolean;
@@ -503,178 +708,97 @@ type RowProps = {
   onPlay?: (ms: number) => void;
   /** Who a line can be moved to; none while recording. */
   people?: ComboOption[];
-  /** Lines the line's voice has in the whole meeting, and those no pending line edit moved. */
-  voiceLines: number;
-  voiceFree: number;
-};
-
-type Scope = "line" | "voice";
-
-/** Off: the change is for this entry only. On: for every entry of the voice that has no change of its own. */
-function ScopeToggle({ scope, onScope, count, edited, compact = false }: { scope: Scope; onScope: (s: Scope) => void; count: number; edited: number; compact?: boolean }) {
-  const on = scope === "voice";
-  const tip = `Apply to all ${count} entries of this voice in the meeting${edited > 0 ? ` (${edited} with their own change are left as they are)` : ""}`;
-  return (
-    <button
-      type="button"
-      title={tip}
-      aria-label={tip}
-      aria-pressed={on}
-      // The field next to it must keep focus, or its blur would save before the scope is set.
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={() => onScope(on ? "line" : "voice")}
-      className={`${compact ? "h-6 px-2.5 text-[11px]" : "h-8 px-3 text-[12px]"} inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full font-semibold leading-none tabular-nums ${on ? "bg-accent-tint text-accent-strong ring-2 ring-[var(--mi-accent)]" : "bg-white text-ink-2 shadow-[0_1px_3px_rgba(0,0,0,0.3),0_0_0_1px_rgba(0,0,0,0.14)] hover:bg-[#f3f5f4]"}`}
-    >
-      All · {count}
-    </button>
-  );
-}
-
-/**
- * A speaker's name; click to rename. A voice with other lines shows, next to the field, whether the
- * new name is for this line only or for all of them (NGR-201). Nothing is written until Save.
- */
-function SpeakerName({
-  renamedBy,
-  sp,
-  renamedTo,
-  lines,
-  affected,
-  onVoice,
-  onLine,
-  onUndo,
-  undoHint,
-}: {
-  sp: Speaker;
+  /** Of `lines`, the ones renaming the voice reaches: the rest have a pending change of their own. */
+  reach: number;
+  /** What the line is called once pending changes are saved, and which change says so. */
   renamedTo?: string;
   renamedBy?: "line" | "voice";
-  /** Lines this voice has in the meeting; one means there is no scope to choose. */
-  lines: number;
-  /** Of those, the ones a voice-wide rename reaches (the rest have a change of their own). */
-  affected: number;
-  onVoice: (name: string) => void;
-  onLine: (name: string) => void;
-  onUndo: () => void;
-  undoHint: string;
-}) {
-  const shown = renamedTo ?? sp.name;
-  const [draft, setDraft] = useState<string | null>(null);
-  const [scope, setScope] = useState<Scope>(renamedBy === "voice" ? "voice" : "line");
-  if (draft === null) {
-    const open = (e: { stopPropagation: () => void }) => {
-      e.stopPropagation();
-      setScope(renamedBy === "voice" ? "voice" : "line");
-      setDraft(shown);
-    };
-    if (renamedTo) return <Renamed from={sp.name} to={renamedTo} onUndo={onUndo} undoHint={undoHint} onEdit={open} />;
-    return (
-      <button
-        type="button"
-        title="Rename this speaker"
-        aria-label={`Rename ${sp.name}`}
-        className="rounded text-[15px] font-semibold hover:underline hover:decoration-dotted"
-        onClick={open}
-      >
-        {sp.name}
-      </button>
-    );
-  }
-  const commit = () => {
-    const n = draft.trim();
-    setDraft(null);
-    if (!n || n === shown) return;
-    if (lines > 1 && scope === "line") onLine(n);
-    else onVoice(n);
-  };
-  return (
-    // The scope buttons must not take focus from the field, or its blur would save before one is picked.
-    // biome-ignore lint/a11y/useKeyWithClickEvents: keeps clicks in the editor from selecting the line
-    <fieldset
-      aria-label={`Rename ${shown}`}
-      className="relative m-0 w-52 min-w-0 border-0 p-0"
-      onClick={(e) => e.stopPropagation()}
-      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && commit()}
-    >
-      <input
-        // biome-ignore lint/a11y/noAutofocus: opened by the user's own click on the name
-        autoFocus
-        aria-label={`New name for ${shown}`}
-        className={`mi-field h-8 w-full text-[14px] ${lines > 1 ? "pr-20" : ""}`}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit();
-          if (e.key === "Escape") setDraft(null);
-        }}
-      />
-      {lines > 1 && (
-        <div className="absolute inset-y-0 right-1 flex items-center">
-          <ScopeToggle compact scope={scope} onScope={setScope} count={affected} edited={lines - affected} />
-        </div>
-      )}
-    </fieldset>
-  );
-}
+};
 
 /** Line buttons stay out of sight until the line is hovered or focused from the keyboard. */
 const reveal = "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100";
 
-/** "Who said this?": move this line, or the whole voice, to another person (NGR-201). */
-function WhoSaid({ seg, people, total, count, byVoice }: { seg: Segment; people: ComboOption[]; total: number; count: number; byVoice: boolean }) {
+/**
+ * Who said this line (NGR-154/201): pick a person, then whether it's only this line or every
+ * line of this voice. "Me" (or your own name) moves lines to you. While recording only the
+ * whole voice can be named. Nothing is written until Save.
+ */
+function WhoPicker({ seg, sp, shown, lines, reach, people, onClose }: {
+  seg: Segment;
+  sp: Speaker;
+  /** What the line is called now, pending changes included. */
+  shown: string;
+  lines: number;
+  reach: number;
+  people?: ComboOption[];
+  onClose: () => void;
+}) {
   const editLine = useStore((s) => s.editLine);
-  const editSpeaker = useStore((s) => s.editSpeaker);
-  const [open, setOpen] = useState(false);
-  const [scope, setScope] = useState<Scope>(byVoice ? "voice" : "line");
-  if (!open)
-    return (
-      <button
-        type="button"
-        className={`rounded px-1 text-[12px] font-medium text-accent-strong hover:underline ${reveal}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          setScope(byVoice ? "voice" : "line");
-          setOpen(true);
-        }}
-      >
-        Who said this?
-      </button>
-    );
+  const [name, setName] = useState<string | null>(null);
+  const apply = (n: string, all: boolean) => {
+    onClose();
+    editLine(seg.id, n, !all);
+  };
+  const picked = (n: string) => {
+    if (n.trim().toLowerCase() === shown.toLowerCase()) return onClose();
+    if (!people) return apply(n, true); // live: lines can't move yet
+    if (sp.id !== "me" && lines === 1) return apply(n, true);
+    setName(n);
+  };
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: keeps clicks in the picker from selecting the line
-    // biome-ignore lint/a11y/useKeyWithClickEvents: same as above
-    <div className="w-56" onClick={(e) => e.stopPropagation()} onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setOpen(false)}>
-      <div className="w-full">
+    <div
+      className="mt-2"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.key === "Escape" && onClose()}
+      onBlur={(e) => {
+        if (name === null && !e.currentTarget.contains(e.relatedTarget as Node | null)) onClose();
+      }}
+    >
+      {name === null ? (
         <Combobox
+          className="w-64"
           autoFocus
-          label="Who said this line?"
-          adornment={total > 1 && <ScopeToggle compact scope={scope} onScope={setScope} count={count} edited={total - count} />}
+          label={`Who said this line? Now ${shown}`}
           placeholder="Search people…"
-          options={people}
+          options={people ?? []}
           allowNew={newPerson}
-          onPick={(name) => {
-            setOpen(false);
-            if (scope === "voice") editSpeaker(seg.speakerId, name);
-            else editLine(seg.id, name, true);
-          }}
+          onPick={picked}
         />
-      </div>
+      ) : (
+        <fieldset aria-label={`Change ${shown} to ${name}`} className="m-0 flex flex-wrap items-center gap-2 border-0 p-0 text-[13px]">
+          <span className="text-ink-3">
+            {shown} → <span className="font-semibold text-ink">{name}</span>:
+          </span>
+          {/* biome-ignore lint/a11y/noAutofocus: the next step of the user's own pick */}
+          <button type="button" autoFocus className="mi-btn-primary h-9 px-3" onClick={() => apply(name, false)}>
+            Only this line
+          </button>
+          <button
+            type="button"
+            className="mi-ghost h-9 px-3"
+            title={reach < lines ? `${lines - reach} line${lines - reach === 1 ? "" : "s"} you moved on their own keep that change` : undefined}
+            onClick={() => apply(name, true)}
+          >
+            {sp.id === "me" ? `I'm ${name}: rename “${sp.name}” everywhere` : `All ${reach} lines by ${sp.name}`}
+          </button>
+          <button type="button" className="mi-ghost h-9 px-3" onClick={onClose}>
+            Cancel
+          </button>
+        </fieldset>
+      )}
     </div>
   );
 }
 
-const SegmentRow = memo(function SegmentRow({ seg, meetingId, speaker: sp, suggest, selected, showSensitive, query, onPlay, people, voiceLines, voiceFree }: RowProps) {
+const SegmentRow = memo(function SegmentRow({ seg, speaker: sp, lines, reach, renamedTo, renamedBy, suggest, selected, showSensitive, query, onPlay, people }: RowProps) {
   const select = useStore((s) => s.selectSegment);
+  const [who, setWho] = useState(false);
   const editSpeaker = useStore((s) => s.editSpeaker);
-  const editLine = useStore((s) => s.editLine);
   const undoSpeaker = useStore((s) => s.undoSpeaker);
   const undoLine = useStore((s) => s.undoLine);
   const edit = useStore((s) => s.editSegment);
   const details = useStore((s) => s.modelDetails);
-  const renamed = renamedLine(useStore((s) => s.pending), meetingId, seg);
-  const renamedTo = renamed?.to;
-  const renamedBy = renamed?.by;
-  // A voice-wide rename skips the entries that have a change of their own, except this one.
-  const affected = voiceFree + (renamedBy === "line" ? 1 : 0);
   const [draft, setDraft] = useState<string | null>(null);
   const save = () => {
     if (draft?.trim() && draft.trim() !== seg.text) void edit(seg.id, draft);
@@ -689,18 +813,30 @@ const SegmentRow = memo(function SegmentRow({ seg, meetingId, speaker: sp, sugge
       {sp && <Avatar tint={sp.tint} initial={sp.initial} />}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2.5">
-          {sp ? (
-            <SpeakerName
-              sp={sp}
-              renamedTo={renamedTo}
-              renamedBy={renamedBy}
-              lines={sp.id === "me" ? 1 : voiceLines}
-              affected={affected}
-              onVoice={(n) => editSpeaker(sp.id, n)}
-              onLine={(n) => editLine(seg.id, n, true)}
+          {sp && renamedTo ? (
+            <Renamed
+              from={sp.name}
+              to={renamedTo}
               onUndo={() => (renamedBy === "line" ? undoLine(seg.id) : undoSpeaker(sp.id))}
-              undoHint={renamedBy === "line" ? "Undo this line's change" : `Undo the change for all of ${sp.name}'s lines`}
+              undoHint={renamedBy === "line" ? "Undo this line's change" : `Undo the change for every line of ${sp.name}`}
+              onEdit={(e) => {
+                e.stopPropagation();
+                setWho(true);
+              }}
             />
+          ) : sp ? (
+            <button
+              type="button"
+              title="Change who said this"
+              aria-label={`${sp.name}: change who said this`}
+              className="rounded text-[15px] font-semibold hover:underline hover:decoration-dotted"
+              onClick={(e) => {
+                e.stopPropagation();
+                setWho(true);
+              }}
+            >
+              {sp.name}
+            </button>
           ) : (
             <span className="text-[15px] font-semibold">{seg.speakerId}</span>
           )}
@@ -740,6 +876,7 @@ const SegmentRow = memo(function SegmentRow({ seg, meetingId, speaker: sp, sugge
             </Chip>
           ))}
         </div>
+        {who && sp && <WhoPicker seg={seg} sp={sp} shown={renamedTo ?? sp.name} lines={lines} reach={reach} people={people} onClose={() => setWho(false)} />}
         {draft !== null ? (
           <textarea
             // biome-ignore lint/a11y/noAutofocus: opened by the user's own Edit click
@@ -790,7 +927,18 @@ const SegmentRow = memo(function SegmentRow({ seg, meetingId, speaker: sp, sugge
             Fix text
           </button>
         )}
-        {people && seg.speakerId !== "me" && draft === null && <WhoSaid seg={seg} people={people} total={voiceLines} count={affected} byVoice={renamedBy === "voice"} />}
+        {people && sp && draft === null && !who && (
+          <button
+            type="button"
+            className={`rounded px-1 text-[12px] font-medium text-accent-strong hover:underline ${selected ? "" : reveal}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setWho(true);
+            }}
+          >
+            Who said this?
+          </button>
+        )}
       </div>
     </div>
   );

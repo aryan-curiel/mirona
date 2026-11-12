@@ -29,6 +29,7 @@ fn main() {
             models_dir: models,
             vad: mirona_capture::VadConfig::default(),
             recording: out_dir.join("audio.wav"),
+            system_recording: Some(out_dir.join("system.wav")),
             mic: true,
             system: true,
         },

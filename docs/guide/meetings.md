@@ -44,8 +44,11 @@ Above the transcript:
 Hover a line for more:
 
 - **Fix text**: correct what the speech model misheard. The fix is saved in the transcript.
-- **Who said this?**: move just this line to someone else, or to a new name. See
-  [Speakers and voices](speakers.md#a-line-went-to-the-wrong-person).
+- **Who said this?** (or click the speaker's name): move just this line, or every line of that
+  voice, to someone else. See [Speakers and voices](speakers.md#a-line-went-to-the-wrong-person).
+
+**Split voices…** above the transcript shows each voice as a column you can drag lines between;
+see [Split voices](speakers.md#split-voices).
 
 Click a timestamp to play the recording from that moment (while the meeting still has its audio).
 

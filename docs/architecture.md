@@ -104,7 +104,8 @@ The folders are the source of truth. The index can always be rebuilt from them (
   2026-11-05-0930-claims-desk-weekly-sync/
     meeting.md          YAML front matter (type, tags, speakers, action items…) + ## Notes
     transcript.jsonl    one line per segment, append-only
-    audio.caf           Opus (audio.wav while recording)
+    audio.caf           Opus (audio.wav while recording): mic + system audio, for playback
+    system.caf          system audio alone (system.wav while recording), for speaker detection
     embeddings.json     per-line search vectors
   .mirona/
     index.sqlite        FTS5 index, rebuilt from the folders

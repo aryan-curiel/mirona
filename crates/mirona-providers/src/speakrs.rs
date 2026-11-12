@@ -9,7 +9,10 @@ use std::path::Path;
 use std::sync::Mutex;
 
 #[cfg(feature = "speakrs")]
-use speakrs::{DiarizationResult, ExecutionMode, OwnedDiarizationPipeline, PipelineBuilder};
+use speakrs::{
+    AhcConfig, ClusteringBackend, DiarizationResult, ExecutionMode, OwnedDiarizationPipeline,
+    PipelineBuilder, PipelineConfig, VbxConfig,
+};
 
 #[cfg(feature = "speakrs")]
 use crate::{Diarization, Diarizer, Error, FoundSpeaker, Locality, Provider, Result, Turn};
@@ -24,6 +27,31 @@ pub const MATCH_COSINE: f32 = 0.55;
 pub const MATCH_MARGIN: f32 = 0.15;
 /// Below an auto-match but at least this close: suggest the name, don't assign it.
 pub const SUGGEST_COSINE: f32 = 0.45;
+/// speakrs' clustering defaults, what sensitivity 0.5 maps to: the AHC merge distance (it
+/// caps how many voices `VBx` can keep) and `VBx`'s `Fb` (higher: fewer voices).
+pub const DEFAULT_AHC: f32 = 0.6;
+pub const DEFAULT_FB: f64 = 0.8;
+
+/// Clustering settings `(ahc, fb)` for a sensitivity in 0..=1: 0 merges voices readily, 1
+/// splits them readily, 0.5 is speakrs' default.
+// ponytail: ranges picked on four VoxConverse clips (the model finds the right count at the
+// default and moves only at the ends); tune on real calls if the ends over- or under-shoot.
+pub fn clustering(sensitivity: f32) -> (f32, f64) {
+    let d = 0.5 - sensitivity.clamp(0.0, 1.0);
+    (DEFAULT_AHC + 0.6 * d, DEFAULT_FB * 16f64.powf(f64::from(d)))
+}
+
+/// The least speech a voice needs to be kept at a sensitivity: `MIN_SPEAKER_SPEECH_MS` up to
+/// the middle (and for `None`), down to 5 s at 1. Someone who barely spoke is otherwise folded
+/// into another voice, and their lines with them.
+pub fn min_speech_ms(sensitivity: Option<f32>) -> u32 {
+    let over = sensitivity.map_or(0.0, |s| (f64::from(s.clamp(0.0, 1.0)) - 0.5).max(0.0) * 2.0);
+    let span = f64::from(MIN_SPEAKER_SPEECH_MS - 5_000);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let cut = (over * span).round() as u32;
+    MIN_SPEAKER_SPEECH_MS - cut
+}
+
 /// The model set's folder inside the models dir (`scripts/fetch-models.sh`).
 pub const MODELS_DIR: &str = "speakrs";
 /// A file of the CPU set (always needed: voiceprints run on the CPU).
@@ -44,14 +72,35 @@ pub struct Speakrs {
     /// Voiceprints always run on the CPU (`CoreML` embeddings are wrong on short clips).
     /// `None` when `diarize` is already the CPU pipeline.
     cpu: Option<Mutex<OwnedDiarizationPipeline>>,
+    /// Voices with less speech are dropped ([`min_speech_ms`]).
+    min_ms: u32,
 }
 
 #[cfg(feature = "speakrs")]
-fn build(dir: &Path, mode: ExecutionMode) -> Result<Mutex<OwnedDiarizationPipeline>> {
-    PipelineBuilder::from_dir(dir, mode)
-        .and_then(PipelineBuilder::build)
-        .map(Mutex::new)
-        .map_err(|e| Error::Provider(format!("speakrs {mode:?} models in {}: {e}", dir.display())))
+fn build(
+    dir: &Path,
+    mode: ExecutionMode,
+    sensitivity: Option<f32>,
+) -> Result<Mutex<OwnedDiarizationPipeline>> {
+    let err = |e: &dyn std::fmt::Display| {
+        Error::Provider(format!("speakrs {mode:?} models in {}: {e}", dir.display()))
+    };
+    let mut b = PipelineBuilder::from_dir(dir, mode).map_err(|e| err(&e))?;
+    if let Some(s) = sensitivity {
+        let (ahc, fb) = clustering(s);
+        let mut cfg = PipelineConfig::for_mode(mode);
+        let vbx = match cfg.clustering_backend() {
+            ClusteringBackend::GaussianVbx(v) => v,
+            _ => VbxConfig::default(),
+        };
+        let vbx = vbx.with_fb(fb).map_err(|e| err(&e))?;
+        cfg.clustering = cfg
+            .clustering
+            .with_ahc(AhcConfig::new(ahc).map_err(|e| err(&e))?)
+            .with_backend(ClusteringBackend::GaussianVbx(vbx));
+        b = b.pipeline(cfg);
+    }
+    b.build().map(Mutex::new).map_err(|e| err(&e))
 }
 
 #[cfg(feature = "speakrs")]
@@ -59,15 +108,30 @@ impl Speakrs {
     /// `models_dir` holds the speakrs model set (the HF `avencera/speakrs-models` snapshot).
     /// `CoreML` exists only on macOS; elsewhere `Mode::CoreMl` runs on the CPU.
     pub fn new(models_dir: &Path, mode: Mode) -> Result<Self> {
+        Self::tuned(models_dir, mode, None)
+    }
+
+    /// [`Speakrs::new`] at a sensitivity in 0..=1 for diarization ([`clustering`]; `None`: the
+    /// default). Voiceprints keep the default.
+    pub fn tuned(models_dir: &Path, mode: Mode, sensitivity: Option<f32>) -> Result<Self> {
+        let s = sensitivity;
+        let min_ms = min_speech_ms(s);
         Ok(match mode {
             #[cfg(target_os = "macos")]
             Mode::CoreMl => Self {
-                diarize: build(models_dir, ExecutionMode::CoreMl)?,
-                cpu: Some(build(models_dir, ExecutionMode::Cpu)?),
+                diarize: build(models_dir, ExecutionMode::CoreMl, s)?,
+                cpu: Some(build(models_dir, ExecutionMode::Cpu, None)?),
+                min_ms,
+            },
+            _ if s.is_some() => Self {
+                diarize: build(models_dir, ExecutionMode::Cpu, s)?,
+                cpu: Some(build(models_dir, ExecutionMode::Cpu, None)?),
+                min_ms,
             },
             _ => Self {
-                diarize: build(models_dir, ExecutionMode::Cpu)?,
+                diarize: build(models_dir, ExecutionMode::Cpu, None)?,
                 cpu: None,
+                min_ms,
             },
         })
     }
@@ -244,7 +308,7 @@ impl Diarizer for Speakrs {
     fn diarize(&self, pcm: &[f32]) -> impl Future<Output = Result<Diarization>> + Send {
         // Runs right here, blocking, and hands back a ready future: the engine calls it once,
         // after the call, on its worker thread (ADR 0001).
-        let d = Self::run(&self.diarize, pcm).map(|d| drop_small(d, MIN_SPEAKER_SPEECH_MS));
+        let d = Self::run(&self.diarize, pcm).map(|d| drop_small(d, self.min_ms));
         std::future::ready(d)
     }
 
@@ -272,6 +336,23 @@ mod tests {
             end_ms,
             speaker,
         }
+    }
+
+    #[test]
+    fn sensitivity_maps_to_the_clustering_settings() {
+        let (ahc, fb) = clustering(0.5);
+        assert!((ahc - DEFAULT_AHC).abs() < 1e-6 && (fb - DEFAULT_FB).abs() < 1e-9);
+        let (few, many) = (clustering(0.0), clustering(1.0));
+        assert!(
+            few.0 > many.0 && few.1 > many.1,
+            "more sensitive splits more"
+        );
+        assert_eq!(clustering(2.0), many, "clamped");
+        assert!(many.0 > 0.0 && many.1 > 0.0);
+        assert_eq!(min_speech_ms(None), MIN_SPEAKER_SPEECH_MS);
+        assert_eq!(min_speech_ms(Some(0.0)), MIN_SPEAKER_SPEECH_MS);
+        assert_eq!(min_speech_ms(Some(0.5)), MIN_SPEAKER_SPEECH_MS);
+        assert_eq!(min_speech_ms(Some(1.0)), 5_000);
     }
 
     #[test]
@@ -350,6 +431,33 @@ mod model_tests {
     fn speakrs(mode: Mode) -> Speakrs {
         let dir = std::env::var("MIRONA_SPEAKRS_DIR").expect("MIRONA_SPEAKRS_DIR");
         Speakrs::new(Path::new(&dir), mode).unwrap()
+    }
+
+    /// The slider on a clip with two main speakers and one who talks for 12 s: the left end
+    /// keeps two voices, the default drops the 12 s one (folded into another voice), the
+    /// right end keeps it.
+    #[test]
+    #[ignore = "needs the speakrs model set and spike audio"]
+    fn sensitivity_changes_how_many_voices_are_kept() {
+        let dir = std::env::var("MIRONA_SPEAKRS_DIR").expect("MIRONA_SPEAKRS_DIR");
+        let pcm = wav("audio/vc/bspxd.wav");
+        let count = |s: f32| {
+            let sp = Speakrs::tuned(Path::new(&dir), Mode::Cpu, Some(s)).unwrap();
+            pollster(sp.diarize(&pcm)).unwrap().speakers.len()
+        };
+        let got = [count(0.0), count(0.5), count(1.0)];
+        println!("bspxd voices kept at 0 / 0.5 / 1: {got:?}");
+        assert_eq!(got, [2, 2, 3]);
+    }
+
+    fn pollster<F: Future>(f: F) -> F::Output {
+        let mut f = std::pin::pin!(f);
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        loop {
+            if let std::task::Poll::Ready(v) = f.as_mut().poll(&mut cx) {
+                return v;
+            }
+        }
     }
 
     fn wav(path: &str) -> Vec<f32> {

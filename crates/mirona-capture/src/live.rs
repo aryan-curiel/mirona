@@ -25,6 +25,9 @@ pub struct RecorderConfig {
     pub vad: VadConfig,
     /// The mixed recording (16 kHz mono 16-bit WAV); created, or overwritten.
     pub recording: PathBuf,
+    /// System audio alone, same format, when both sources are on: speaker detection reads it
+    /// so it never hears the mic.
+    pub system_recording: Option<PathBuf>,
     pub mic: bool,
     pub system: bool,
 }
@@ -186,6 +189,7 @@ impl Lane {
 pub(crate) struct Pipeline {
     lanes: Vec<Lane>,
     wav: hound::WavWriter<BufWriter<File>>,
+    system_wav: Option<hound::WavWriter<BufWriter<File>>>,
     chunks: Sender<(Source, Chunk)>,
     pub(crate) mic_muted: Arc<AtomicBool>,
 }
@@ -213,9 +217,14 @@ impl Pipeline {
         if lanes.is_empty() {
             return Err("nothing to record: enable the mic, system audio or both".into());
         }
+        let system_wav = match &cfg.system_recording {
+            Some(p) if lanes.len() == 2 => Some(create_wav(p)?),
+            _ => None,
+        };
         Ok(Self {
             lanes,
             wav: create_wav(&cfg.recording)?,
+            system_wav,
             chunks,
             mic_muted: Arc::default(),
         })
@@ -247,6 +256,9 @@ impl Pipeline {
         }
         self.mix(false);
         let _ = self.wav.flush(); // rewrites the header: a crash keeps a playable file
+        if let Some(w) = &mut self.system_wav {
+            let _ = w.flush();
+        }
     }
 
     /// RMS since the last call, for the mic and the system lane (0 when off).
@@ -270,8 +282,13 @@ impl Pipeline {
                 .iter()
                 .map(|l| l.unmixed.get(i).copied().unwrap_or(0.0))
                 .sum();
-            #[allow(clippy::cast_possible_truncation)]
-            let _ = self.wav.write_sample((s.clamp(-1.0, 1.0) * 32767.0) as i16);
+            let _ = self.wav.write_sample(pcm16(s));
+            if let Some(w) = &mut self.system_wav {
+                let sys = self.lanes.iter().find(|l| l.source == Source::System);
+                let _ = w.write_sample(pcm16(
+                    sys.and_then(|l| l.unmixed.get(i).copied()).unwrap_or(0.0),
+                ));
+            }
         }
         for l in &mut self.lanes {
             l.unmixed.drain(..n.min(l.unmixed.len()));
@@ -286,8 +303,16 @@ impl Pipeline {
             }
         }
         self.mix(true);
+        if let Some(w) = self.system_wav {
+            w.finalize().map_err(|e| e.to_string())?;
+        }
         self.wav.finalize().map_err(|e| e.to_string())
     }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn pcm16(s: f32) -> i16 {
+    (s.clamp(-1.0, 1.0) * 32767.0) as i16
 }
 
 // 16 kHz mono WAV while recording (~115 MB/hour; crash-safe through the header rewrite in
@@ -321,10 +346,12 @@ mod tests {
     #[test]
     fn pipeline_chunks_per_source_and_writes_the_mix() {
         let path = temp("mix.wav");
+        let sys_path = temp("system.wav");
         let cfg = RecorderConfig {
             models_dir: fixture(""),
             vad: VadConfig::default(),
             recording: path.clone(),
+            system_recording: Some(sys_path.clone()),
             mic: true,
             system: true,
         };
@@ -357,7 +384,16 @@ mod tests {
         let wav = hound::WavReader::open(&path).unwrap();
         let ms = wav.duration() as usize / 16;
         assert!((9_400..9_600).contains(&ms), "{ms} ms");
+        // The silent mic leaves the system file equal to the mix, sample for sample.
+        let mix: Vec<i16> = wav.into_samples().map(Result::unwrap).collect();
+        let sys: Vec<i16> = hound::WavReader::open(&sys_path)
+            .unwrap()
+            .into_samples()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(sys, mix);
         std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(sys_path).unwrap();
     }
 
     #[test]
@@ -367,6 +403,7 @@ mod tests {
             models_dir: fixture(""),
             vad: VadConfig::default(),
             recording: path.clone(),
+            system_recording: None,
             mic: true,
             system: false,
         };
@@ -395,6 +432,7 @@ mod tests {
             models_dir: fixture(""),
             vad: VadConfig::default(),
             recording: path.clone(),
+            system_recording: None,
             mic: true,
             system: true,
         };
@@ -414,6 +452,7 @@ mod tests {
             models_dir,
             vad: VadConfig::default(),
             recording: temp("never.wav"),
+            system_recording: None,
             mic,
             system: false,
         };
@@ -458,6 +497,7 @@ mod tests {
                 models_dir: dir,
                 vad: VadConfig::default(),
                 recording: path.clone(),
+                system_recording: None,
                 // MIRONA_TEST_MIC=0 records system audio only.
                 mic: std::env::var("MIRONA_TEST_MIC").as_deref() != Ok("0"),
                 system: true,

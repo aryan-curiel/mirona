@@ -490,17 +490,23 @@ fn idle(st: &AppState, meeting_id: &str) -> Res<()> {
     Ok(())
 }
 
-/// Separate the speakers of a finished meeting again (NGR-154). Returns at once; a `Diarized`
-/// event and a `Notice` follow.
+/// Separate the speakers of a finished meeting again (NGR-154), at a sensitivity in 0..=1
+/// (higher: more voices; none: the default). Lines moved by hand keep their speaker. Returns at
+/// once; a `Diarized` event and a `Notice` follow.
 #[tauri::command]
-fn rerun_diarization(app: AppHandle, st: St, meeting_id: String) -> Res<()> {
+fn rerun_diarization(
+    app: AppHandle,
+    st: St,
+    meeting_id: String,
+    sensitivity: Option<f32>,
+) -> Res<()> {
     idle(&st, &meeting_id)?;
     if mirona_engine::stage(&st.engine().config(), "diarization", "speakrs") == "off" {
         return Err("Speaker detection is off in Settings › AI models.".into());
     }
     let (engine, tx) = (st.engine(), events(&app));
     std::thread::spawn(move || {
-        let ev = match engine.diarize(&meeting_id, &tx) {
+        let ev = match engine.diarize_tuned(&meeting_id, &tx, sensitivity) {
             Ok(0) => notice(&meeting_id, "No other voices found.".into(), false),
             Ok(n) => notice(
                 &meeting_id,

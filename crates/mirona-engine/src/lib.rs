@@ -267,6 +267,7 @@ impl Engine {
                 models_dir: self.paths.models.clone(),
                 vad: VadConfig::default(),
                 recording: dir.join(AUDIO_FILE),
+                system_recording: Some(dir.join(mirona_store::SYSTEM_AUDIO[1])),
                 mic: true,
                 system: true,
             },
@@ -615,6 +616,13 @@ fn compress_audio(store: &Shared, id: &str) -> Result<()> {
     };
     if wav.extension().is_none_or(|e| e != "wav") {
         return Ok(());
+    }
+    // The other side's own file first: the mixed WAV staying is what makes a failed run retry.
+    if let Some(sys) = store.lock().unwrap().system_audio_path(id)?
+        && sys.extension().is_some_and(|e| e == "wav")
+    {
+        mirona_capture::compress(&sys)?;
+        std::fs::remove_file(&sys).map_err(|e| format!("{}: {e}", sys.display()))?;
     }
     let stamp = |p: &Path| {
         std::fs::metadata(p)

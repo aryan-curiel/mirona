@@ -6,6 +6,9 @@ use crate::{Result, Store, files, index};
 use mirona_core::{AnswerSource, Id, MeetingPart, TagKind};
 use std::path::{Path, PathBuf};
 
+/// The other side's own recording: `system.caf`, or `system.wav` until it is compressed.
+pub const SYSTEM_AUDIO: [&str; 2] = ["system.caf", "system.wav"];
+
 impl Store {
     pub fn encrypted(&self) -> bool {
         self.key.is_some()
@@ -23,6 +26,9 @@ impl Store {
             if let Some(a) = &e.audio {
                 crypt::reseal_file(from, to, &e.dir.join(a))?;
             }
+            for f in SYSTEM_AUDIO {
+                crypt::reseal_file(from, to, &e.dir.join(f))?;
+            }
         }
         crypt::reseal_file(from, to, &self.voices_path())?;
         crypt::reseal_lines(from, to, &self.labels_path())?;
@@ -39,12 +45,37 @@ impl Store {
         Ok(())
     }
 
-    /// Seal a meeting's recording (after compression or import). No-op without a key.
+    /// Seal a meeting's recordings (after compression or import). No-op without a key.
     pub fn seal_audio(&self, id: &str) -> Result<()> {
-        match (self.key.as_ref(), self.audio_path(id)?) {
-            (Some(k), Some(p)) => crypt::reseal_file(None, Some(k), &p),
-            _ => Ok(()),
+        let Some(k) = self.key.as_ref() else {
+            return Ok(());
+        };
+        for p in self
+            .audio_path(id)?
+            .into_iter()
+            .chain(self.system_audio_path(id)?)
+        {
+            crypt::reseal_file(None, Some(k), &p)?;
         }
+        Ok(())
+    }
+
+    /// The other side alone (system audio without your mic), kept next to the mixed recording
+    /// so speaker detection never hears you. Meetings recorded before it, imports and
+    /// mic-only recordings have none.
+    pub fn system_audio_path(&self, id: &str) -> Result<Option<PathBuf>> {
+        let dir = self.meeting_dir(id)?;
+        Ok(SYSTEM_AUDIO
+            .iter()
+            .map(|f| dir.join(f))
+            .find(|p| p.is_file()))
+    }
+
+    /// [`Store::plain_audio`] for [`Store::system_audio_path`].
+    pub fn plain_system_audio(&self, id: &str) -> Result<Option<PathBuf>> {
+        self.system_audio_path(id)?
+            .map(|p| self.plain(id, &p))
+            .transpose()
     }
 
     fn tmp_dir(&self) -> PathBuf {
@@ -60,20 +91,25 @@ impl Store {
     /// in `.mirona/tmp` when it is sealed. ponytail: a plaintext copy exists while it's used
     /// (until the next `open` or the meeting's next call); decode from memory to avoid it.
     pub fn plain_audio(&self, id: &str) -> Result<Option<PathBuf>> {
-        let Some(path) = self.audio_path(id)? else {
-            return Ok(None);
-        };
-        let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        self.audio_path(id)?.map(|p| self.plain(id, &p)).transpose()
+    }
+
+    fn tmp_copy(&self, id: &str, path: &Path) -> PathBuf {
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        self.tmp_dir().join(format!("{id}-{name}"))
+    }
+
+    fn plain(&self, id: &str, path: &Path) -> Result<PathBuf> {
+        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         if !crypt::is_sealed(&bytes) {
-            return Ok(Some(path));
+            return Ok(path.into());
         }
         let plain = crypt::open(self.key.as_ref(), bytes)?;
         let dir = self.tmp_dir();
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("audio");
-        let out = dir.join(format!("{id}.{ext}"));
+        let out = self.tmp_copy(id, path);
         std::fs::write(&out, plain).map_err(|e| format!("{}: {e}", out.display()))?;
-        Ok(Some(out))
+        Ok(out)
     }
 
     /// Delete a meeting's recording and keep its text (retention).
@@ -81,12 +117,14 @@ impl Store {
         let Some(path) = self.audio_path(id)? else {
             return Ok(false);
         };
-        match std::fs::remove_file(&path) {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(format!("{}: {e}", path.display())),
+        for p in std::iter::once(path).chain(self.system_audio_path(id)?) {
+            match std::fs::remove_file(&p) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(format!("{}: {e}", p.display())),
+            }
+            std::fs::remove_file(self.tmp_copy(id, &p)).ok();
         }
-        std::fs::remove_file(self.tmp_dir().join(path.file_name().unwrap_or_default())).ok();
         let i = self.idx(id)?;
         self.entries[i].audio = None;
         self.save(i, false)?;
@@ -234,6 +272,11 @@ mod tests {
         )
         .unwrap();
         s.set_audio("m-1", "audio.caf").unwrap();
+        std::fs::write(
+            s.meeting_dir("m-1").unwrap().join("system.caf"),
+            b"Zanzibar-system",
+        )
+        .unwrap();
         s.set_embeddings("m-1", "toy", vec![("m-1-0".into(), vec![1.0, 2.0])])
             .unwrap();
         std::fs::write(
@@ -260,6 +303,8 @@ mod tests {
         assert_eq!(s2.meeting("m-1").unwrap().segments.len(), 2);
         let audio = s2.plain_audio("m-1").unwrap().unwrap();
         assert_eq!(std::fs::read(&audio).unwrap(), b"Zanzibar-audio");
+        let system = s2.plain_system_audio("m-1").unwrap().unwrap();
+        assert_eq!(std::fs::read(&system).unwrap(), b"Zanzibar-system");
         assert_eq!(
             s2.embedding_todo("m-1", "toy").unwrap().len(),
             1,
@@ -292,10 +337,12 @@ mod tests {
             let i = s.idx(id).unwrap();
             s.entries[i].meeting.tags = vec![format!("project:{client}")];
             std::fs::write(s.meeting_dir(id).unwrap().join("audio.caf"), b"a").unwrap();
+            std::fs::write(s.meeting_dir(id).unwrap().join("system.caf"), b"a").unwrap();
             s.set_audio(id, "audio.caf").unwrap();
         }
         assert_eq!(s.age_days("m-1").unwrap(), 0);
         assert!(s.remove_audio("m-3").unwrap());
+        assert_eq!(s.system_audio_path("m-3").unwrap(), None);
         assert!(!s.has_audio("m-3"));
         assert_eq!(s.meeting("m-3").unwrap().segments.len(), 1, "text stays");
         assert!(!s.remove_audio("m-3").unwrap(), "nothing left to remove");

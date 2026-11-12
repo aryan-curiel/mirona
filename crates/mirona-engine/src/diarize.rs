@@ -1,5 +1,6 @@
-//! Who spoke (NGR-152/153): after the call, speakrs diarizes the whole recording (the mix of
-//! mic + system audio), each "them" segment goes to the voice it overlaps most, and voices are
+//! Who spoke (NGR-152/153): after the call, speakrs diarizes the other side's own recording
+//! (`system.caf`; the mix of mic + system audio for meetings recorded before it and imports),
+//! each "them" segment goes to the voice it overlaps most, and voices are
 //! matched against known people's voiceprints (ADR 0001: cosine ≥ 0.55 with a 0.15 margin;
 //! 0.45–0.55 is only a suggestion). Mic segments stay "me"; so do voices made mostly of mic
 //! speech. Unknown voices become "Speaker N". The embeddings go to the store's private
@@ -8,9 +9,7 @@
 use crate::{Engine, Result, block_on, stage};
 use mirona_core::{Locality, NameSuggestion, PipelineEvent, Segment, Speaker, Tint};
 use mirona_providers::questions::{self, NO_NAME, Reply};
-use mirona_providers::speakrs::{
-    self, COREML_MODEL, CPU_MODEL, MIN_SPEAKER_SPEECH_MS, MODELS_DIR, Mode, Speakrs,
-};
+use mirona_providers::speakrs::{self, COREML_MODEL, CPU_MODEL, MODELS_DIR, Mode, Speakrs};
 use mirona_providers::{Classifier, Diarization, Diarizer};
 use mirona_store::Cluster;
 use std::path::Path;
@@ -68,21 +67,20 @@ fn overlap(a: (u32, u32), b: (u32, u32)) -> u32 {
 }
 
 /// Which voice (index into `d.speakers`) each segment gets; `None` keeps its current speaker.
-/// Mic segments stay; voices under `MIN_SPEAKER_SPEECH_MS` or made mostly of mic speech are
-/// never given out. Any other segment goes to the voice it overlaps most, else the nearest one.
+/// Mic segments stay; voices made mostly of mic speech (when `mixed`: the audio held the mic
+/// too) are never given out. Any other segment goes to the voice it overlaps most, else the
+/// nearest one. Voices too small to be real were already dropped by the diarizer
+/// (`speakrs::min_speech_ms`).
 /// Only speaker ids change, so segment order (and overlapping speech) is untouched. Lines the
 /// user moved by hand are reset to `None` by the caller ([`Engine::apply_diarization`]).
-pub fn assign(spans: &[Span], d: &Diarization) -> Vec<Option<usize>> {
+pub fn assign(spans: &[Span], d: &Diarization, mixed: bool) -> Vec<Option<usize>> {
     let mut mic_ms = vec![0u32; d.speakers.len()];
-    for s in spans.iter().filter(|s| s.mic) {
+    for s in spans.iter().filter(|s| s.mic && mixed) {
         for t in &d.turns {
             mic_ms[t.speaker] += overlap((s.start_ms, s.end_ms), (t.start_ms, t.end_ms));
         }
     }
-    let eligible = |k: usize| {
-        let ms = d.speakers[k].speech_ms;
-        ms >= MIN_SPEAKER_SPEECH_MS && mic_ms[k].saturating_mul(2) <= ms
-    };
+    let eligible = |k: usize| mic_ms[k].saturating_mul(2) <= d.speakers[k].speech_ms;
     let turns: Vec<_> = d.turns.iter().filter(|t| eligible(t.speaker)).collect();
     spans
         .iter()
@@ -343,11 +341,29 @@ impl Engine {
     /// Blocking (seconds on `CoreML`, ~4 min per hour of audio on the CPU): call it off the UI
     /// thread. Off with `[providers] diarization = "off"`; a meeting without audio is skipped.
     pub fn diarize(&self, id: &str, events: &Sender<PipelineEvent>) -> Result<u32> {
+        self.diarize_tuned(id, events, None)
+    }
+
+    /// [`Engine::diarize`] at a sensitivity in 0..=1 (higher: more voices; `None`: the default,
+    /// 0.5). Reads the other side's own recording when the meeting has one.
+    pub fn diarize_tuned(
+        &self,
+        id: &str,
+        events: &Sender<PipelineEvent>,
+        sensitivity: Option<f32>,
+    ) -> Result<u32> {
         let which = stage(&self.config(), "diarization", "speakrs");
         if which == "off" {
             return Ok(0);
         }
-        let Some(audio) = self.store.lock().unwrap().plain_audio(id)? else {
+        let audio = {
+            let s = self.store.lock().unwrap();
+            match s.plain_system_audio(id)? {
+                Some(p) => Some(p),
+                None => s.plain_audio(id)?,
+            }
+        };
+        let Some(audio) = audio else {
             return Ok(0); // nothing recorded, nothing to separate
         };
         let dir = self.paths.models.join(MODELS_DIR);
@@ -359,7 +375,8 @@ impl Engine {
         }
         let d = {
             let pcm = read_16k(&audio)?;
-            let sp = Speakrs::new(&dir, mode(&which, &dir)).map_err(|e| e.to_string())?;
+            let sp =
+                Speakrs::tuned(&dir, mode(&which, &dir), sensitivity).map_err(|e| e.to_string())?;
             block_on(sp.diarize(&pcm)).map_err(|e| e.to_string())?
         };
         let n = self.apply_diarization(id, &d)?;
@@ -377,7 +394,8 @@ impl Engine {
     pub fn apply_diarization(&self, id: &str, d: &Diarization) -> Result<u32> {
         let mut store = self.store.lock().unwrap();
         let meeting = store.meeting(id)?;
-        let mut labels = assign(&spans(&meeting.segments), d);
+        let mixed = store.system_audio_path(id)?.is_none();
+        let mut labels = assign(&spans(&meeting.segments), d, mixed);
         // Lines the user moved keep their speaker (NGR-201).
         for (l, s) in labels.iter_mut().zip(&meeting.segments) {
             if s.by_hand {
@@ -395,6 +413,13 @@ impl Engine {
                 order.push(*k);
             }
         }
+        // Voices that lines moved by hand still point at: a new voice must not take their id.
+        let kept: Vec<&str> = meeting
+            .segments
+            .iter()
+            .filter(|s| s.by_hand)
+            .map(|s| s.speaker_id.as_str())
+            .collect();
         let mut ids = vec![String::new(); d.speakers.len()];
         let mut speakers: Vec<Speaker> = vec![];
         let mut anon = 0;
@@ -420,6 +445,9 @@ impl Engine {
                 sp
             } else {
                 anon += 1;
+                while kept.contains(&format!("{id}-s{anon}").as_str()) {
+                    anon += 1;
+                }
                 let mut sp = speaker(&format!("{id}-s{anon}"), &format!("Speaker {anon}"), tint);
                 sp.initial = anon.to_string();
                 sp.suggestion = speakrs::closest(emb, &prints).and_then(|(pid, cos)| {
@@ -537,7 +565,7 @@ mod tests {
             span(200_000, 201_000, false), // after the end: the nearest voice
         ];
         assert_eq!(
-            assign(&spans, &d),
+            assign(&spans, &d, true),
             [
                 None,
                 Some(1),
@@ -549,14 +577,16 @@ mod tests {
                 Some(1)
             ]
         );
+        // The other side's own recording never held the mic: voice 0 is someone else there.
+        assert_eq!(assign(&spans, &d, false)[6], Some(0));
     }
 
     #[test]
-    fn small_voices_are_folded_into_the_nearest_real_one() {
+    fn every_voice_the_diarizer_kept_is_given_out() {
         let d = Diarization {
             turns: vec![
                 turn(0, 30_000, 0),
-                turn(30_000, 35_000, 1), // 5 s: spurious
+                turn(30_000, 35_000, 1), // 5 s: kept at a high sensitivity
                 turn(35_000, 70_000, 2),
             ],
             speakers: voices(&[30_000, 5_000, 35_000]),
@@ -566,13 +596,13 @@ mod tests {
             span(31_000, 34_000, false),
             span(40_000, 45_000, false),
         ];
-        assert_eq!(assign(&spans, &d), [Some(0), Some(0), Some(2)]);
-        // Nothing usable: everyone keeps their speaker.
-        let tiny = Diarization {
-            turns: vec![turn(0, 5_000, 0)],
-            speakers: voices(&[5_000]),
+        assert_eq!(assign(&spans, &d, true), [Some(0), Some(1), Some(2)]);
+        // Nothing found: everyone keeps their speaker.
+        let none = Diarization {
+            turns: vec![],
+            speakers: vec![],
         };
-        assert_eq!(assign(&spans, &tiny), [None, None, None]);
+        assert_eq!(assign(&spans, &none, true), [None, None, None]);
     }
 
     #[test]
@@ -744,6 +774,43 @@ mod tests {
         let m = e.store.lock().unwrap().meeting("m-a").unwrap();
         assert!(m.segments[1].by_hand);
         assert!(m.speakers.iter().any(|p| p.id == zoe.id));
+    }
+
+    #[test]
+    fn a_rerun_never_reuses_a_voice_id_kept_by_a_moved_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let e = engine(dir.path(), dir.path());
+        let segs = [
+            ("me", 1_000, 2_000, "Hi.".to_string()),
+            ("them", 26_000, 27_000, "Hello.".to_string()),
+            ("them", 40_000, 42_000, "Prices are up.".to_string()),
+        ];
+        let d = Diarization {
+            turns: vec![turn(0, 25_000, 0), turn(25_000, 90_000, 1)],
+            speakers: vec![
+                FoundSpeaker {
+                    embedding: vec![1.0, 0.0],
+                    speech_ms: 25_000,
+                },
+                FoundSpeaker {
+                    embedding: vec![0.0, 1.0],
+                    speech_ms: 65_000,
+                },
+            ],
+        };
+        meeting(&e, "m-a", &segs, None);
+        e.apply_diarization("m-a", &d).unwrap();
+        // The mic line was really Speaker 1 (a leak), then detection runs again.
+        e.store
+            .lock()
+            .unwrap()
+            .set_line_speaker("m-a", "m-a-0", "Speaker 1")
+            .unwrap();
+        e.apply_diarization("m-a", &d).unwrap();
+        let m = e.store.lock().unwrap().meeting("m-a").unwrap();
+        let ids: Vec<&str> = m.segments.iter().map(|g| g.speaker_id.as_str()).collect();
+        assert_eq!(ids, ["m-a-s1", "m-a-s2", "m-a-s2"]);
+        assert_eq!(names(&e, "m-a"), ["Speaker 1", "Speaker 2", "Speaker 2"]);
     }
 
     #[test]
