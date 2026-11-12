@@ -1,8 +1,9 @@
 # Speakers and voices
 
 During a call, lines are only split into **Me** (your mic) and **Them** (everyone else). When you
-stop, Mirona listens to the whole recording again, tells the other voices apart, and matches them
-against voices it already knows. A voice nobody has named yet shows as *Speaker 2*,
+stop, Mirona listens to the other side's audio again (kept apart from your mic, so your voice
+never gets mixed into theirs), tells the voices apart, and matches them against voices it
+already knows. A voice nobody has named yet shows as *Speaker 2*,
 *Speaker 3* and so on.
 
 Your mic is always **You**. Voiceprints never leave your Mac.
@@ -31,27 +32,49 @@ suggestion like **Inés? · Confirm**. Mirona also picks up names from the conve
 
 ## Saving speaker changes
 
-Renaming a voice, moving a line, naming a voice in **Name them** and confirming a suggestion
-don't change the meeting yet. They wait as pending changes, and a bar above the transcript counts
-them with **Save** and **Discard**:
+Renaming a voice, moving a line (in the transcript or in **Split voices**), naming a voice in
+**Name them** and confirming a suggestion don't change the meeting yet. They wait as pending
+changes, and a bar above the transcript counts them with **Save** and **Discard**:
 
-- The old name shows struck out on red and the new one on green (~~Speaker 2~~Inés), on every
+- The old name shows struck out on red and the new one highlighted (~~Speaker 2~~Inés), on every
   line it will change, in the bar, and in the Summary tab (summary text and action item owners).
-- Click the struck-out name to undo that one change; click the green one to rename again.
+- **×** next to a change undoes just that one. Click the new name to change it again.
 - **Save** applies every change together. **Discard** drops them all.
 - Opening another meeting with unsaved changes asks whether to save, discard, or stay. Changes
-  can't be saved while the meeting is still recording or being processed.
+  can't be saved while the meeting is still recording or being processed, and quitting Mirona
+  drops them.
 
 ## A line went to the wrong person
 
-Hover the line and click **Who said this?** to move it to someone else, or to a new
-name. A moved line keeps its person when you re-run speaker detection, and moving lines never
-changes anyone's voiceprint. Your own lines (*You*) can't be moved.
+Click the speaker's name on the line (or hover it and click **Who said this?**), then pick who
+said it: someone you know, another voice from this meeting, **Me**, or a new name. Mirona then
+asks:
 
-If a whole voice is wrong, rename it instead: click the speaker's name in the transcript. Next to
-the field, two icon buttons pick the scope: **This entry only**, or **All entries in this
-meeting** (the button shows how many it reaches; entries you already changed on their own are
-left as they are). **Who said this?** has the same two buttons.
+- **Only this line** moves just that line.
+- **All N lines by Speaker 2** renames the whole voice, in this meeting and wherever that voice
+  was heard. Lines you already moved on their own keep that change.
+
+A moved line keeps its person when you re-run speaker detection, and moving lines never changes
+anyone's voiceprint. Your mic lines can be moved too, for when someone else's voice reached your
+mic.
+
+**It's me.** Pick **Me** (or type the name you gave yourself) when a voice was really you. Its
+lines move to you, and Mirona forgets that voice instead of saving it under your name, so other
+people are never mistaken for you later.
+
+## Split voices
+
+When voices are badly mixed up, **Split voices…** (above the transcript) shows every voice as a
+column of its lines:
+
+- Drag a line to the column of whoever said it, or use the line's **Move to…** menu. Press ▶ to
+  hear it first.
+- **Someone else**: type a name, then drop their lines there.
+- Moves wait for **Save** like any other speaker change; **×** on a moved line undoes it.
+- **Sensitivity** finds voices again. Slide right (**More voices**) when two people were merged
+  into one, or someone who barely spoke got folded into another voice. Slide left (**Fewer
+  voices**) when one person was split in two. Lines you moved stay where you put them. With
+  changes still waiting, it asks you to save or discard them first.
 
 ## People and voices
 
@@ -76,8 +99,9 @@ Each card shows:
 
 - **Name voices soon after a call.** The more meetings a voice is named in, the better Mirona
   recognises it.
-- **Short speakers** (someone who said one sentence) may not get a voice of their own; their
-  lines go to the closest voice. Use **Who said this?** to fix them.
+- **Short speakers** (under about 20 seconds) don't get a voice of their own by default; their
+  lines go to the closest voice. Use **Split voices…** with the sensitivity slid right, or move
+  their lines by hand.
 - **Speaker detection off?** In Settings › AI models › Speaker detection you can choose
   *speakrs* (uses the Neural Engine on Macs with 16 GB or more), *speakrs, CPU only* (slower,
   uses less memory) or *Off* (everyone else stays "Them").

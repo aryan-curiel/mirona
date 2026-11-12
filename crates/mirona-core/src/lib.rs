@@ -64,7 +64,8 @@ pub struct Speaker {
 pub enum SpeakerEdit {
     /// Name a voice for every line of it that no `Line` edit in the batch moves.
     Speaker { speaker_id: Id, name: String },
-    /// Move one line to a person.
+    /// Move one line (mic lines too): `name` is a speaker id of this meeting, "Me", or a
+    /// person's name (a new name is a new person).
     Line { segment_id: Id, name: String },
 }
 

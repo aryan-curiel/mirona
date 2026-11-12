@@ -41,7 +41,8 @@ What can leave your Mac, and when, is in [PRIVACY.md](../PRIVACY.md).
 | Open Settings | <kbd>⌘,</kbd> |
 | See why a line was tagged | Click the line |
 | Fix a misheard line | Hover it › **Fix text** |
-| Move a line to another person | Hover it › **Who said this?** |
+| Move a line to another person | Click the speaker's name › pick › **Only this line** |
+| Untangle mixed-up voices | **Split voices…** above the transcript |
 | Rewrite a summary | Summary tab › **Template** › **Regenerate** |
 | Send the follow-up | Inspector › Follow-up email › **Copy** |
 | Find something said weeks ago | **Search all meetings** at the top of the sidebar |

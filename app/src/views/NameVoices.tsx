@@ -21,10 +21,17 @@ export function useVoices(m: Meeting) {
   return { unnamed, known };
 }
 
-/** People to pick from: named people heard in this meeting first, then everyone else. */
-export function personOptions(m: Meeting, known: string[]): ComboOption[] {
+/**
+ * People to pick from: you, named people heard in this meeting, then everyone else. With
+ * `voices`, this meeting's unnamed voices too ("Speaker 2"), for moving lines between them.
+ */
+export function personOptions(m: Meeting, known: string[], voices = false): ComboOption[] {
   const here = new Set(m.speakers.filter((p) => p.id !== "me").map((p) => p.name));
+  const me = m.speakers.find((p) => p.id === "me")?.name ?? "Me";
+  const unnamed = voices ? [...here].filter((n) => !known.includes(n)) : [];
   return [
+    { value: me, group: "You" },
+    ...unnamed.map((value) => ({ value, group: "In this meeting" })),
     ...known.filter((n) => here.has(n)).map((value) => ({ value, group: "In this meeting" })),
     ...known.filter((n) => !here.has(n)).map((value) => ({ value, group: "Everyone else" })),
   ];

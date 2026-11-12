@@ -134,7 +134,8 @@ export const api = {
   review: (meetingId: string) => invoke<Review[]>("review", { meetingId }),
   resolveReview: (meetingId: string, review: Review, accept: boolean) => invoke<void>("resolve_review", { meetingId, review, accept }),
   setOwner: (meetingId: string, segmentId: string, owner: string) => invoke<Segment>("set_owner", { meetingId, segmentId, owner }),
-  rerunDiarization: (meetingId: string) => invoke<void>("rerun_diarization", { meetingId }),
+  /** `sensitivity` 0..1: higher finds more voices; omitted: the default (0.5). */
+  rerunDiarization: (meetingId: string, sensitivity?: number) => invoke<void>("rerun_diarization", { meetingId, sensitivity: sensitivity ?? null }),
   rerunClassification: (meetingId: string) => invoke<void>("rerun_classification", { meetingId }),
   renameMeeting: (meetingId: string, title: string) => invoke<Meeting>("rename_meeting", { meetingId, title }),
   saveNotes: (meetingId: string, raw: string[], atMs: (number | null)[]) => invoke<void>("save_notes", { meetingId, raw, atMs }),

@@ -116,8 +116,11 @@ type State = {
   enroll: (speakerId: string, name: string) => Promise<void>;
   /** Name every line of a voice (waits for Save). */
   editSpeaker: (speakerId: string, name: string) => void;
-  /** Move a line to another person (waits for Save); without `alone` it names the line's whole voice instead. */
-  editLine: (segmentId: string, name: string, alone?: boolean) => void;
+  /**
+   * Move a line to another person (a speaker id of the meeting or a name; waits for Save).
+   * Without `alone` it names the line's whole voice instead, and drops the line's own change.
+   */
+  editLine: (segmentId: string, to: string, alone?: boolean) => void;
   undoSpeaker: (speakerId: string) => void;
   undoLine: (segmentId: string) => void;
   discardSpeakerEdits: () => void;
@@ -128,7 +131,7 @@ type State = {
   deleteVoiceprint: (personId: string) => Promise<void>;
   resolve: (review: Review, accept: boolean) => Promise<void>;
   setOwner: (segmentId: string, owner: string) => Promise<void>;
-  rerun: (what: "diarization" | "classification") => Promise<void>;
+  rerun: (what: "diarization" | "classification", sensitivity?: number) => Promise<void>;
   openAt: (meetingId: string, ms: number) => Promise<void>;
   regenerate: (template: string) => Promise<void>;
   addDemo: () => Promise<void>;
@@ -497,11 +500,16 @@ export const useStore = create<State>((set, get) => {
         get().flash(`Owner set to ${owner}.`);
       }),
 
-    rerun: (what) =>
+    rerun: (what, sensitivity) =>
       run(async () => {
         const m = get().meeting;
         if (!m) return;
-        await (what === "diarization" ? api.rerunDiarization(m.id) : api.rerunClassification(m.id));
+        // Finding voices again replaces the voices pending changes point at.
+        if (what === "diarization" && get().pending?.meetingId === m.id) {
+          get().flash("Save or discard your speaker changes before finding voices again.", true);
+          return;
+        }
+        await (what === "diarization" ? api.rerunDiarization(m.id, sensitivity) : api.rerunClassification(m.id));
         set({ rerunning: { ...get().rerunning, [m.id]: what === "diarization" ? "Finding speakers…" : "Tagging again…" } });
       }),
 
@@ -537,14 +545,14 @@ export const useStore = create<State>((set, get) => {
       set({ pending: editVoice(get().pending, m.id, speakerId, sp.name, name) });
     },
 
-    editLine: (segmentId, name, alone) => {
+    editLine: (segmentId, to, alone) => {
       const m = get().meeting;
       const seg = m?.segments.find((x) => x.id === segmentId);
       const sp = m?.speakers.find((s) => s.id === seg?.speakerId);
       if (!m || !seg || !sp) return;
       const p = get().pending;
       // Naming the voice from one of its lines replaces that line's own edit.
-      set({ pending: alone ? editLine(p, m.id, segmentId, sp.id, sp.name, name) : editVoice(undoLine(p, segmentId), m.id, sp.id, sp.name, name) });
+      set({ pending: alone ? editLine(p, m, seg, to) : editVoice(undoLine(p, segmentId), m.id, sp.id, sp.name, to) });
     },
 
     undoSpeaker: (speakerId) => set({ pending: undoVoice(get().pending, speakerId) }),

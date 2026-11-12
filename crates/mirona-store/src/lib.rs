@@ -24,6 +24,7 @@ mod search;
 
 pub use classify::{is_line_item, review_tag};
 pub use index::Hit;
+pub use lifecycle::SYSTEM_AUDIO;
 pub use people::{Cluster, Person, Voices, replace_name};
 pub use search::{MIN_SIMILARITY, text_hash};
 

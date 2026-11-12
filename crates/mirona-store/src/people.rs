@@ -120,11 +120,13 @@ impl Store {
         Ok(())
     }
 
-    /// Known people with a voiceprint, for `speakrs::match_voiceprint`.
+    /// Known people with a voiceprint, for `speakrs::match_voiceprint`. Never "me": the mic
+    /// says who you are, and a voice wrongly saved as you would turn others into you.
     pub fn voiceprints(&self) -> Vec<(Id, Vec<f32>)> {
         let v = self.voices();
         v.people
             .iter()
+            .filter(|p| p.id != "me")
             .filter_map(|p| Some((p.id.clone(), v.voiceprint(&p.id)?)))
             .collect()
     }
@@ -190,6 +192,13 @@ impl Store {
             .any(|s| s.id == speaker_id)
         {
             return Err(format!("no speaker {speaker_id} in this meeting"));
+        }
+        if self.means_me(name) {
+            return if speaker_id == "me" {
+                self.person_speaker("me")
+            } else {
+                self.voice_is_me(i, speaker_id)
+            };
         }
         let mut v = self.voices();
         let target = v.by_name(name).cloned();
@@ -333,9 +342,11 @@ impl Store {
         Ok(())
     }
 
-    /// Move one line to another person (NGR-201): a known name (any case) is that person, any
-    /// other name becomes a new person with no voiceprint. The line is marked `by_hand`, so
-    /// speaker detection leaves it alone; a voice left with no lines leaves the meeting.
+    /// Move one line to another person (NGR-201): "Me" (or your own name) is you, a speaker of
+    /// this meeting is that voice, a known name (any case) is that person, any other name
+    /// becomes a new person with no voiceprint. Mic lines can move too (a remote voice can leak
+    /// into the mic). The line is marked `by_hand`, so speaker detection leaves it alone; a
+    /// voice left with no lines leaves the meeting.
     // ponytail: a moved line never updates voiceprints (one line is too short, a misclick
     // shouldn't train a voice); NGR-201 if users ask for it.
     pub fn set_line_speaker(
@@ -357,23 +368,41 @@ impl Store {
             .ok_or_else(|| format!("no line {segment_id} in this meeting"))?
             .speaker_id
             .clone();
-        if from == "me" {
-            return Err("Lines from your mic can't be moved.".into());
-        }
+        let here = self.entries[i]
+            .meeting
+            .speakers
+            .iter()
+            .find(|s| s.id == name || s.name.to_lowercase() == name.to_lowercase())
+            .map(|s| s.id.clone());
         let mut v = self.voices();
-        let to = if let Some(p) = v.by_name(name) {
+        let to = if self.means_me(name) {
+            "me".to_string()
+        } else if let Some(id) = here {
+            id
+        } else if let Some(p) = v.by_name(name) {
             p.id.clone()
         } else {
             let id = new_person(&mut v, &self.people, meeting_id, name);
             self.save_voices(&v)?;
             id
         };
-        if to == "me" {
-            return Err("Lines can't be moved to you.".into());
+        if to == from {
+            return self.person_speaker(&to);
         }
-        let sp = self
-            .person_speaker(&to)
-            .unwrap_or_else(|_| named(&to, name));
+        let sp = self.entries[i]
+            .meeting
+            .speakers
+            .iter()
+            .find(|s| s.id == to)
+            .cloned()
+            .or_else(|| self.person_speaker(&to).ok())
+            .unwrap_or_else(|| {
+                if to == "me" {
+                    crate::new_speaker("me")
+                } else {
+                    named(&to, name)
+                }
+            });
         let m = &mut self.entries[i].meeting;
         for g in m.segments.iter_mut().filter(|g| g.id == segment_id) {
             g.speaker_id.clone_from(&to);
@@ -390,61 +419,41 @@ impl Store {
         Ok(sp)
     }
 
-    /// Commit pending speaker changes together. Voices are named first (every line of the
-    /// voice), then lines move, so a line edit always wins over a voice edit. A voice whose
-    /// every line is edited is left out; a voice that an earlier edit merged away is skipped.
-    /// Everything is checked before anything is written.
+    /// Commit pending speaker changes together (NGR-201). Lines move first, so a moved line
+    /// has left its voice before the voice is named: a line edit always wins, and a line moved
+    /// to a voice by name finds it under the name it has now. A voice every line of which was
+    /// moved has left the meeting and is skipped. Everything is checked before anything is
+    /// written.
     // ponytail: the writes themselves aren't transactional (files, voices.json): a disk error
     // midway leaves the earlier edits applied; NGR-201.
     pub fn apply_speaker_edits(&mut self, meeting_id: &str, edits: &[SpeakerEdit]) -> Result<()> {
         let i = self.idx(meeting_id)?;
         let m = &self.entries[i].meeting;
-        let moved = |speaker_id: &str| {
-            let mut mine = m.segments.iter().filter(|g| g.speaker_id == speaker_id);
-            let all = mine.clone().all(|g| {
-                edits.iter().any(
-                    |e| matches!(e, SpeakerEdit::Line { segment_id, .. } if *segment_id == g.id),
-                )
-            });
-            all && mine.next().is_some()
-        };
         for e in edits {
+            let (SpeakerEdit::Speaker { name, .. } | SpeakerEdit::Line { name, .. }) = e;
+            if name.trim().is_empty() {
+                return Err("A person needs a name.".into());
+            }
             match e {
-                SpeakerEdit::Speaker { speaker_id, name } => {
-                    if name.trim().is_empty() {
-                        return Err("A person needs a name.".into());
-                    }
+                SpeakerEdit::Speaker { speaker_id, .. } => {
                     if !m.speakers.iter().any(|s| s.id == *speaker_id) {
                         return Err(format!("no speaker {speaker_id} in this meeting"));
                     }
                 }
-                SpeakerEdit::Line { segment_id, name } => {
-                    if name.trim().is_empty() {
-                        return Err("A person needs a name.".into());
-                    }
-                    let g = m
-                        .segments
-                        .iter()
-                        .find(|g| g.id == *segment_id)
-                        .ok_or_else(|| format!("no line {segment_id} in this meeting"))?;
-                    if g.speaker_id == "me" {
-                        return Err("Lines from your mic can't be moved.".into());
+                SpeakerEdit::Line { segment_id, .. } => {
+                    if !m.segments.iter().any(|g| g.id == *segment_id) {
+                        return Err(format!("no line {segment_id} in this meeting"));
                     }
                 }
             }
         }
-        let skip: Vec<&str> = edits
-            .iter()
-            .filter_map(|e| match e {
-                SpeakerEdit::Speaker { speaker_id, .. } if moved(speaker_id) => {
-                    Some(speaker_id.as_str())
-                }
-                _ => None,
-            })
-            .collect();
+        for e in edits {
+            if let SpeakerEdit::Line { segment_id, name } = e {
+                self.set_line_speaker(meeting_id, segment_id, name)?;
+            }
+        }
         for e in edits {
             if let SpeakerEdit::Speaker { speaker_id, name } = e
-                && !skip.contains(&speaker_id.as_str())
                 && self.entries[i]
                     .meeting
                     .speakers
@@ -454,12 +463,47 @@ impl Store {
                 self.name_speaker(meeting_id, speaker_id, name)?;
             }
         }
-        for e in edits {
-            if let SpeakerEdit::Line { segment_id, name } = e {
-                self.set_line_speaker(meeting_id, segment_id, name)?;
-            }
-        }
         Ok(())
+    }
+
+    /// "Me", or the name you gave yourself: a name that means you.
+    fn means_me(&self, name: &str) -> bool {
+        let n = name.trim().to_lowercase();
+        n == "me"
+            || self
+                .voices()
+                .person("me")
+                .is_some_and(|p| p.name.to_lowercase() == n)
+            || self
+                .people
+                .iter()
+                .any(|p| p.id == "me" && p.name.to_lowercase() == n)
+    }
+
+    /// Every line of voice `from` in meeting `i` was you: they move to "me" (kept there when
+    /// detection runs again) and the voice is dropped from the registry for this meeting, so
+    /// nobody's voiceprint learns your voice.
+    fn voice_is_me(&mut self, i: usize, from: &str) -> Result<Speaker> {
+        let meeting_id = self.entries[i].meeting.id.clone();
+        let mut v = self.voices();
+        v.clusters
+            .retain(|c| !(c.meeting_id == meeting_id && c.speaker_id == from));
+        self.save_voices(&v)?;
+        let me = self.entries[i]
+            .meeting
+            .speakers
+            .iter()
+            .find(|s| s.id == "me")
+            .cloned()
+            .or_else(|| self.person_speaker("me").ok())
+            .unwrap_or_else(|| crate::new_speaker("me"));
+        let m = &mut self.entries[i].meeting;
+        for g in m.segments.iter_mut().filter(|g| g.speaker_id == from) {
+            g.by_hand = true;
+        }
+        self.relabel(i, from, &me)?;
+        self.sync_voiceprints(&v, &[from.into()])?;
+        Ok(me)
     }
 
     /// Voices in a meeting nobody named yet (not in the registry), "me" aside.
@@ -973,7 +1017,8 @@ mod tests {
         three_lines(&mut s);
         for bad in [
             line("nope", "Bo"),
-            line("m-a-0", "Bo"),
+            line("m-a-2", " "),
+            voice("m-a-s9", "Cy"),
             voice("m-a-s2", "  "),
         ] {
             let err = s.apply_speaker_edits("m-a", &[voice("m-a-s1", "Ana"), bad]);
@@ -983,6 +1028,31 @@ mod tests {
                 ["Me", "Speaker 1", "Speaker 1", "Speaker 2"]
             );
         }
+    }
+
+    #[test]
+    fn a_batch_moves_a_line_to_a_voice_by_the_name_it_has_before_its_rename() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path()).unwrap();
+        three_lines(&mut s);
+        // Picked "Speaker 2" from the list, then renamed that voice in the same batch.
+        s.apply_speaker_edits("m-a", &[line("m-a-2", "Speaker 2"), voice("m-a-s2", "Cy")])
+            .unwrap();
+        assert_eq!(names(&s, "m-a"), ["Me", "Speaker 1", "Cy", "Cy"]);
+        assert!(s.voices().by_name("Speaker 2").is_none(), "no stray person");
+    }
+
+    #[test]
+    fn a_batch_moves_mic_lines_and_lines_by_speaker_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path()).unwrap();
+        three_lines(&mut s);
+        s.apply_speaker_edits("m-a", &[line("m-a-0", "m-a-s2"), line("m-a-1", "me")])
+            .unwrap();
+        assert_eq!(
+            names(&s, "m-a"),
+            ["Speaker 2", "Me", "Speaker 1", "Speaker 2"]
+        );
     }
 
     #[test]
@@ -1003,14 +1073,55 @@ mod tests {
     }
 
     #[test]
-    fn mic_lines_and_moves_to_me_are_refused() {
+    fn lines_move_to_and_from_me() {
         let dir = tempfile::tempdir().unwrap();
         let mut s = Store::open(dir.path()).unwrap();
-        diarized(&mut s, "m-a", &[("m-a-s1", vec![1.0, 0.0])]);
-        assert!(s.set_line_speaker("m-a", "m-a-0", "Ana").is_err());
+        diarized(
+            &mut s,
+            "m-a",
+            &[("m-a-s1", vec![1.0, 0.0]), ("m-a-s2", vec![0.0, 1.0])],
+        );
         assert!(s.set_line_speaker("m-a", "m-a-1", "  ").is_err());
         assert!(s.set_line_speaker("m-a", "nope", "Ana").is_err());
-        assert_eq!(names(&s, "m-a"), ["Me", "Speaker 1"]);
+        // A remote line that was you.
+        let me = s.set_line_speaker("m-a", "m-a-1", "me").unwrap();
+        assert_eq!(me.id, "me");
+        // A mic line that was someone else: an unnamed voice of this meeting, by its name.
+        let sp = s.set_line_speaker("m-a", "m-a-0", "Speaker 2").unwrap();
+        assert_eq!(sp.id, "m-a-s2");
+        assert_eq!(names(&s, "m-a"), ["Speaker 2", "Me", "Speaker 2"]);
+        assert!(
+            s.voices().people.is_empty(),
+            "no new person for a voice of this meeting"
+        );
+        let m = s.meeting("m-a").unwrap();
+        assert!(m.segments[0].by_hand && m.segments[1].by_hand);
+    }
+
+    #[test]
+    fn naming_a_voice_as_yourself_moves_it_to_me_and_trains_nobody() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path()).unwrap();
+        // You named yourself once.
+        diarized(&mut s, "m-a", &[("m-a-s1", vec![1.0, 0.0])]);
+        s.enroll_speaker("me", "Aryan").unwrap();
+        // A remote voice matched as Ana, and one unknown voice, both actually you.
+        s.name_speaker("m-a", "m-a-s1", "Ana").unwrap();
+        diarized(
+            &mut s,
+            "m-b",
+            &[("m-a-s1", vec![0.0, 1.0]), ("m-b-s2", vec![0.6, 0.8])],
+        );
+        let me = s.name_speaker("m-b", "m-a-s1", "aryan").unwrap();
+        assert_eq!(me.id, "me");
+        s.name_speaker("m-b", "m-b-s2", "Me").unwrap();
+        assert_eq!(names(&s, "m-b"), ["Aryan", "Aryan", "Aryan"]);
+        let m = s.meeting("m-b").unwrap();
+        assert!(m.segments[1].by_hand && m.segments[2].by_hand);
+        // Ana's voiceprint lost the wrong match; nobody learned your voice.
+        assert_eq!(s.voices().meetings("m-a-s1"), 1);
+        assert!(s.voices().clusters.iter().all(|c| c.meeting_id != "m-b"));
+        assert!(s.voiceprints().iter().all(|(id, _)| id != "me"));
     }
 
     #[test]

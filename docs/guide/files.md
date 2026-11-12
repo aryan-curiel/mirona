@@ -23,6 +23,7 @@ rebuilt at any time, so the files are all you need to back up.
     meeting.md          title, tags, answers, summary, action items, your notes
     transcript.jsonl    one line per transcript line
     audio.caf           the recording (Opus); audio.wav while recording
+    system.caf          the other side alone, for telling voices apart; system.wav while recording
     embeddings.json     search vectors, one per line
   2026-11-08-1400-sprint-planning/
     …

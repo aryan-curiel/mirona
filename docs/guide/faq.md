@@ -155,8 +155,10 @@ again, keeping your corrections.
 
 ### Speakers are mixed up
 
-- Click a speaker's name to rename them, or use **Who said this?** for single lines.
-- **More › Re-run speaker detection** splits the voices again; lines you moved keep their person.
+- Click a speaker's name on a line, pick who said it, then choose **Only this line** or **All N
+  lines**. Pick **Me** for lines that were you.
+- **Split voices…** above the transcript: drag lines between voices, or find voices again with
+  more or less sensitivity. Lines you moved keep their person.
 - Merge duplicates on **People and voices** with **Same person as…**.
 - Recognition improves as a voice is named in more meetings.
 
