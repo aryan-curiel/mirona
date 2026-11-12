@@ -53,6 +53,21 @@ pub struct Speaker {
     pub suggestion: Option<NameSuggestion>,
 }
 
+/// One pending speaker change; `Store::apply_speaker_edits` commits a batch of them together.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(
+    tag = "scope",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+#[ts(export)]
+pub enum SpeakerEdit {
+    /// Name a voice for every line of it that no `Line` edit in the batch moves.
+    Speaker { speaker_id: Id, name: String },
+    /// Move one line to a person.
+    Line { segment_id: Id, name: String },
+}
+
 /// An enrolled voice. The embedding itself never leaves the device, so only metadata is here.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]

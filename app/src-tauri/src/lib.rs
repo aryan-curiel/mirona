@@ -15,7 +15,7 @@
 use mirona_capture::Permission;
 use mirona_core::{
     ActionItem, Correction, Locality, Meeting, MeetingAnswers, MeetingSummary, PipelineEvent,
-    ProviderOption, Review, Segment, Speaker,
+    ProviderOption, Review, Segment, Speaker, SpeakerEdit,
 };
 use mirona_engine::{Engine, Llm, Paths, Session};
 use mirona_providers::config::{Config, default_floor, default_threshold};
@@ -242,24 +242,15 @@ fn enroll_speaker(st: St, speaker_id: String, name: String) -> Res<Speaker> {
         .enroll_speaker(&speaker_id, &name)
 }
 
-/// Name a speaker in one meeting; fixes a wrong voice match (NGR-153/154).
+/// Commit a meeting's pending speaker changes together: voices named, lines moved to another
+/// person; fixes wrong voice matches (NGR-153/154/201).
 #[tauri::command]
-fn name_speaker(st: St, meeting_id: String, speaker_id: String, name: String) -> Res<Speaker> {
+fn apply_speaker_edits(st: St, meeting_id: String, edits: Vec<SpeakerEdit>) -> Res<()> {
     st.engine()
         .store
         .lock()
         .unwrap()
-        .name_speaker(&meeting_id, &speaker_id, &name)
-}
-
-/// Move one line to another person; it keeps them when detection runs again (NGR-201).
-#[tauri::command]
-fn set_line_speaker(st: St, meeting_id: String, segment_id: String, name: String) -> Res<Speaker> {
-    st.engine()
-        .store
-        .lock()
-        .unwrap()
-        .set_line_speaker(&meeting_id, &segment_id, &name)
+        .apply_speaker_edits(&meeting_id, &edits)
 }
 
 /// Voices in a meeting nobody named yet (NGR-201).
@@ -2139,8 +2130,7 @@ pub fn run() {
             toggle_action_item,
             list_people,
             enroll_speaker,
-            name_speaker,
-            set_line_speaker,
+            apply_speaker_edits,
             unnamed_speakers,
             known_names,
             merge_people,

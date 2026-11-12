@@ -285,3 +285,10 @@ select.mi-field { appearance: none; -webkit-appearance: none; padding-right: 32p
 
 /* Menu bar popover: native popover material on macOS, a plain card elsewhere. */
 [data-platform="windows"] .mi-tray, [data-platform="linux"] .mi-tray { background: var(--mi-backdrop); border: 1px solid var(--mi-line); border-radius: var(--mi-radius-xl); }
+
+/* A pending speaker change: the old name struck out on red, the new one on green. */
+.mi-rename-old, .mi-rename-new { padding: 0 4px; border-radius: 4px; }
+.mi-rename-old { background: var(--mi-sensitive-tint); color: var(--mi-sensitive); text-decoration: line-through; text-decoration-thickness: 1px; }
+.mi-rename-new { background: #E1F3E6; color: #17572F; text-decoration: none; }
+button.mi-rename-old:hover { text-decoration-thickness: 2px; }
+[data-theme="dark"] .mi-rename-new { background: #1C3A28; color: #9BDDB1; }

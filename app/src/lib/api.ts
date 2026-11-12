@@ -9,6 +9,7 @@ import type { SearchFilters } from "../bindings/SearchFilters";
 import type { SearchResults } from "../bindings/SearchResults";
 import type { Segment } from "../bindings/Segment";
 import type { Speaker } from "../bindings/Speaker";
+import type { SpeakerEdit } from "../bindings/SpeakerEdit";
 
 /** Mirrors `Settings` in src-tauri/src/lib.rs (= config.toml). */
 export type Settings = {
@@ -118,10 +119,7 @@ export const api = {
   toggleActionItem: (id: string) => invoke<ActionItem>("toggle_action_item", { id }),
   listPeople: () => invoke<Person[]>("list_people"),
   enrollSpeaker: (speakerId: string, name: string) => invoke<Speaker>("enroll_speaker", { speakerId, name }),
-  nameSpeaker: (meetingId: string, speakerId: string, name: string) =>
-    invoke<Speaker>("name_speaker", { meetingId, speakerId, name }),
-  setLineSpeaker: (meetingId: string, segmentId: string, name: string) =>
-    invoke<Speaker>("set_line_speaker", { meetingId, segmentId, name }),
+  applySpeakerEdits: (meetingId: string, edits: SpeakerEdit[]) => invoke<void>("apply_speaker_edits", { meetingId, edits }),
   unnamedSpeakers: (meetingId: string) => invoke<string[]>("unnamed_speakers", { meetingId }),
   knownNames: () => invoke<string[]>("known_names"),
   mergePeople: (from: string, into: string) => invoke<Speaker>("merge_people", { from, into }),
