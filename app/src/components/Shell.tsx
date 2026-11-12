@@ -5,6 +5,7 @@ import type { SearchResults } from "../bindings/SearchResults";
 import type { TagKind } from "../bindings/TagKind";
 import { needsSetup, useStore, type View } from "../store";
 import { allTags, api, dayGroup, fmt } from "../lib/api";
+import { pendingCount } from "../lib/speakerEdits";
 import { Icon, Logo, Reveal, Toggle, useLast } from "./ui";
 
 const nav: { id: View; label: string; icon: Parameters<typeof Icon>[0]["name"] }[] = [
@@ -586,6 +587,44 @@ export function ConsentSheet() {
           {/* biome-ignore lint/a11y/noAutofocus: the dialog's main action takes focus when it opens */}
           <button type="button" autoFocus className="mi-btn-primary flex h-11 items-center gap-2 px-5" onClick={() => void confirm(tag || null, agreed, never)}>
             <Icon name="mic" /> Start recording
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Opening another meeting with unsaved speaker changes: save them, drop them, or stay (NGR-201). */
+export function LeaveSheet() {
+  const leaving = useStore((s) => s.leaving);
+  const answer = useStore((s) => s.answerLeave);
+  const changes = useStore((s) => pendingCount(s.pending));
+  useEffect(() => {
+    if (!leaving) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && void answer("stay");
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [leaving, answer]);
+  if (!leaving) return null;
+  return (
+    <div className="mi-scrim fixed inset-0 z-50 grid place-items-center bg-black/20 p-6">
+      <div role="dialog" aria-modal="true" aria-labelledby="leave-title" className="mi-card mi-pop w-full max-w-[440px] p-6">
+        <h2 id="leave-title" className="text-[18px] font-semibold">
+          Save your speaker changes?
+        </h2>
+        <p className="mt-1 text-[14px] text-ink-3">
+          {changes} speaker change{changes === 1 ? " is" : "s are"} not saved yet. Leaving this meeting without saving drops {changes === 1 ? "it" : "them"}.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="mi-ghost min-h-11! px-4" onClick={() => void answer("stay")}>
+            Stay
+          </button>
+          <button type="button" className="mi-ghost min-h-11! px-4" onClick={() => void answer("discard")}>
+            Discard
+          </button>
+          {/* biome-ignore lint/a11y/noAutofocus: the dialog's main action takes focus when it opens */}
+          <button type="button" autoFocus className="mi-btn-primary h-11 px-5" onClick={() => void answer("save")}>
+            Save
           </button>
         </div>
       </div>

@@ -9,6 +9,7 @@ import type { PipelineEvent } from "./bindings/PipelineEvent";
 import type { Review } from "./bindings/Review";
 import type { Segment } from "./bindings/Segment";
 import type { Speaker } from "./bindings/Speaker";
+import { editLine, editVoice, type Pending, pendingCount, toEdits, undoLine, undoVoice } from "./lib/speakerEdits";
 
 export type View = "meetings" | "all" | "actions" | "people" | "activity";
 export type SettingsTab = "general" | "privacy" | "models" | "tags" | "agents" | "advanced" | "about";
@@ -80,6 +81,11 @@ type State = {
   update: UpdateInfo | null;
   installing: boolean;
   dismissedUpdate: string | null;
+  /** Speaker changes waiting for Save. */
+  pending: Pending | null;
+  savingSpeakers: boolean;
+  /** The meeting the user asked to open while changes were pending. */
+  leaving: string | null;
 
   init: () => Promise<void>;
   /** The settings window: settings, status and the client list only. */
@@ -108,9 +114,16 @@ type State = {
   rename: (title: string) => Promise<void>;
   editSegment: (segmentId: string, text: string) => Promise<void>;
   enroll: (speakerId: string, name: string) => Promise<void>;
-  nameSpeaker: (speakerId: string, name: string) => Promise<void>;
-  /** Move one line to another person (by name; a new name is a new person). */
-  moveLine: (segmentId: string, name: string) => Promise<void>;
+  /** Name every line of a voice (waits for Save). */
+  editSpeaker: (speakerId: string, name: string) => void;
+  /** Move a line to another person (waits for Save); without `alone` it names the line's whole voice instead. */
+  editLine: (segmentId: string, name: string, alone?: boolean) => void;
+  undoSpeaker: (speakerId: string) => void;
+  undoLine: (segmentId: string) => void;
+  discardSpeakerEdits: () => void;
+  saveSpeakerEdits: () => Promise<void>;
+  /** Answer "Save / Discard / Stay" when leaving a meeting with unsaved speaker changes. */
+  answerLeave: (choice: "save" | "discard" | "stay") => Promise<void>;
   merge: (from: string, into: string) => Promise<void>;
   deleteVoiceprint: (personId: string) => Promise<void>;
   resolve: (review: Review, accept: boolean) => Promise<void>;
@@ -312,6 +325,9 @@ export const useStore = create<State>((set, get) => {
     update: null,
     installing: false,
     dismissedUpdate: null,
+    pending: null,
+    savingSpeakers: false,
+    leaving: null,
 
     init: async () => {
       if (started) return;
@@ -394,6 +410,11 @@ export const useStore = create<State>((set, get) => {
     setTab: (tab) => set({ tab }),
 
     openMeeting: async (id) => {
+      const p = get().pending;
+      if (p && p.meetingId !== id && get().meeting?.id === p.meetingId) {
+        set({ leaving: id });
+        return;
+      }
       const [meeting, review] = await Promise.all([api.getMeeting(id), api.review(id).catch(() => [])]);
       set({ meeting, review, view: "meetings", segmentId: null, scrollTo: null });
     },
@@ -509,23 +530,58 @@ export const useStore = create<State>((set, get) => {
         get().flash(`Voiceprint enrolled as ${name} in every meeting.`);
       }),
 
-    nameSpeaker: (speakerId, name) =>
+    editSpeaker: (speakerId, name) => {
+      const m = get().meeting;
+      const sp = m?.speakers.find((s) => s.id === speakerId);
+      if (!m || !sp) return;
+      set({ pending: editVoice(get().pending, m.id, speakerId, sp.name, name) });
+    },
+
+    editLine: (segmentId, name, alone) => {
+      const m = get().meeting;
+      const seg = m?.segments.find((x) => x.id === segmentId);
+      const sp = m?.speakers.find((s) => s.id === seg?.speakerId);
+      if (!m || !seg || !sp) return;
+      const p = get().pending;
+      // Naming the voice from one of its lines replaces that line's own edit.
+      set({ pending: alone ? editLine(p, m.id, segmentId, sp.id, sp.name, name) : editVoice(undoLine(p, segmentId), m.id, sp.id, sp.name, name) });
+    },
+
+    undoSpeaker: (speakerId) => set({ pending: undoVoice(get().pending, speakerId) }),
+
+    undoLine: (segmentId) => set({ pending: undoLine(get().pending, segmentId) }),
+
+    discardSpeakerEdits: () => set({ pending: null }),
+
+    saveSpeakerEdits: () =>
       run(async () => {
-        const m = get().meeting;
-        if (!m) return;
-        const p = await api.nameSpeaker(m.id, speakerId, name);
-        await afterFix();
-        get().flash(`Named ${p.name}: transcript, summary and action items updated.`);
+        const p = get().pending;
+        if (!p || get().savingSpeakers) return;
+        if (get().recording?.meetingId === p.meetingId || get().processing.includes(p.meetingId)) {
+          get().flash("This meeting is still being recorded or processed. Save the speaker changes when it's done.", true);
+          return;
+        }
+        set({ savingSpeakers: true });
+        try {
+          await api.applySpeakerEdits(p.meetingId, toEdits(p));
+          set({ pending: null });
+          await afterFix();
+          get().flash(`Saved ${pendingCount(p)} speaker change${pendingCount(p) === 1 ? "" : "s"}: transcript, summary and action items updated.`);
+        } finally {
+          set({ savingSpeakers: false });
+        }
       }),
 
-    moveLine: (segmentId, name) =>
-      run(async () => {
-        const m = get().meeting;
-        if (!m) return;
-        const p = await api.setLineSpeaker(m.id, segmentId, name);
-        await afterFix();
-        get().flash(`Moved the line to ${p.name}.`);
-      }),
+    answerLeave: async (choice) => {
+      const to = get().leaving;
+      set({ leaving: null });
+      if (!to || choice === "stay") return;
+      if (choice === "save") {
+        await get().saveSpeakerEdits();
+        if (get().pending) return;
+      } else set({ pending: null });
+      await get().openMeeting(to);
+    },
 
     merge: (from, into) =>
       run(async () => {

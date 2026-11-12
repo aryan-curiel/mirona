@@ -13,7 +13,7 @@
 //! `(meeting id, speaker id)`.
 
 use crate::{Result, Store};
-use mirona_core::{Id, NameSuggestion, Speaker, Voiceprint};
+use mirona_core::{Id, NameSuggestion, Speaker, SpeakerEdit, Voiceprint};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -388,6 +388,78 @@ impl Store {
         self.save(i, true)?;
         self.refresh_people();
         Ok(sp)
+    }
+
+    /// Commit pending speaker changes together. Voices are named first (every line of the
+    /// voice), then lines move, so a line edit always wins over a voice edit. A voice whose
+    /// every line is edited is left out; a voice that an earlier edit merged away is skipped.
+    /// Everything is checked before anything is written.
+    // ponytail: the writes themselves aren't transactional (files, voices.json): a disk error
+    // midway leaves the earlier edits applied; NGR-201.
+    pub fn apply_speaker_edits(&mut self, meeting_id: &str, edits: &[SpeakerEdit]) -> Result<()> {
+        let i = self.idx(meeting_id)?;
+        let m = &self.entries[i].meeting;
+        let moved = |speaker_id: &str| {
+            let mut mine = m.segments.iter().filter(|g| g.speaker_id == speaker_id);
+            let all = mine.clone().all(|g| {
+                edits.iter().any(
+                    |e| matches!(e, SpeakerEdit::Line { segment_id, .. } if *segment_id == g.id),
+                )
+            });
+            all && mine.next().is_some()
+        };
+        for e in edits {
+            match e {
+                SpeakerEdit::Speaker { speaker_id, name } => {
+                    if name.trim().is_empty() {
+                        return Err("A person needs a name.".into());
+                    }
+                    if !m.speakers.iter().any(|s| s.id == *speaker_id) {
+                        return Err(format!("no speaker {speaker_id} in this meeting"));
+                    }
+                }
+                SpeakerEdit::Line { segment_id, name } => {
+                    if name.trim().is_empty() {
+                        return Err("A person needs a name.".into());
+                    }
+                    let g = m
+                        .segments
+                        .iter()
+                        .find(|g| g.id == *segment_id)
+                        .ok_or_else(|| format!("no line {segment_id} in this meeting"))?;
+                    if g.speaker_id == "me" {
+                        return Err("Lines from your mic can't be moved.".into());
+                    }
+                }
+            }
+        }
+        let skip: Vec<&str> = edits
+            .iter()
+            .filter_map(|e| match e {
+                SpeakerEdit::Speaker { speaker_id, .. } if moved(speaker_id) => {
+                    Some(speaker_id.as_str())
+                }
+                _ => None,
+            })
+            .collect();
+        for e in edits {
+            if let SpeakerEdit::Speaker { speaker_id, name } = e
+                && !skip.contains(&speaker_id.as_str())
+                && self.entries[i]
+                    .meeting
+                    .speakers
+                    .iter()
+                    .any(|s| s.id == *speaker_id)
+            {
+                self.name_speaker(meeting_id, speaker_id, name)?;
+            }
+        }
+        for e in edits {
+            if let SpeakerEdit::Line { segment_id, name } = e {
+                self.set_line_speaker(meeting_id, segment_id, name)?;
+            }
+        }
+        Ok(())
     }
 
     /// Voices in a meeting nobody named yet (not in the registry), "me" aside.
@@ -821,6 +893,96 @@ mod tests {
         assert!(!m.segments[1].by_hand);
         assert!(!m.speakers.iter().any(|p| p.id == "m-a-s2"));
         assert_eq!(s.voices().clusters.len(), 2, "voiceprints untouched");
+    }
+
+    /// Me, then `them` lines diarized as voices s1 (lines 1, 2) and s2 (line 3).
+    fn three_lines(s: &mut Store) {
+        s.start_meeting("m-a").unwrap();
+        s.push_segment("m-a", live_seg("m-a-0", "me", 0, "Hi all."))
+            .unwrap();
+        for n in 1..=3 {
+            let text = format!("Line {n}.");
+            s.push_segment(
+                "m-a",
+                live_seg(&format!("m-a-{n}"), "them", n * 1000, &text),
+            )
+            .unwrap();
+        }
+        let ids: Vec<Id> = ["me", "m-a-s1", "m-a-s1", "m-a-s2"]
+            .map(String::from)
+            .to_vec();
+        let speakers = vec![named("m-a-s1", "Speaker 1"), named("m-a-s2", "Speaker 2")];
+        let clusters = vec![
+            cluster("m-a", "m-a-s1", vec![1.0, 0.0]),
+            cluster("m-a", "m-a-s2", vec![0.0, 1.0]),
+        ];
+        s.set_diarization("m-a", &ids, speakers, clusters).unwrap();
+    }
+
+    fn voice(id: &str, name: &str) -> SpeakerEdit {
+        SpeakerEdit::Speaker {
+            speaker_id: id.into(),
+            name: name.into(),
+        }
+    }
+
+    fn line(id: &str, name: &str) -> SpeakerEdit {
+        SpeakerEdit::Line {
+            segment_id: id.into(),
+            name: name.into(),
+        }
+    }
+
+    #[test]
+    fn a_batch_names_a_voice_except_the_lines_moved_by_hand() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path()).unwrap();
+        three_lines(&mut s);
+        // The line edit comes first in the batch and still wins; the second voice is renamed.
+        s.apply_speaker_edits(
+            "m-a",
+            &[
+                line("m-a-2", "Bo"),
+                voice("m-a-s1", "Ana"),
+                voice("m-a-s2", "Cy"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(names(&s, "m-a"), ["Me", "Ana", "Bo", "Cy"]);
+        assert!(s.meeting("m-a").unwrap().segments[2].by_hand);
+    }
+
+    #[test]
+    fn a_batch_leaves_out_a_voice_whose_lines_were_all_moved() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path()).unwrap();
+        three_lines(&mut s);
+        s.apply_speaker_edits("m-a", &[voice("m-a-s2", "Cy"), line("m-a-3", "Bo")])
+            .unwrap();
+        assert_eq!(names(&s, "m-a"), ["Me", "Speaker 1", "Speaker 1", "Bo"]);
+        assert!(
+            s.voices().by_name("Cy").is_none(),
+            "Cy never joined the registry"
+        );
+    }
+
+    #[test]
+    fn a_batch_with_a_bad_edit_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path()).unwrap();
+        three_lines(&mut s);
+        for bad in [
+            line("nope", "Bo"),
+            line("m-a-0", "Bo"),
+            voice("m-a-s2", "  "),
+        ] {
+            let err = s.apply_speaker_edits("m-a", &[voice("m-a-s1", "Ana"), bad]);
+            assert!(err.is_err());
+            assert_eq!(
+                names(&s, "m-a"),
+                ["Me", "Speaker 1", "Speaker 1", "Speaker 2"]
+            );
+        }
     }
 
     #[test]

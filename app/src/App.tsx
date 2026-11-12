@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "./store";
 import { applyPlatform, detected, type Platform } from "./lib/platform";
-import { CallBanner, ConsentSheet, RecordingBar, Sidebar, Toast, UpdateBanner, WindowsTitleBar } from "./components/Shell";
+import { CallBanner, ConsentSheet, LeaveSheet, RecordingBar, Sidebar, Toast, UpdateBanner, WindowsTitleBar } from "./components/Shell";
 import { MeetingView } from "./views/Meeting";
 import { Inspector } from "./views/Inspector";
 import { ActionItemsView, AgentActivityView, AllMeetingsView, PeopleView } from "./views/Pages";
@@ -47,6 +47,7 @@ export default function App() {
         </div>
       </div>
       <ConsentSheet />
+      <LeaveSheet />
       <Toast />
     </div>
   );

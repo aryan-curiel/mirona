@@ -17,8 +17,8 @@ When a call ends with voices nobody has named, a note above the transcript says 
 - Each voice shows its three clearest lines. Press ▶ to hear who it is.
 - Type a name, or pick someone you already know (people from this meeting are listed first). A
   name typed in another case (*ines* for *Inés*) picks the existing person.
-- **Save** names the voice. **Skip** leaves it for later; the note stays until every voice has a
-  name.
+- **Save** (the button in the name field's row) adds the name as a pending change and moves to the
+  next voice. **Skip** leaves it for later; the note stays until every voice has a name.
 
 Name a voice once and Mirona recognises it in later meetings, and the name is filled in on every
 transcript, summary and action item where that voice spoke.
@@ -29,13 +29,29 @@ When a voice is close to someone you know, but not close enough to be sure, the 
 suggestion like **Inés? · Confirm**. Mirona also picks up names from the conversation itself
 ("Inés, can you…"). Click **Confirm** to accept, or name the voice yourself.
 
+## Saving speaker changes
+
+Renaming a voice, moving a line, naming a voice in **Name them** and confirming a suggestion
+don't change the meeting yet. They wait as pending changes, and a bar above the transcript counts
+them with **Save** and **Discard**:
+
+- The old name shows struck out on red and the new one on green (~~Speaker 2~~Inés), on every
+  line it will change, in the bar, and in the Summary tab (summary text and action item owners).
+- Click the struck-out name to undo that one change; click the green one to rename again.
+- **Save** applies every change together. **Discard** drops them all.
+- Opening another meeting with unsaved changes asks whether to save, discard, or stay. Changes
+  can't be saved while the meeting is still recording or being processed.
+
 ## A line went to the wrong person
 
-Hover the line and click **Who said this?** to move just that line to someone else, or to a new
+Hover the line and click **Who said this?** to move it to someone else, or to a new
 name. A moved line keeps its person when you re-run speaker detection, and moving lines never
 changes anyone's voiceprint. Your own lines (*You*) can't be moved.
 
-If a whole voice is wrong, rename it instead: click the speaker's name in the transcript.
+If a whole voice is wrong, rename it instead: click the speaker's name in the transcript. Next to
+the field, two icon buttons pick the scope: **This entry only**, or **All entries in this
+meeting** (the button shows how many it reaches; entries you already changed on their own are
+left as they are). **Who said this?** has the same two buttons.
 
 ## People and voices
 

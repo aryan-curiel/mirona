@@ -7,7 +7,7 @@ export type ComboOption = { value: string; group?: string; render?: ReactNode };
  * A text field with suggestions that match anywhere (NGR-201/202). ↑/↓ move, Enter picks the
  * highlighted one (or the typed text when `allowNew` labels it), Escape closes.
  */
-export function Combobox({ label, placeholder, options, onPick, onText, allowNew, initial = "", autoFocus = false, className = "" }: {
+export function Combobox({ label, placeholder, options, onPick, onText, allowNew, initial = "", autoFocus = false, className = "", adornment }: {
   label: string;
   placeholder: string;
   options: ComboOption[];
@@ -19,6 +19,8 @@ export function Combobox({ label, placeholder, options, onPick, onText, allowNew
   initial?: string;
   autoFocus?: boolean;
   className?: string;
+  /** Sits inside the field's right edge, e.g. a toggle that changes what a pick does. */
+  adornment?: ReactNode;
 }) {
   const id = useId();
   const [text, setText] = useState(initial);
@@ -53,7 +55,7 @@ export function Combobox({ label, placeholder, options, onPick, onText, allowNew
         aria-controls={`${id}-list`}
         aria-autocomplete="list"
         aria-activedescendant={active >= 0 ? `${id}-${active}` : undefined}
-        className="mi-field h-8 w-full text-[13px]"
+        className={`mi-field h-8 w-full text-[13px] ${adornment ? "pr-20" : ""}`}
         placeholder={placeholder}
         value={text}
         onChange={(e) => {
@@ -80,6 +82,7 @@ export function Combobox({ label, placeholder, options, onPick, onText, allowNew
           }
         }}
       />
+      {adornment && <div className="absolute inset-y-0 right-1 flex items-center">{adornment}</div>}
       {open && rows.length > 0 && (
         <div id={`${id}-list`} role="listbox" aria-label={label} className="mi-card absolute left-0 right-0 z-20 mt-1 max-h-64 overflow-auto p-1 text-[13px]">
           {rows.map((r, i) => {

@@ -36,7 +36,7 @@ const talk = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor(ms 
 
 /** After speaker detection: name the voices nobody named, one at a time, from their clearest lines (NGR-201). */
 export function NameVoices({ m, unnamed, known, play }: { m: Meeting; unnamed: string[]; known: string[]; play?: (ms: number) => void }) {
-  const nameSpeaker = useStore((s) => s.nameSpeaker);
+  const editSpeaker = useStore((s) => s.editSpeaker);
   const showSensitive = useStore((s) => s.filters.showSensitive);
   const busy = useStore((s) => s.recording?.meetingId === m.id || s.processing.includes(m.id));
   const [open, setOpen] = useState(false);
@@ -56,7 +56,7 @@ export function NameVoices({ m, unnamed, known, play }: { m: Meeting; unnamed: s
   const save = (raw: string) => {
     const name = exactMatch(raw, known) ?? raw.trim();
     if (!sp || !name) return;
-    void nameSpeaker(sp.id, name);
+    editSpeaker(sp.id, name);
     setText("");
     // The named voice leaves the list, so the next one moves into this slot.
     if (k + 1 >= n) setOpen(false);
